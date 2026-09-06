@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\SmartProperty.Common\SmartProperty.Common.csproj" />
+    <ProjectReference Include="..\SmartProperty.Domain\SmartProperty.Domain.csproj" />
+  </ItemGroup>
+</Project>
