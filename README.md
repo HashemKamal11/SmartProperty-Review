@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # SmartProperty Backend
 
 Clean Architecture foundation through **Step 03: PostgreSQL and EF Core**.
@@ -152,3 +153,6 @@ project nor a Seeder is created in Step 03.
   delete defaults. Database constraints form the final integrity boundary.
 - Add concurrency protection for approvals, offers, payments, and state transitions
   when those models exist. JSONB must not replace a relational domain model.
+=======
+# SmartProperty
+>>>>>>> origin/main
