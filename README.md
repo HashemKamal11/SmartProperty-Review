@@ -33,16 +33,78 @@ Persistence  -> Application + Domain
 Api          -> Application + Persistence
 ```
 
-The Domain and Application layers are kept independent from database and HTTP implementation details.
+The Domain and Application layers remain independent from database and HTTP implementation details.
+
+## Architecture Approach
+
+The application follows CQRS with separate read and write responsibilities.
+
+```text
+Write Side
+API -> Command -> Command Handler -> Domain -> EF Core -> PostgreSQL
+
+Read Side
+API -> Query -> Query Handler -> Dapper -> PostgreSQL -> Read Model
+```
+
+EF Core is used for write-side persistence and aggregate state changes.
+
+Dapper will be introduced with the first real read-side query. It is intentionally not installed yet because there is no business query implementation at this stage.
+
+CQRS abstractions are framework-independent and do not depend on MediatR.
 
 ## Current Stack
 
 - .NET 10
 - ASP.NET Core
+- Clean Architecture
+- CQRS
 - Entity Framework Core
 - PostgreSQL
 - Npgsql
 - Docker
+- Dapper planned for read-side queries
+
+## Common Foundation
+
+`SmartProperty.Common` currently contains shared infrastructure-independent primitives:
+
+```text
+Results/
+├── Error.cs
+├── ErrorType.cs
+├── Result.cs
+└── ResultOfT.cs
+
+Pagination/
+├── PageParameters.cs
+└── PagedList.cs
+```
+
+The result model provides a consistent way to represent successful operations and expected business failures without coupling the core layers to HTTP status codes.
+
+Pagination is database-agnostic. Database queries are responsible for returning already-paged items and a total count.
+
+## Application Foundation
+
+`SmartProperty.Application` contains framework-independent abstractions used by future application features:
+
+```text
+Abstractions/
+├── Identity/
+│   └── ICurrentUser.cs
+├── Time/
+│   └── IDateTimeProvider.cs
+└── Messaging/
+    ├── ICommand.cs
+    ├── ICommandOfT.cs
+    ├── ICommandHandler.cs
+    ├── ICommandHandlerOfT.cs
+    ├── IQueryOfT.cs
+    └── IQueryHandler.cs
+```
+
+These abstractions keep future use cases independent from ASP.NET Core, JWT, EF Core, Dapper, and other infrastructure details.
 
 ## Local Setup
 
@@ -114,7 +176,7 @@ Entity mappings will be added through `IEntityTypeConfiguration<T>` implementati
 
 No business entities or migrations have been added yet.
 
-The first migration will be created when the Property Core model is implemented.
+The first migration will be created when the first real domain model is implemented.
 
 To verify EF Core design-time configuration:
 
@@ -135,7 +197,11 @@ Completed:
 - EF Core integration
 - Database dependency injection
 - Database readiness health check
+- Common Result and Error foundation
+- Shared pagination foundation
+- Current user and date/time abstractions
+- CQRS command/query abstractions
 
 ## Next
 
-- Property Core
+- Identity & Access
