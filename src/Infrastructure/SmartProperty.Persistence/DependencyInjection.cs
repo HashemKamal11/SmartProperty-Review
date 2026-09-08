@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Persistence.Context;
 using SmartProperty.Persistence.Health;
+using SmartProperty.Persistence.Repositories.Identity;
 
 namespace SmartProperty.Persistence;
 
@@ -21,6 +23,8 @@ public static class DependencyInjection
         }
 
         services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddScoped<IUserRepository, UserRepository>();
+
         services.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"], timeout: TimeSpan.FromSeconds(5));
 
