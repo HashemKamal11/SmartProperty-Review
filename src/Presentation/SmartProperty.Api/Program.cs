@@ -1,12 +1,18 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using SmartProperty.Api.Infrastructure;
+using SmartProperty.Api.Infrastructure.Http;
 using SmartProperty.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddApiConventions();
 builder.Services.AddPersistence(builder.Configuration);
 
 var app = builder.Build();
+
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseExceptionHandler();
 
 app.MapControllers();
 
