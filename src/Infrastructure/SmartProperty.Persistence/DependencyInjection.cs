@@ -5,6 +5,7 @@ using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Persistence.Context;
 using SmartProperty.Persistence.Health;
 using SmartProperty.Persistence.Repositories.Identity;
+using SmartProperty.Persistence.Repositories.Platform;
 
 namespace SmartProperty.Persistence;
 
@@ -24,6 +25,11 @@ public static class DependencyInjection
 
         services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
+        services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();
+        services.AddScoped<IWorkspaceMembershipRepository, WorkspaceMembershipRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
+        services.AddScoped<IPermissionRepository, PermissionRepository>();
 
         services.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"], timeout: TimeSpan.FromSeconds(5));
