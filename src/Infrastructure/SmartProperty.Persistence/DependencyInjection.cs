@@ -25,6 +25,8 @@ public static class DependencyInjection
 
         services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IUserCredentialRepository, UserCredentialRepository>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
         services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();
         services.AddScoped<IWorkspaceMembershipRepository, WorkspaceMembershipRepository>();

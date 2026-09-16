@@ -9,6 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddApiConventions();
+builder.Services.AddDateTimeProvider();
+builder.Services.AddApiAuthentication(builder.Configuration);
 builder.Services.AddPersistence(builder.Configuration);
 
 var app = builder.Build();
@@ -28,6 +30,11 @@ app.UseExceptionHandler(exceptionHandlerApp =>
         await context.Response.WriteAsJsonAsync(response);
     });
 });
+
+// Explicit placement keeps authentication after correlation ID and exception handling;
+// otherwise WebApplication inserts these ahead of all other middleware.
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapControllers();
 
