@@ -61,9 +61,15 @@ Invariants: `UserId` must not be empty, `PasswordHash` must not be empty, and `U
 
 The implementation delegates to the framework `PasswordHasher<TUser>` from `Microsoft.Extensions.Identity.Core`, which is part of the ASP.NET Core shared framework. It uses PBKDF2 with a per-password random salt, a versioned self-describing hash format, and fixed-time comparison. Only this hashing component is used; no Identity stores, managers, or tables are introduced.
 
-`Verify` returns true for both `Success` and `SuccessRehashNeeded`. Re-hashing on login when the framework raises its work factor is deferred to the Login use case.
+`Verify` returns the framework-neutral Application enum `PasswordVerificationStatus` (`Failed`, `Success`, `SuccessRehashNeeded`), mapped one-to-one from the framework `PasswordVerificationResult`. The framework type does not leave the API layer. `SuccessRehashNeeded` means the password matched but the stored hash should be replaced; re-hashing on login belongs to the Login use case.
 
-`Verify` returns false when the persisted hash is malformed and the framework cannot decode it (the framework throws `FormatException` for invalid Base64). Only that exception is caught; other failures are not hidden. Empty or whitespace hashes are still rejected with `ArgumentException`.
+`Verify` fails closed on unusable persisted hashes and returns `Failed` without throwing when the stored hash is:
+
+- `null`, empty, or whitespace (checked explicitly before calling the framework)
+- not valid Base64 (the framework throws `FormatException`, which is caught)
+- valid Base64 but not a recognized hash structure (the framework reports `Failed`)
+
+Only `FormatException` is caught; other failures are not hidden. A null or empty plaintext password is still rejected with `ArgumentException`.
 
 The hasher enforces no password policy.
 
@@ -156,7 +162,9 @@ The client-facing error behavior for non-active users is defined together with t
 
 ## Save And Transaction Boundary
 
-Repositories do not call `SaveChangesAsync`, and no unit of work abstraction exists. The future Registration use case is expected to create the `User`, the `UserCredential`, and the `WorkspaceAccessRequest` and commit them atomically. The save boundary is decided with that use case.
+Repositories query and track entities but never call `SaveChangesAsync`. The Application abstraction `IUnitOfWork` exposes only `SaveChangesAsync` and is the single commit boundary. Its Persistence implementation delegates to `ApplicationDbContext.SaveChangesAsync`.
+
+`IUnitOfWork` and all repositories are scoped and receive the same scoped `ApplicationDbContext`, so changes tracked through any repository within a request are committed together by one `SaveChangesAsync` call. Use cases such as Registration (`User`, `UserCredential`, `WorkspaceAccessRequest`) call it once after all changes are tracked. No explicit transaction API is exposed.
 
 ## Deferred Decisions
 
@@ -164,7 +172,7 @@ Repositories do not call `SaveChangesAsync`, and no unit of work abstraction exi
 - Production access and refresh token lifetimes.
 - Refresh token rotation and reuse detection.
 - Login use case, including status enforcement, rehash-on-login, and non-active user responses.
-- Registration use case and its transaction boundary.
+- Registration use case.
 - Refresh use case.
 - Logout and revocation workflow.
 - Authentication endpoints.

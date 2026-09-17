@@ -22,10 +22,15 @@ internal sealed class PasswordHasher : IPasswordHasher
         return _hasher.HashPassword(HashingSubject, password);
     }
 
-    public bool Verify(string password, string passwordHash)
+    public PasswordVerificationStatus Verify(string password, string passwordHash)
     {
         ArgumentException.ThrowIfNullOrEmpty(password);
-        ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
+
+        // The hash is persisted credential data, not caller input. An unusable stored hash fails closed.
+        if (string.IsNullOrWhiteSpace(passwordHash))
+        {
+            return PasswordVerificationStatus.Failed;
+        }
 
         PasswordVerificationResult result;
 
@@ -37,9 +42,15 @@ internal sealed class PasswordHasher : IPasswordHasher
         {
             // The framework decodes the stored hash as Base64 and throws when it is not valid Base64.
             // A malformed persisted hash must fail verification rather than surface as an unhandled error.
-            return false;
+            return PasswordVerificationStatus.Failed;
         }
 
-        return result is PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded;
+        return result switch
+        {
+            PasswordVerificationResult.Success => PasswordVerificationStatus.Success,
+            PasswordVerificationResult.SuccessRehashNeeded => PasswordVerificationStatus.SuccessRehashNeeded,
+            // Failed, and any unrecognized framework value, fails closed.
+            _ => PasswordVerificationStatus.Failed
+        };
     }
 }

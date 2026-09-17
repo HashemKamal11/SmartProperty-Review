@@ -11,7 +11,8 @@ public interface IPasswordHasher
     string Hash(string password);
 
     /// <summary>
-    /// True when the password matches the encoded hash.
+    /// Verifies the password against the encoded hash. A null, empty, whitespace, or malformed hash yields
+    /// <see cref="PasswordVerificationStatus.Failed"/>.
     /// </summary>
-    bool Verify(string password, string passwordHash);
+    PasswordVerificationStatus Verify(string password, string passwordHash);
 }
