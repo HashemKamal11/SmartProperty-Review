@@ -9,7 +9,9 @@ using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Time;
 using SmartProperty.Application.Abstractions.Authentication;
 using SmartProperty.Application.Abstractions.Identity;
+using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.Authentication.Register;
 
 namespace SmartProperty.Api.Infrastructure;
 
@@ -119,6 +121,15 @@ internal static class ServiceCollectionExtensions
                     }
                 };
             });
+
+        return services;
+    }
+
+    public static IServiceCollection AddApplicationHandlers(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddScoped<ICommandHandler<RegisterCommand, RegisterResult>, RegisterCommandHandler>();
 
         return services;
     }

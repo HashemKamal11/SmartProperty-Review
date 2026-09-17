@@ -6,5 +6,8 @@ namespace SmartProperty.Application.Abstractions.Persistence;
 /// </summary>
 public interface IUnitOfWork
 {
+    /// <exception cref="UniqueConstraintViolationException">
+    /// The save violates a recognized unique constraint. Every other failure propagates unchanged.
+    /// </exception>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

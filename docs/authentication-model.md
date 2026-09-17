@@ -1,6 +1,6 @@
 # Authentication Model
 
-This document records the Step 05.4 authentication infrastructure foundation. It establishes credential and token infrastructure only. Login, Registration, Refresh, and Logout use cases, authentication endpoints, and authorization remain deferred.
+This document records the Step 05.4 authentication infrastructure foundation and the Step 05.5B registration use case. Login, Refresh, and Logout use cases, their endpoints, and authorization remain deferred.
 
 ## Architecture
 
@@ -162,9 +162,67 @@ The client-facing error behavior for non-active users is defined together with t
 
 ## Save And Transaction Boundary
 
-Repositories query and track entities but never call `SaveChangesAsync`. The Application abstraction `IUnitOfWork` exposes only `SaveChangesAsync` and is the single commit boundary. Its Persistence implementation delegates to `ApplicationDbContext.SaveChangesAsync`.
+Repositories query and track entities but never call `SaveChangesAsync`. The Application abstraction `IUnitOfWork` exposes only `SaveChangesAsync` and is the single commit boundary. Its Persistence implementation delegates to `ApplicationDbContext.SaveChangesAsync` and translates a violation of a recognized unique constraint into the provider-neutral `UniqueConstraintViolationException` (see Registration). Every other failure propagates unchanged.
 
 `IUnitOfWork` and all repositories are scoped and receive the same scoped `ApplicationDbContext`, so changes tracked through any repository within a request are committed together by one `SaveChangesAsync` call. Use cases such as Registration (`User`, `UserCredential`, `WorkspaceAccessRequest`) call it once after all changes are tracked. No explicit transaction API is exposed.
+
+## Registration
+
+`POST /api/auth/register` is anonymous. `AuthController` maps the request body to the Application `RegisterCommand`, which `RegisterCommandHandler` handles through `ICommandHandler<RegisterCommand, RegisterResult>`.
+
+```json
+{
+  "email": "user@example.com",
+  "password": "...",
+  "firstName": "Ada",
+  "lastName": "Lovelace",
+  "workspaceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+}
+```
+
+A successful registration tracks three entities and commits them with one `IUnitOfWork.SaveChangesAsync` call, so they are saved together or not at all:
+
+- a `User` with status `Pending`. The `User` constructor trims the names and normalizes the email (trimmed, lower-case invariant).
+- its `UserCredential`, holding only the hash returned by `IPasswordHasher`. The password is hashed exactly as sent and is never persisted or returned.
+- one `WorkspaceAccessRequest` with status `Pending` for the selected existing workspace.
+
+All three use the same `IDateTimeProvider.UtcNow` timestamp. Registration does not activate the user, create a `WorkspaceMembership`, assign roles or permissions, approve the request, or issue access or refresh tokens. Workspace access is granted only by the later Platform Admin approval workflow.
+
+Success returns `201 Created` without a `Location` header, because no endpoint can read a registration back yet:
+
+```json
+{
+  "userId": "...",
+  "status": "Pending",
+  "workspaceId": "...",
+  "workspaceAccessRequestId": "...",
+  "workspaceAccessStatus": "Pending"
+}
+```
+
+Checks run in this order. A failing check returns before any entity is tracked, so nothing is saved.
+
+| Order | Condition | Status | Code |
+| --- | --- | --- | --- |
+| 1 | Body is not valid JSON, not an object, or has a wrongly typed value | 400 | `request.malformed` |
+| 2 | Input validation fails | 422 | `validation.failed` |
+| 3 | `workspaceId` does not identify an existing workspace | 404 | `workspaces.not_found` |
+| 4 | The normalized email is already registered | 409 | `users.email_already_exists` |
+
+The workspace is checked before the email, so a request with an unknown workspace reveals nothing about registered emails. Registration never creates a workspace.
+
+Validation reports the first failing rule in `message` and returns `fieldErrors` as `null`, because `Error` cannot carry field-level errors yet. A missing or `null` member is a validation failure (422), not a malformed request.
+
+- `email`: required; at most 320 characters after trimming; exactly one `@` between a non-empty local part and domain, with no whitespace or control characters. This is a structural check only; it does not prove that the address exists or belongs to the caller.
+- `password`: required and not only whitespace; at most 128 characters.
+- `firstName`, `lastName`: required; at most 100 characters after trimming.
+- `workspaceId`: required and not the empty GUID.
+
+The email and name limits match the `identity.users` column lengths.
+
+Password policy status: no password strength policy is approved. The 128-character maximum is a defensive bound on input to password hashing, not a strength rule. Minimum length, complexity, and breached-password rules remain deferred.
+
+Duplicate emails: the lookup uses the email as normalized by `User`, so addresses that differ only in letter case or surrounding whitespace are duplicates, and the request returns `409` with `users.email_already_exists`. The unique index `ux_identity_users_email` remains the final guarantee. Two concurrent registrations for the same new email can both pass the lookup; the database then rejects the later insert, and that request's whole `SaveChangesAsync` rolls back without partial rows. `UnitOfWork` recognizes this violation from the PostgreSQL SQLSTATE (`23505`) and constraint name, and rethrows it as `UniqueConstraintViolationException` with `PersistenceConstraint.UserEmail`. The handler catches only that exception and returns the same `409` with `users.email_already_exists`. The SQLSTATE, constraint name, and provider exception types stay inside Persistence. Any other database failure still propagates as an unexpected `500`.
 
 ## Deferred Decisions
 
@@ -172,12 +230,14 @@ Repositories query and track entities but never call `SaveChangesAsync`. The App
 - Production access and refresh token lifetimes.
 - Refresh token rotation and reuse detection.
 - Login use case, including status enforcement, rehash-on-login, and non-active user responses.
-- Registration use case.
 - Refresh use case.
 - Logout and revocation workflow.
-- Authentication endpoints.
+- Login, Refresh, and Logout endpoints.
 - 401 challenge and 403 forbidden response bodies. JWT Bearer currently returns the default empty ASP.NET Core responses, not `ApiErrorResponse`. This must be integrated before the first protected endpoint is introduced.
+- `415 Unsupported Media Type` and `405 Method Not Allowed` response bodies. Controllers currently return the framework `ProblemDetails` body for 415 and an empty body for 405, not `ApiErrorResponse`.
+- Structured `fieldErrors` for Application validation failures.
 - Claims and authorization strategy.
+- Email verification.
 - MFA.
 - Password reset.
 - Account lockout and failed login tracking.

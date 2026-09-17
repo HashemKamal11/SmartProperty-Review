@@ -6,6 +6,8 @@ namespace SmartProperty.Persistence.Configurations.Identity;
 
 internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
 {
+    public const string EmailUniqueIndexName = "ux_identity_users_email";
+
     public void Configure(EntityTypeBuilder<User> builder)
     {
         builder.ToTable("users", "identity");
@@ -22,7 +24,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.HasIndex(user => user.Email)
             .IsUnique()
-            .HasDatabaseName("ux_identity_users_email");
+            .HasDatabaseName(EmailUniqueIndexName);
 
         builder.Property(user => user.FirstName)
             .HasColumnName("first_name")
