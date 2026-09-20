@@ -2,7 +2,7 @@
 
 SmartProperty is the backend foundation for a multi-workspace property platform. It is an ASP.NET Core API on .NET 10 that follows Clean Architecture and stores data in PostgreSQL through EF Core.
 
-The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and two business workflows: user registration and login. Token refresh, the current-user endpoint, logout, and authorization are not implemented yet.
+The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and three business workflows: user registration, login, and refresh-token rotation. The current-user endpoint, logout, and authorization are not implemented yet.
 
 ## Current Status
 
@@ -15,12 +15,13 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Memberships, roles, and permissions | Data model only | Domain entities, EF Core mappings, and repositories; no workflows use them |
 | Password hashing | Implemented | ASP.NET Core Identity password hasher |
 | JWT access tokens | Implemented | Issued by Login; bearer validation exists, but no endpoint requires a token yet |
-| Refresh tokens | Issued only | Issued by Login and persisted as hashes; no endpoint accepts them yet |
+| Refresh tokens | Implemented | Issued by Login, persisted as hashes, and rotated single-use by `POST /api/auth/refresh` |
 | Current user (`ICurrentUser`) | Implemented | Reads the user id from a validated access token; no endpoint uses it yet |
 | Commit boundary (`IUnitOfWork`) | Implemented | One save per use case |
 | `POST /api/auth/register` | Implemented | Creates `Pending` users |
 | `POST /api/auth/login` | Implemented | Active users only; returns access and refresh tokens |
-| Refresh, Me, and Logout endpoints | Not implemented | |
+| `POST /api/auth/refresh` | Implemented | Active users only; single-use rotation returning a new token pair |
+| Me and Logout endpoints | Not implemented | |
 | Authorization policies, permission enforcement, and workspace authorization | Not implemented | |
 | Access request approval and role assignment workflows | Not implemented | |
 | Password policy, email verification, and rate limiting | Not implemented | |
@@ -37,7 +38,7 @@ The solution follows Clean Architecture. The inner layers do not depend on web, 
 | `SmartProperty.Domain` | Entities and their invariants: users, credentials, refresh tokens, workspaces, access requests, memberships, roles, and permissions. No framework dependencies. |
 | `SmartProperty.Common` | Shared `Result` and `Error` types and pagination primitives. No framework dependencies. |
 | `SmartProperty.Application` | Abstractions (repositories, `IUnitOfWork`, `IPasswordHasher`, `ITokenProvider`, `ICurrentUser`, `IDateTimeProvider`), command and query contracts, and use cases. No EF Core, ASP.NET Core, or JWT dependencies. |
-| `SmartProperty.Persistence` | EF Core with PostgreSQL (Npgsql): `ApplicationDbContext`, entity configurations, repositories, `UnitOfWork`, the database health check, and translation of recognized PostgreSQL unique-constraint violations into a provider-neutral exception. |
+| `SmartProperty.Persistence` | EF Core with PostgreSQL (Npgsql): `ApplicationDbContext`, entity configurations, repositories, `UnitOfWork`, the database health check, and translation of recognized PostgreSQL unique-constraint violations and refresh-token concurrency conflicts into provider-neutral exceptions. |
 | `SmartProperty.Api` | ASP.NET Core host: controllers and HTTP DTOs, JWT Bearer authentication, error mapping, correlation IDs, health endpoints, and the dependency injection composition root. |
 
 Project references:
@@ -50,7 +51,7 @@ Persistence  -> Application, Domain
 Api          -> Application, Persistence
 ```
 
-Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration and Login are the only use cases so far, there are no query handlers yet, and handlers are registered explicitly in the API.
+Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration, Login, and Refresh are the only use cases so far, there are no query handlers yet, and handlers are registered explicitly in the API.
 
 ```text
 SmartProperty/
@@ -59,7 +60,7 @@ SmartProperty/
 │   ├── Core/
 │   │   ├── SmartProperty.Common/      Results/, Pagination/
 │   │   ├── SmartProperty.Domain/      Identity/, Workspaces/
-│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/
+│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/
 │   ├── Infrastructure/
 │   │   └── SmartProperty.Persistence/ Configurations/, Context/, Health/, Repositories/
 │   └── Presentation/
@@ -309,9 +310,50 @@ Validation uses the registration rules for `email` and `password`: both are requ
 
 The `401` response is identical whether the email is unknown, the password is wrong, or the stored credential is missing or unusable: `Invalid email or password.`. The account status is checked only after the password is verified, so a wrong password always returns `401`. The `403` message, `This account is not currently allowed to sign in.`, is the same for `Pending`, `Suspended`, and `Deactivated` accounts.
 
+## Refresh API
+
+`POST /api/auth/refresh` exchanges a refresh token for a new token pair. It requires no `Authorization` header: the refresh token is the credential, and the access token it replaces may already have expired.
+
+```json
+{
+  "refreshToken": "q3Jx..."
+}
+```
+
+Successful response, `200 OK`:
+
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "accessTokenExpiresAt": "2026-09-17T12:30:00+00:00",
+  "refreshToken": "8ZpK...",
+  "refreshTokenExpiresAt": "2026-09-24T12:15:00+00:00"
+}
+```
+
+- **Rotation is single use.** A successful refresh revokes the token you sent and returns a new one. Replay the old token and you get `401` — store the new `refreshToken` from every response and discard the previous one.
+- The new raw refresh token is returned only in this response; the database stores only its SHA-256 hash, never the raw value.
+- The new access token carries the same identity-only claims as a login token: no role, permission, or workspace claims.
+- Only `Active` users can refresh. Other refresh tokens belonging to the same user are untouched, so multiple sessions stay valid.
+- **Concurrent refreshes with the same token are safe.** If several requests send the same token at once, exactly one receives `200` and the rest receive `401`; only one replacement token is ever created.
+- `refreshToken` is required and capped at 512 characters. It is matched exactly — never trimmed — so send it back byte for byte.
+
+### Status Codes
+
+| Status | Code | When |
+| --- | --- | --- |
+| `200` | | The token was rotated. |
+| `400` | `request.malformed` | The body is empty, is not valid JSON, is not a JSON object, or has a value of the wrong type. |
+| `422` | `validation.failed` | A validation rule failed, including a missing field. |
+| `401` | `authentication.invalid_refresh_token` | The token is unknown, expired, revoked, already rotated, or lost a concurrent refresh. |
+| `403` | `authentication.account_unavailable` | The token is valid, but the account is not `Active`. |
+| `500` | `server.unexpected_error` | An unexpected server failure occurred. |
+
+The `401` body is identical in every case: `Invalid or expired refresh token.`. It never says which case occurred. A `401` here means the client must sign in again.
+
 ## Authentication Infrastructure
 
-Login issues access and refresh tokens (see [Login API](#login-api)). The Refresh workflow is still pending, and no endpoint requires authentication yet.
+Login issues access and refresh tokens (see [Login API](#login-api)), and Refresh rotates them (see [Refresh API](#refresh-api)). No endpoint requires authentication yet.
 
 - **Password hashing:** ASP.NET Core Identity's `PasswordHasher<TUser>` (PBKDF2 with a per-password salt). Only the hasher is used, not Identity's stores, managers, or tables.
 - **JWT Bearer validation:** tokens must be signed with HS256 using `Jwt:SigningKey` and pass signature, issuer, audience, and lifetime validation, with 30 seconds of allowed clock skew.
@@ -342,8 +384,9 @@ Available now:
 | `GET /health/ready` | Returns `200` only when the database is reachable. |
 | `POST /api/auth/register` | Needs the database schema and an existing workspace id. |
 | `POST /api/auth/login` | Needs the database schema and an `Active` user. Frontend and QA can test sign-in with it. |
+| `POST /api/auth/refresh` | Needs a refresh token from a login or an earlier refresh. Frontend and QA can test session renewal with it. |
 
-Not available yet: token refresh, current user (`me`), logout, access request approval, and any screen that depends on authorization. Routes such as `/api/auth/refresh` currently return `404`.
+Not available yet: current user (`me`), logout, access request approval, and any screen that depends on authorization. Routes such as `/api/auth/me` currently return `404`.
 
 Integration notes:
 
@@ -361,7 +404,7 @@ These are planned work items, not defects in the implemented features.
 - No password strength policy has been decided; passwords are only required and limited to 128 characters.
 - Email verification is pending.
 - Rate limiting is pending.
-- Refresh, Me, and Logout are pending. A refresh token returned by Login cannot be used yet, and earlier refresh tokens are not revoked by a new login.
+- Me and Logout are pending. Refresh rotates one token at a time; it does not revoke a user's other sessions, and a replayed token does not revoke the tokens issued after it (refresh-token families are not implemented).
 - Login performs one password verification on every rejected attempt, including an unknown email and a missing credential, so response time no longer reveals whether an email is registered. This is timing hardening, not a constant-time guarantee: a corrupted stored hash can still fail faster, and registration still reveals a taken email through `409`. Rate limiting and account lockout are pending.
 - Authorization policies and permission enforcement are pending.
 - Standard error bodies for `401` and `403` responses produced by JWT Bearer authentication are pending; no endpoint requires authentication yet. Login's own `401` and `403` responses already use the standard error body.
@@ -372,7 +415,9 @@ These are planned work items, not defects in the implemented features.
 
 - Never commit JWT signing keys or database credentials. Use User Secrets or environment variables locally, and secure configuration in deployed environments.
 - Passwords are stored only as hashes, never as plaintext.
-- Raw refresh tokens are never persisted; Login returns the raw token to the client and stores only its hash.
+- Raw refresh tokens are never persisted; Login and Refresh return the raw token to the client and store only its hash.
+- Refresh tokens are single use. A successful refresh revokes the presented token in the same save that inserts its replacement, so a replayed token returns `401`, and concurrent refreshes with one token yield exactly one winner.
+- Refresh returns the same `401` response whether the token is unknown, expired, revoked, replayed, or lost a concurrent rotation, and never reveals the account status behind its `403`.
 - Login returns the same `401` response for an unknown email, a wrong password, or an unusable stored credential, and checks the account status only after the password is verified.
 - API error responses do not include stack traces, SQL, or database constraint names. Those details go only to server logs.
 - PostgreSQL-specific details, such as error codes and constraint names, stay inside `SmartProperty.Persistence`.

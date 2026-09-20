@@ -1,6 +1,6 @@
 # Authentication Model
 
-This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, and the Step 05.5D login use case. Refresh, Me, and Logout use cases, their endpoints, and authorization remain deferred.
+This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, and the Step 05.5E refresh-token rotation use case. Me and Logout use cases, their endpoints, and authorization remain deferred.
 
 ## Architecture
 
@@ -156,7 +156,7 @@ MapControllers / health endpoints
 
 ## User Status Rule
 
-Only `Active` users may receive normal authenticated access. Login and the future Refresh workflow must not issue tokens to `Pending`, `Suspended`, or `Deactivated` users.
+Only `Active` users may receive normal authenticated access. Login and Refresh must not issue tokens to `Pending`, `Suspended`, or `Deactivated` users.
 
 The rule belongs to the Application authentication use cases, which load the user and check `User.Status` before calling `ITokenProvider`. The token provider does not enforce it. Login enforces it as described in Login.
 
@@ -164,7 +164,9 @@ The rule belongs to the Application authentication use cases, which load the use
 
 Repositories query and track entities but never call `SaveChangesAsync`. The Application abstraction `IUnitOfWork` exposes only `SaveChangesAsync` and is the single commit boundary. Its Persistence implementation delegates to `ApplicationDbContext.SaveChangesAsync` and translates a violation of a recognized unique constraint into the provider-neutral `UniqueConstraintViolationException` (see Registration). Every other failure propagates unchanged.
 
-`IUnitOfWork` and all repositories are scoped and receive the same scoped `ApplicationDbContext`, so changes tracked through any repository within a request are committed together by one `SaveChangesAsync` call. Use cases such as Registration (`User`, `UserCredential`, `WorkspaceAccessRequest`) and Login (`RefreshToken`, plus a re-hashed `UserCredential` when needed) call it once after all changes are tracked. No explicit transaction API is exposed.
+`IUnitOfWork` and all repositories are scoped and receive the same scoped `ApplicationDbContext`, so changes tracked through any repository within a request are committed together by one `SaveChangesAsync` call. Use cases such as Registration (`User`, `UserCredential`, `WorkspaceAccessRequest`), Login (`RefreshToken`, plus a re-hashed `UserCredential` when needed), and Refresh (the revoked `RefreshToken` and its replacement) call it once after all changes are tracked. No explicit transaction API is exposed.
+
+`SaveChangesAsync` translates two recognized provider failures into framework-neutral Application exceptions and lets every other failure propagate unchanged: `UniqueConstraintViolationException` for a recognized unique-constraint violation, identified by SQLSTATE and constraint name, and `ConcurrencyConflictException` for a recognized optimistic-concurrency conflict, identified by EF entry metadata. The two are deliberately distinct: a constraint violation means the data was rejected, a concurrency conflict means another writer changed the row first.
 
 ## Registration
 
@@ -301,17 +303,70 @@ This is timing hardening, not a formal constant-time guarantee. The paths still 
 
 Rate limiting and account lockout remain deferred (see Deferred Decisions).
 
-The Refresh endpoint is not implemented yet, so a refresh token cannot be exchanged for a new access token.
+## Refresh Use Case
+
+`POST /api/auth/refresh` exchanges an active refresh token for a new access token and a new refresh token. The endpoint is `[AllowAnonymous]`: the refresh token is itself the credential, and the access token it replaces may already have expired, so requiring a Bearer token would make the endpoint useless.
+
+Request body:
+
+```json
+{
+  "refreshToken": "..."
+}
+```
+
+`RefreshRequest.RefreshToken` is nullable, so a missing value is reported by Application validation (`422`) rather than model-binding (`400`). Validation checks only presence and a defensive 512-character maximum. The token is an opaque credential: it is never trimmed, never decoded, and its format is never validated, so it is matched exactly against the stored hash. The bound is not a format rule — tokens issued today are about 86 Base64Url characters from 64 random bytes, and `token_hash` is a fixed 128 characters regardless of input length — it exists only to reject absurd payloads while leaving room for a future token format.
+
+`RefreshCommandHandler` then:
+
+1. hashes the raw token with `ITokenProvider.HashRefreshToken`; the raw token never reaches a query, the database, or a log
+2. loads the row with `IRefreshTokenRepository.GetByTokenHashAsync`
+3. takes the refresh timestamp from `IDateTimeProvider.UtcNow`
+4. rejects the request unless `RefreshToken.IsActive(now)` — not revoked, and `now` strictly before `ExpiresAt`, so `ExpiresAt <= now` is expired
+5. loads the user with `IUserRepository.GetByIdAsync`
+6. requires `UserStatus.Active`
+7. creates the new access token and refresh token
+8. revokes the presented token with `RefreshToken.Revoke(now)`
+9. tracks a new `RefreshToken` with a new id, the same user id, the generated `TokenHash`, the refresh timestamp as `CreatedAt`, and the generated expiration
+10. calls `IUnitOfWork.SaveChangesAsync` once
+11. returns the tokens only after the save succeeds
+
+Invalid-token privacy: an unknown token hash, a revoked token, an expired token, a token whose user no longer exists, a replayed token, and the loser of a concurrent rotation all return the same `401` with `authentication.invalid_refresh_token` and the message `Invalid or expired refresh token.`. The response never says which case occurred, and never exposes a token id, a hash, a timestamp, a constraint name, or any database detail. A token without its user is invalid session state, not a `404`.
+
+Account status: only `Active` users may refresh. `Pending`, `Suspended`, and `Deactivated` all return `403` with `authentication.account_unavailable`, the same generic error Login uses, so the exact status is never disclosed. A forbidden refresh changes nothing — the presented token is not revoked, no tokens are created, and nothing is saved. Whether a status change should revoke existing sessions is a separate, deferred decision.
+
+One-time rotation: a refresh token can rotate successfully only once. The presented token is revoked in the same save that inserts its replacement, so after a successful refresh the old raw token returns `401` and only the new one works. Only the new token's hash is persisted; the raw refresh token and the access token are returned to the client and never stored. The new access token carries the same identity-only claims described in Access Tokens: no roles, permissions, platform roles, or workspace data.
+
+Nothing is mutated before every check has passed, so a rejected refresh performs no save at all. A failure while creating tokens happens before anything is tracked. A failed save leaves the presented token active and inserts no replacement, and propagates as an unexpected `500` with no tokens.
+
+### Concurrent Use of the Same Refresh Token
+
+Two requests can both load the same token with `RevokedAt` null before either saves. `RefreshToken.RevokedAt` is mapped as an EF Core concurrency token, so the generated statement is:
+
+```sql
+UPDATE identity.refresh_tokens SET revoked_at = @p0
+WHERE id = @p1 AND revoked_at IS NULL;
+```
+
+The first writer matches and commits. The second carries the same `revoked_at IS NULL` predicate, affects zero rows, and EF raises `DbUpdateConcurrencyException`; its replacement insert is in the same batch and is rolled back with it. `UnitOfWork` recognizes that conflict from EF's own entry metadata — never from message text — and only when every failed entry is a `RefreshToken`; it then throws the framework-neutral `ConcurrencyConflictException(PersistenceResource.RefreshToken)`. Any other concurrency failure does not match and propagates unchanged. The handler maps that one signal to the same `401 authentication.invalid_refresh_token`, because from the client's point of view the credential is simply spent. There is no separate concurrency error code and no `409`.
+
+This needs no schema change: marking an existing column as a concurrency token changes only the `UPDATE` predicate, not the column or the table.
+
+Exactly one concurrent request therefore succeeds, every other receives `401`, none receives `500`, and exactly one replacement row survives.
+
+Sessions: each successful refresh replaces one session's token. Other refresh tokens for the same user are untouched, so several concurrent sessions per user remain allowed. Refresh-token families, family-wide revocation on replay, and reuse-chain detection are not implemented: replaying an already-rotated token is rejected on its own, and the newly issued token is not revoked.
+
+Secrets: `RefreshCommand` and `RefreshRequest` override `ToString()` to omit the raw refresh token; `RefreshResult` and `RefreshResponse` override it to omit both tokens. JSON serialization of the response is unaffected. Refresh writes no log entries of its own.
 
 ## Deferred Decisions
 
 - Password policy (length, complexity).
 - Production access and refresh token lifetimes.
-- Refresh token rotation and reuse detection.
-- Refresh use case.
+- Refresh-token families: family-wide revocation when a rotated token is replayed, and reuse-chain detection. Replay of a rotated token is rejected on its own, but the tokens issued after it are not revoked.
 - Logout and revocation workflow.
-- Refresh, Me, and Logout endpoints.
-- Login session policy (single session, device sessions, token families). Each login currently adds a session.
+- Me and Logout endpoints.
+- Session policy (single session, device sessions, session lists, revoke-all-sessions). Each login adds a session and each refresh replaces one; neither revokes the others.
+- Whether a status change to Pending, Suspended, or Deactivated should revoke that user's existing refresh tokens. A non-active user cannot refresh, but their tokens are left untouched.
 - A formal constant-time login. Unknown emails and missing credentials now perform the same password verification work as a wrong password (see Login Timing), but the paths are not provably indistinguishable, and a corrupted stored hash still fails faster.
 - 401 challenge and 403 forbidden response bodies. JWT Bearer currently returns the default empty ASP.NET Core responses, not `ApiErrorResponse`. This must be integrated before the first protected endpoint is introduced.
 - `415 Unsupported Media Type` and `405 Method Not Allowed` response bodies. Controllers currently return the framework `ProblemDetails` body for 415 and an empty body for 405, not `ApiErrorResponse`.

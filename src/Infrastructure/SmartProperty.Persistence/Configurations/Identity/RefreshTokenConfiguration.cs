@@ -50,8 +50,13 @@ internal sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refre
             .HasColumnName("expires_at")
             .IsRequired();
 
+        // Optimistic concurrency for rotation. Revocation is the only mutation this row ever receives, so the
+        // existing column is enough: an UPDATE carries the loaded revoked_at in its WHERE clause, and a second
+        // writer that loaded the same NULL affects zero rows and fails instead of double-rotating the token.
+        // This changes only the generated UPDATE predicate, never the column definition or the schema.
         builder.Property(refreshToken => refreshToken.RevokedAt)
-            .HasColumnName("revoked_at");
+            .HasColumnName("revoked_at")
+            .IsConcurrencyToken();
 
         builder.HasIndex(refreshToken => refreshToken.UserId)
             .HasDatabaseName("ix_identity_refresh_tokens_user_id");

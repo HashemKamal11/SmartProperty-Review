@@ -7,7 +7,10 @@ namespace SmartProperty.Application.Abstractions.Persistence;
 public interface IUnitOfWork
 {
     /// <exception cref="UniqueConstraintViolationException">
-    /// The save violates a recognized unique constraint. Every other failure propagates unchanged.
+    /// The save violates a recognized unique constraint.
+    /// </exception>
+    /// <exception cref="ConcurrencyConflictException">
+    /// The save lost a race for a recognized row. Every other failure propagates unchanged.
     /// </exception>
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -5,6 +5,7 @@ using SmartProperty.Api.Contracts.Authentication;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Authentication.Login;
+using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
 
 namespace SmartProperty.Api.Controllers;
@@ -74,6 +75,36 @@ public sealed class AuthController : ControllerBase
             login.AccessTokenExpiresAt,
             login.RefreshToken,
             login.RefreshTokenExpiresAt);
+
+        return Ok(response);
+    }
+
+    // The refresh token is itself the credential, and the access token it replaces may already have expired,
+    // so this action must not require a Bearer token.
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh(
+        [FromBody] RefreshRequest request,
+        [FromServices] ICommandHandler<RefreshCommand, RefreshResult> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new RefreshCommand(request.RefreshToken ?? string.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        var refresh = result.Value;
+        var response = new RefreshResponse(
+            refresh.AccessToken,
+            refresh.AccessTokenExpiresAt,
+            refresh.RefreshToken,
+            refresh.RefreshTokenExpiresAt);
 
         return Ok(response);
     }
