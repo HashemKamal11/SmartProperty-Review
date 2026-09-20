@@ -2,7 +2,7 @@
 
 SmartProperty is the backend foundation for a multi-workspace property platform. It is an ASP.NET Core API on .NET 10 that follows Clean Architecture and stores data in PostgreSQL through EF Core.
 
-The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and four authentication workflows: user registration, login, refresh-token rotation, and the current-user endpoint. Logout and authorization are not implemented yet.
+The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and five authentication workflows: user registration, login, refresh-token rotation, the current-user endpoint, and logout. Authorization is not implemented yet.
 
 ## Current Status
 
@@ -15,7 +15,7 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Memberships, roles, and permissions | Data model only | Domain entities, EF Core mappings, and repositories; no workflows use them |
 | Password hashing | Implemented | ASP.NET Core Identity password hasher |
 | JWT access tokens | Implemented | Issued by Login and Refresh; required by `GET /api/auth/me` |
-| Refresh tokens | Implemented | Issued by Login, persisted as hashes, and rotated single-use by `POST /api/auth/refresh` |
+| Refresh tokens | Implemented | Issued by Login, persisted as hashes, rotated single-use by `POST /api/auth/refresh`, and revoked by `POST /api/auth/logout` |
 | Current user (`ICurrentUser`) | Implemented | Reads the user id from a validated access token; used by `GET /api/auth/me` |
 | Commit boundary (`IUnitOfWork`) | Implemented | One save per use case |
 | `POST /api/auth/register` | Implemented | Creates `Pending` users |
@@ -23,7 +23,8 @@ The backend currently provides shared API contracts, an identity foundation, the
 | `POST /api/auth/refresh` | Implemented | Active users only; single-use rotation returning a new token pair |
 | `GET /api/auth/me` | Implemented | First protected endpoint; Active users only |
 | Standardized protected `401` and `403` bodies | Implemented | JWT Bearer challenge and authorization failures use the standard error contract |
-| Logout endpoint | Not implemented | |
+| `POST /api/auth/logout` | Implemented | Revokes the presented refresh token; idempotent `204` |
+| Logout-all-sessions and device management | Not implemented | |
 | Authorization policies, permission enforcement, and workspace authorization | Not implemented | |
 | Access request approval and role assignment workflows | Not implemented | |
 | Password policy, email verification, and rate limiting | Not implemented | |
@@ -53,7 +54,7 @@ Persistence  -> Application, Domain
 Api          -> Application, Persistence
 ```
 
-Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration, Login, Refresh, and Me are the only use cases so far; Me is the first query handler, and handlers are registered explicitly in the API.
+Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration, Login, Refresh, Logout, and Me are the only use cases so far; Me is the first query handler, and handlers are registered explicitly in the API.
 
 ```text
 SmartProperty/
@@ -62,7 +63,7 @@ SmartProperty/
 │   ├── Core/
 │   │   ├── SmartProperty.Common/      Results/, Pagination/
 │   │   ├── SmartProperty.Domain/      Identity/, Workspaces/
-│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/, Authentication/Me/
+│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/, Authentication/Logout/, Authentication/Me/
 │   ├── Infrastructure/
 │   │   └── SmartProperty.Persistence/ Configurations/, Context/, Health/, Repositories/
 │   └── Presentation/
@@ -353,6 +354,35 @@ Successful response, `200 OK`:
 
 The `401` body is identical in every case: `Invalid or expired refresh token.`. It never says which case occurred. A `401` here means the client must sign in again.
 
+## Logout API
+
+`POST /api/auth/logout` revokes the refresh token you send it. No `Authorization` header is required: the refresh token is the credential being destroyed, and your access token may already have expired.
+
+```json
+{
+  "refreshToken": "<refresh-token>"
+}
+```
+
+Success: **`204 No Content`**, with no response body.
+
+- **The endpoint is idempotent.** Logging out twice, sending an unknown token, or sending an expired or already-revoked token all return `204` as well. The response never says which case occurred, so retrying is always safe.
+- **Only the token you send is revoked.** Other sessions for the same user stay signed in. There is no logout-all.
+- The raw token is never persisted — it is hashed to find the stored row, and only the hash is ever stored.
+- **Your access token keeps working until it expires.** Access tokens are stateless and are not revoked, so `GET /api/auth/me` can still succeed with the old access token for the rest of its 15-minute lifetime. What logout stops is renewal: the refresh token can no longer be exchanged.
+- **The frontend must clear both tokens locally** after a `204`. Server-side revocation alone does not make the access token unusable.
+
+### Status Codes
+
+| Status | Code | When |
+| --- | --- | --- |
+| `204` | | The token was revoked, or there was nothing to revoke. |
+| `400` | `request.malformed` | The body is empty, is not valid JSON, is not a JSON object, or has a value of the wrong type. |
+| `422` | `validation.failed` | `refreshToken` is missing, blank, or longer than 512 characters. |
+| `500` | `server.unexpected_error` | An unexpected server failure occurred. A retry is safe. |
+
+Logout never returns `401`, `403`, `404`, or `409`. Unlike Refresh — which must prove a usable credential before issuing new ones, and answers `401` when it cannot — logout only destroys the credential it was given, so a token it cannot use is already in the state logout wanted.
+
 ## Me API
 
 `GET /api/auth/me` returns the signed-in user's current profile. It is the first protected endpoint: a valid access token is required.
@@ -445,8 +475,9 @@ Available now:
 | `POST /api/auth/login` | Needs the database schema and an `Active` user. Frontend and QA can test sign-in with it. |
 | `POST /api/auth/refresh` | Needs a refresh token from a login or an earlier refresh. Frontend and QA can test session renewal with it. |
 | `GET /api/auth/me` | Needs an access token from a login or refresh. Frontend and QA can test the protected-endpoint flow with it. |
+| `POST /api/auth/logout` | Needs a refresh token. Frontend and QA can test sign-out with it; remember that the access token stays valid until it expires. |
 
-Not available yet: logout, access request approval, and any screen that depends on authorization. Routes such as `/api/auth/logout` currently return `404`.
+Not available yet: access request approval and any screen that depends on authorization. Routes for those features do not exist yet.
 
 Integration notes:
 
@@ -464,11 +495,11 @@ These are planned work items, not defects in the implemented features.
 - No password strength policy has been decided; passwords are only required and limited to 128 characters.
 - Email verification is pending.
 - Rate limiting is pending.
-- Logout is pending. Refresh rotates one token at a time; it does not revoke a user's other sessions, and a replayed token does not revoke the tokens issued after it (refresh-token families are not implemented).
+- Logout revokes only the refresh token presented to it. A user's other sessions stay active, there is no logout-all or device management, and an access token issued before logout keeps working until it expires. Refresh likewise rotates one token at a time, and a replayed token does not revoke the tokens issued after it (refresh-token families are not implemented).
 - The standardized `403 authorization.forbidden` response exists, but no authorization requirement produces it yet. Roles, permissions, and workspace authorization are still not enforced anywhere.
 - Login performs one password verification on every rejected attempt, including an unknown email and a missing credential, so response time no longer reveals whether an email is registered. This is timing hardening, not a constant-time guarantee: a corrupted stored hash can still fail faster, and registration still reveals a taken email through `409`. Rate limiting and account lockout are pending.
 - Authorization policies and permission enforcement are pending.
-- Authentication is enforced on `GET /api/auth/me` only. Its JWT Bearer `401` challenge and `403` authorization responses already use the standard error body; Logout and the broader role, permission, and workspace authorization remain pending.
+- Authentication is enforced on `GET /api/auth/me` only. Its JWT Bearer `401` challenge and `403` authorization responses already use the standard error body, and presented-token logout is implemented at `POST /api/auth/logout`; logout-all, device and session management, and the broader role, permission, and workspace authorization remain pending.
 - `405 Method Not Allowed` responses (empty body) and `415 Unsupported Media Type` responses (framework `ProblemDetails` body) do not use the standard error contract yet.
 - Validation errors do not return structured `fieldErrors` yet.
 
@@ -478,6 +509,7 @@ These are planned work items, not defects in the implemented features.
 - Passwords are stored only as hashes, never as plaintext.
 - Raw refresh tokens are never persisted; Login and Refresh return the raw token to the client and store only its hash.
 - Refresh tokens are single use. A successful refresh revokes the presented token in the same save that inserts its replacement, so a replayed token returns `401`, and concurrent refreshes with one token yield exactly one winner.
+- Logout revokes the presented refresh token only. It is idempotent, so an unknown, expired, or already revoked token still returns `204` and the response never reveals the token's state. Access tokens are stateless and are not revoked: one issued before logout stays valid until it expires, so clients must discard both tokens locally.
 - Refresh returns the same `401` response whether the token is unknown, expired, revoked, replayed, or lost a concurrent rotation, and never reveals the account status behind its `403`.
 - Login returns the same `401` response for an unknown email, a wrong password, or an unusable stored credential, and checks the account status only after the password is verified.
 - API error responses do not include stack traces, SQL, or database constraint names. Those details go only to server logs.

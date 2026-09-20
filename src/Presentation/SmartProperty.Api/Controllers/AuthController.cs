@@ -5,6 +5,7 @@ using SmartProperty.Api.Contracts.Authentication;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Authentication.Login;
+using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
@@ -108,6 +109,31 @@ public sealed class AuthController : ControllerBase
             refresh.RefreshTokenExpiresAt);
 
         return Ok(response);
+    }
+
+    // The refresh token being revoked is itself the credential, so no Bearer token is required: the caller's
+    // access token may already have expired, and an account that can no longer sign in must still be able to
+    // destroy a session.
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout(
+        [FromBody] LogoutRequest request,
+        [FromServices] ICommandHandler<LogoutCommand> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new LogoutCommand(request.RefreshToken ?? string.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        // No body: the response must not reveal whether anything was actually revoked.
+        return NoContent();
     }
 
     // The first protected endpoint. The identity comes only from the validated principal: no user id, email,

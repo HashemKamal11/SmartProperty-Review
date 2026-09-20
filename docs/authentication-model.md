@@ -1,6 +1,6 @@
 # Authentication Model
 
-This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, the Step 05.5E refresh-token rotation use case, and the Step 05.5F Me use case with standardized protected-endpoint responses. The Logout use case and the authorization system remain deferred.
+This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, the Step 05.5E refresh-token rotation use case, the Step 05.5F Me use case with standardized protected-endpoint responses, and the Step 05.5G logout use case. The authorization system remains deferred.
 
 ## Architecture
 
@@ -402,6 +402,74 @@ A token can outlive the user it names. That returns the same generic `401` as an
 
 Secrets: `MeResult` and `MeResponse` override `ToString()` to print only the user id, keeping the email and name out of logs and debugger displays. JSON serialization is unaffected, so the response body still carries the full profile.
 
+## Logout Use Case
+
+`POST /api/auth/logout` revokes the refresh token the caller presents, and nothing else. The action is `[AllowAnonymous]`: the refresh token being destroyed is itself the credential, the caller's access token may already have expired, and an account that can no longer sign in must still be able to end a session. No Bearer token is required, and the protected-endpoint `401`/`403` behavior is unaffected.
+
+Request body:
+
+```json
+{
+  "refreshToken": "..."
+}
+```
+
+`LogoutRequest.RefreshToken` is nullable, so a missing value is Application validation (`422`) rather than model binding (`400`). Validation checks only presence and the same defensive 512-character maximum Refresh applies; the token is opaque, so it is never trimmed, decoded, or format-checked.
+
+`LogoutCommandHandler` then hashes the raw token with `ITokenProvider.HashRefreshToken`, loads the row with `IRefreshTokenRepository.GetByTokenHashAsync`, takes one timestamp from `IDateTimeProvider.UtcNow`, and — only when `RefreshToken.IsActive(now)` — calls `RefreshToken.Revoke(now)` followed by a single `IUnitOfWork.SaveChangesAsync`. The raw token never reaches a query, the database, or a log. No user is loaded and no account status is checked: that would add account-state exposure and work to an operation whose whole purpose is destroying a credential.
+
+No replacement token is created, no access token is issued, and nothing but that one row is touched.
+
+### Idempotence
+
+Every structurally valid request returns `204 No Content` with an empty body:
+
+| Case | Work |
+| --- | --- |
+| Active token | revoked, one `SaveChanges` |
+| Unknown token | none, no save |
+| Expired token | none, no save — `RevokedAt` is not set merely because a token expired |
+| Already revoked token | none, no save — the original `RevokedAt` is left untouched |
+| Loser of a concurrent revocation | none committed, mapped to success |
+
+The response never says which case occurred, so it discloses nothing about whether the token exists, is expired, was already revoked, or was previously rotated. Repeated logout is therefore safe, and a client may retry freely.
+
+This is deliberately different from Refresh. Refresh must prove a usable credential before issuing new ones, so an unusable token there is `401 authentication.invalid_refresh_token`. Logout only attempts to destroy the presented credential, and a token that cannot be used is already in the state logout wanted — so it reports success rather than `401`.
+
+### Concurrent Logout
+
+`RefreshToken.RevokedAt` is already an EF Core concurrency token (see Refresh), so a second writer's `UPDATE … WHERE id = @p1 AND revoked_at IS NULL` affects zero rows and EF raises a conflict, which `UnitOfWork` translates to `ConcurrencyConflictException(PersistenceResource.RefreshToken)`. The handler catches only that recognized signal, around the single save, and treats it as success: the credential is gone either way. Nothing new was added for logout — no second concurrency exception, no extra column, no lock, no serializable transaction — and the translation was not broadened.
+
+Twenty simultaneous logouts of one token therefore all return `204`, with exactly one persisted revocation, no replacement rows, and no `409` or `500`.
+
+### Logout versus Refresh on the same token
+
+Both mutate the same concurrency-protected value, so only one persisted change to that token can win:
+
+- **Logout wins:** logout `204`, refresh `401 authentication.invalid_refresh_token`, no replacement token.
+- **Refresh wins:** refresh `200` with a replacement token, logout `204` through the idempotent path, the presented token revoked, exactly one replacement.
+
+Both are correct. There is no deterministic winner, and neither produces a `500`, leaves the presented token active, or creates more than one replacement.
+
+**Known limitation, stated plainly:** if Refresh wins that race, the replacement token it just issued stays active. Logout revokes only the credential it was given, and the model has no token-family ancestry to follow, so logout cannot guarantee that an already-concurrently-rotated chain is terminated. Family-wide revocation is deferred; it is not implemented here.
+
+### Access tokens are unaffected
+
+Logout does not change access-token validation. Access tokens are stateless — not persisted, not blacklisted, and not introspected — so an access token issued before logout stays cryptographically valid until it expires. `GET /api/auth/me` with that token still returns `200` for an active user after logout. This is verified behavior, not an oversight.
+
+What logout does achieve is ending renewal: the revoked refresh token can no longer be exchanged, so the session cannot be extended past the current access token's lifetime.
+
+| Token | After logout |
+| --- | --- |
+| Access token (short-lived) | remains valid until it expires |
+| Presented refresh token (long-lived) | revoked immediately |
+
+Clients must therefore discard both their access token and their refresh token locally on receiving `204`.
+
+Sessions: logout revokes one session's token. The user's other refresh tokens stay active, so signing out of one client does not sign out the others. Logout-all-sessions and device management are deferred.
+
+Secrets: `LogoutCommand` and `LogoutRequest` override `ToString()` to omit the raw refresh token. Logout returns no result type, so there is nothing else to keep safe, and it writes no log entries of its own.
+
 ## Protected Endpoint Responses
 
 JWT Bearer no longer returns the framework's empty bodies. Both events write the same `ApiErrorResponse` contract as the rest of the API, through `ApiErrorResponseFactory`, so there is no second error format and no hand-built JSON.
@@ -452,8 +520,8 @@ They share the `ApiErrorResponse` contract but keep distinct codes and messages,
 - Password policy (length, complexity).
 - Production access and refresh token lifetimes.
 - Refresh-token families: family-wide revocation when a rotated token is replayed, and reuse-chain detection. Replay of a rotated token is rejected on its own, but the tokens issued after it are not revoked.
-- Logout and revocation workflow.
-- Logout endpoint.
+- Logout-all-sessions and device/session management. Logout revokes only the presented refresh token; a user's other sessions are unaffected.
+- Access-token revocation. Access tokens stay valid until they expire, including after logout, because they are stateless. A blacklist, jti revocation table, or introspection endpoint would be needed to change that.
 - Session policy (single session, device sessions, session lists, revoke-all-sessions). Each login adds a session and each refresh replaces one; neither revokes the others.
 - Whether a status change to Pending, Suspended, or Deactivated should revoke that user's existing refresh tokens. A non-active user cannot refresh, but their tokens are left untouched.
 - A formal constant-time login. Unknown emails and missing credentials now perform the same password verification work as a wrong password (see Login Timing), but the paths are not provably indistinguishable, and a corrupted stored hash still fails faster.

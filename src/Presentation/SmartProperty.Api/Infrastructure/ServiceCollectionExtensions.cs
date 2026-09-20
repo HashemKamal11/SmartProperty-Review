@@ -14,6 +14,7 @@ using SmartProperty.Application.Abstractions.Identity;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Time;
 using SmartProperty.Application.Authentication.Login;
+using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
@@ -182,6 +183,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<RegisterCommand, RegisterResult>, RegisterCommandHandler>();
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<RefreshCommand, RefreshResult>, RefreshCommandHandler>();
+        services.AddScoped<ICommandHandler<LogoutCommand>, LogoutCommandHandler>();
         services.AddScoped<IQueryHandler<GetMeQuery, MeResult>, GetMeQueryHandler>();
 
         return services;
