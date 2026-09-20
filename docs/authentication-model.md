@@ -1,6 +1,6 @@
 # Authentication Model
 
-This document records the Step 05.4 authentication infrastructure foundation and the Step 05.5B registration use case. Login, Refresh, and Logout use cases, their endpoints, and authorization remain deferred.
+This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, and the Step 05.5D login use case. Refresh, Me, and Logout use cases, their endpoints, and authorization remain deferred.
 
 ## Architecture
 
@@ -57,11 +57,13 @@ Invariants: `UserId` must not be empty, `PasswordHash` must not be empty, and `U
 
 ## Password Hashing
 
-`IPasswordHasher` exposes `Hash(password)` and `Verify(password, passwordHash)`.
+`IPasswordHasher` exposes `Hash(password)`, `Verify(password, passwordHash)`, and `PerformDummyVerification(password)`.
+
+`PerformDummyVerification` runs the same verification work as `Verify` against a throwaway hash held by the hasher and discards the result. It exists so that a login for which no stored credential can be loaded still pays the password-hashing cost (see Login Timing). It returns nothing and can never authenticate anyone. The throwaway hash is produced once per hasher instance from a non-secret constant that belongs to no account, and is never persisted, logged, or exposed. Keeping the method on the abstraction rather than the encoded hash itself keeps Application free of framework hash formats.
 
 The implementation delegates to the framework `PasswordHasher<TUser>` from `Microsoft.Extensions.Identity.Core`, which is part of the ASP.NET Core shared framework. It uses PBKDF2 with a per-password random salt, a versioned self-describing hash format, and fixed-time comparison. Only this hashing component is used; no Identity stores, managers, or tables are introduced.
 
-`Verify` returns the framework-neutral Application enum `PasswordVerificationStatus` (`Failed`, `Success`, `SuccessRehashNeeded`), mapped one-to-one from the framework `PasswordVerificationResult`. The framework type does not leave the API layer. `SuccessRehashNeeded` means the password matched but the stored hash should be replaced; re-hashing on login belongs to the Login use case.
+`Verify` returns the framework-neutral Application enum `PasswordVerificationStatus` (`Failed`, `Success`, `SuccessRehashNeeded`), mapped one-to-one from the framework `PasswordVerificationResult`. The framework type does not leave the API layer. `SuccessRehashNeeded` means the password matched but the stored hash should be replaced; the Login use case re-hashes it (see Login).
 
 `Verify` fails closed on unusable persisted hashes and returns `Failed` without throwing when the stored hash is:
 
@@ -154,17 +156,15 @@ MapControllers / health endpoints
 
 ## User Status Rule
 
-Only `Active` users may receive normal authenticated access. Future Login and Refresh workflows must not issue access tokens to `Pending`, `Suspended`, or `Deactivated` users.
+Only `Active` users may receive normal authenticated access. Login and the future Refresh workflow must not issue tokens to `Pending`, `Suspended`, or `Deactivated` users.
 
-The rule belongs to the future Application authentication use cases, which will load the user and check `User.Status` before calling `ITokenProvider`. The token provider does not enforce it.
-
-The client-facing error behavior for non-active users is defined together with the Login use case.
+The rule belongs to the Application authentication use cases, which load the user and check `User.Status` before calling `ITokenProvider`. The token provider does not enforce it. Login enforces it as described in Login.
 
 ## Save And Transaction Boundary
 
 Repositories query and track entities but never call `SaveChangesAsync`. The Application abstraction `IUnitOfWork` exposes only `SaveChangesAsync` and is the single commit boundary. Its Persistence implementation delegates to `ApplicationDbContext.SaveChangesAsync` and translates a violation of a recognized unique constraint into the provider-neutral `UniqueConstraintViolationException` (see Registration). Every other failure propagates unchanged.
 
-`IUnitOfWork` and all repositories are scoped and receive the same scoped `ApplicationDbContext`, so changes tracked through any repository within a request are committed together by one `SaveChangesAsync` call. Use cases such as Registration (`User`, `UserCredential`, `WorkspaceAccessRequest`) call it once after all changes are tracked. No explicit transaction API is exposed.
+`IUnitOfWork` and all repositories are scoped and receive the same scoped `ApplicationDbContext`, so changes tracked through any repository within a request are committed together by one `SaveChangesAsync` call. Use cases such as Registration (`User`, `UserCredential`, `WorkspaceAccessRequest`) and Login (`RefreshToken`, plus a re-hashed `UserCredential` when needed) call it once after all changes are tracked. No explicit transaction API is exposed.
 
 ## Registration
 
@@ -224,15 +224,95 @@ Password policy status: no password strength policy is approved. The 128-charact
 
 Duplicate emails: the lookup uses the email as normalized by `User`, so addresses that differ only in letter case or surrounding whitespace are duplicates, and the request returns `409` with `users.email_already_exists`. The unique index `ux_identity_users_email` remains the final guarantee. Two concurrent registrations for the same new email can both pass the lookup; the database then rejects the later insert, and that request's whole `SaveChangesAsync` rolls back without partial rows. `UnitOfWork` recognizes this violation from the PostgreSQL SQLSTATE (`23505`) and constraint name, and rethrows it as `UniqueConstraintViolationException` with `PersistenceConstraint.UserEmail`. The handler catches only that exception and returns the same `409` with `users.email_already_exists`. The SQLSTATE, constraint name, and provider exception types stay inside Persistence. Any other database failure still propagates as an unexpected `500`.
 
+## Login
+
+`POST /api/auth/login` is anonymous. `AuthController` maps the request body to the Application `LoginCommand`, which `LoginCommandHandler` handles through `ICommandHandler<LoginCommand, LoginResult>`.
+
+```json
+{
+  "email": "user@example.com",
+  "password": "..."
+}
+```
+
+Checks run in this order. Every failing check returns before any token is created or any change is tracked, so nothing is saved.
+
+| Order | Condition | Status | Code |
+| --- | --- | --- | --- |
+| 1 | Body is not valid JSON, not an object, or has a wrongly typed value | 400 | `request.malformed` |
+| 2 | Input validation fails | 422 | `validation.failed` |
+| 3 | No user has the email, the user has no `UserCredential`, or the password does not verify | 401 | `authentication.invalid_credentials` |
+| 4 | The password verified, but `User.Status` is not `Active` | 403 | `authentication.account_unavailable` |
+
+Validation uses the registration bounds, so every registered email passes: `email` is required, at most 320 characters after trimming, with the same structural check as registration; `password` is required, not only whitespace, and at most 128 characters. No password strength rule is applied. A missing or `null` member is a validation failure (422).
+
+Invalid credentials: an unknown email, a missing credential row, a wrong password, and a stored hash that is malformed (which `IPasswordHasher.Verify` reports as `Failed`) all return the same `401` body with the message `Invalid email or password.`. The response never says which case occurred. The email lookup uses `IUserRepository.GetByEmailAsync`, which applies the same normalization as `User` (trimmed, lower-case invariant).
+
+Account status: the status is checked only after the password verifies, so a caller who does not know the password always receives the `401` above, whatever the account's status. With the correct password, `Pending`, `Suspended`, and `Deactivated` users all receive the same `403` body with the message `This account is not currently allowed to sign in.`; the exact status is not disclosed. Only `Active` users receive tokens.
+
+Password re-hash: when verification returns `SuccessRehashNeeded` for an `Active` user, the handler hashes the supplied password again with `IPasswordHasher.Hash` and applies it through `UserCredential.ChangePasswordHash` with the login timestamp. The credential is tracked by the shared scoped `ApplicationDbContext`, so no repository update method is needed. A rejected login (wrong password or non-active account) never re-hashes.
+
+On success the handler, in order:
+
+1. captures the login timestamp from `IDateTimeProvider.UtcNow`
+2. applies the password re-hash, when needed
+3. creates the access token with `ITokenProvider.CreateAccessToken(user.Id)`
+4. creates the refresh token with `ITokenProvider.CreateRefreshToken()`
+5. tracks a `RefreshToken` with a new id, the user id, the generated `TokenHash`, the login timestamp as `CreatedAt`, and the generated expiration
+6. calls `IUnitOfWork.SaveChangesAsync` once
+7. returns the tokens only after the save succeeds
+
+The re-hash and the new refresh token are committed together or not at all. A failure while creating tokens happens before the save, so nothing is persisted. A failed save propagates as an unexpected `500` and returns no tokens. Login does not catch or translate persistence exceptions.
+
+Only the refresh token's hash is persisted. The raw refresh token and the access token are returned to the client and never stored. The access token carries only the identity claims described in Access Tokens: no roles, permissions, platform roles, or workspace data.
+
+Success returns `200 OK`:
+
+```json
+{
+  "accessToken": "...",
+  "accessTokenExpiresAt": "2026-09-17T12:15:00+00:00",
+  "refreshToken": "...",
+  "refreshTokenExpiresAt": "2026-09-24T12:00:00+00:00"
+}
+```
+
+Sessions: each successful login adds a new refresh token. Earlier refresh tokens are not revoked, so several sessions per user are currently allowed. Single-session enforcement, device sessions, and token families are not implemented.
+
+Secrets: `LoginCommand` and `LoginRequest` override `ToString()` to omit the email and password; `LoginResult` and `LoginResponse` override it to omit both tokens. The `AccessToken` and `GeneratedRefreshToken` records returned by `ITokenProvider` override it to omit their token values, so neither a signed JWT nor a raw refresh token reaches a log or debugger display through a record's default `ToString()`. JSON serialization of the response is unaffected. Login writes no log entries of its own.
+
+### Login Timing
+
+The `401` body is identical for every invalid-credential case, and every rejected attempt now performs one password verification:
+
+| Case | Work performed |
+| --- | --- |
+| Unknown email | one `PerformDummyVerification` |
+| Missing credential row | one `PerformDummyVerification` |
+| Wrong password | one real `Verify` |
+| Correct password | one real `Verify`, no dummy verification |
+
+The dummy verification uses the same hasher instance and configuration as a real one, so an unregistered email no longer returns without running PBKDF2. That removes the obvious bypass in which an attacker distinguished registered from unregistered emails by an order-of-magnitude response-time difference. The dummy path runs only where no credential was loaded: never after a real verification, and never on success.
+
+This is timing hardening, not a formal constant-time guarantee. The paths still differ in the database work they do and in ordinary scheduling and allocation noise, and the measured times are close rather than identical. Two residual differences are known:
+
+- A malformed or unusable stored hash fails closed as `Failed` without completing full PBKDF2 work, so such an account can still answer faster than a normal wrong password. This affects only corrupted persisted data, not any credential the application writes, and is not addressed here.
+- Registration already reveals whether an email is registered through `409` for a request with a valid workspace id.
+
+Rate limiting and account lockout remain deferred (see Deferred Decisions).
+
+The Refresh endpoint is not implemented yet, so a refresh token cannot be exchanged for a new access token.
+
 ## Deferred Decisions
 
 - Password policy (length, complexity).
 - Production access and refresh token lifetimes.
 - Refresh token rotation and reuse detection.
-- Login use case, including status enforcement, rehash-on-login, and non-active user responses.
 - Refresh use case.
 - Logout and revocation workflow.
-- Login, Refresh, and Logout endpoints.
+- Refresh, Me, and Logout endpoints.
+- Login session policy (single session, device sessions, token families). Each login currently adds a session.
+- A formal constant-time login. Unknown emails and missing credentials now perform the same password verification work as a wrong password (see Login Timing), but the paths are not provably indistinguishable, and a corrupted stored hash still fails faster.
 - 401 challenge and 403 forbidden response bodies. JWT Bearer currently returns the default empty ASP.NET Core responses, not `ApiErrorResponse`. This must be integrated before the first protected endpoint is introduced.
 - `415 Unsupported Media Type` and `405 Method Not Allowed` response bodies. Controllers currently return the framework `ProblemDetails` body for 415 and an empty body for 405, not `ApiErrorResponse`.
 - Structured `fieldErrors` for Application validation failures.

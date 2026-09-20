@@ -11,6 +11,7 @@ using SmartProperty.Application.Abstractions.Authentication;
 using SmartProperty.Application.Abstractions.Identity;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.Authentication.Login;
 using SmartProperty.Application.Authentication.Register;
 
 namespace SmartProperty.Api.Infrastructure;
@@ -130,6 +131,7 @@ internal static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddScoped<ICommandHandler<RegisterCommand, RegisterResult>, RegisterCommandHandler>();
+        services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
 
         return services;
     }

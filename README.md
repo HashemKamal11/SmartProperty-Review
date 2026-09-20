@@ -2,7 +2,7 @@
 
 SmartProperty is the backend foundation for a multi-workspace property platform. It is an ASP.NET Core API on .NET 10 that follows Clean Architecture and stores data in PostgreSQL through EF Core.
 
-The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and one business workflow: user registration. Login, token refresh, and authorization are not implemented yet.
+The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and two business workflows: user registration and login. Token refresh, the current-user endpoint, logout, and authorization are not implemented yet.
 
 ## Current Status
 
@@ -14,12 +14,13 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Workspaces and workspace access requests | Implemented | Workspaces are database records; access requests start as `Pending` |
 | Memberships, roles, and permissions | Data model only | Domain entities, EF Core mappings, and repositories; no workflows use them |
 | Password hashing | Implemented | ASP.NET Core Identity password hasher |
-| JWT access tokens | Infrastructure only | Token creation and bearer validation exist; no endpoint issues or requires tokens |
-| Refresh tokens | Infrastructure only | Token generation and a hash-only persistence model; no endpoint uses them |
+| JWT access tokens | Implemented | Issued by Login; bearer validation exists, but no endpoint requires a token yet |
+| Refresh tokens | Issued only | Issued by Login and persisted as hashes; no endpoint accepts them yet |
 | Current user (`ICurrentUser`) | Implemented | Reads the user id from a validated access token; no endpoint uses it yet |
 | Commit boundary (`IUnitOfWork`) | Implemented | One save per use case |
-| `POST /api/auth/register` | Implemented | The only business endpoint |
-| Login, Refresh, Me, and Logout endpoints | Not implemented | |
+| `POST /api/auth/register` | Implemented | Creates `Pending` users |
+| `POST /api/auth/login` | Implemented | Active users only; returns access and refresh tokens |
+| Refresh, Me, and Logout endpoints | Not implemented | |
 | Authorization policies, permission enforcement, and workspace authorization | Not implemented | |
 | Access request approval and role assignment workflows | Not implemented | |
 | Password policy, email verification, and rate limiting | Not implemented | |
@@ -49,7 +50,7 @@ Persistence  -> Application, Domain
 Api          -> Application, Persistence
 ```
 
-Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration is the only use case so far, there are no query handlers yet, and handlers are registered explicitly in the API.
+Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration and Login are the only use cases so far, there are no query handlers yet, and handlers are registered explicitly in the API.
 
 ```text
 SmartProperty/
@@ -58,7 +59,7 @@ SmartProperty/
 │   ├── Core/
 │   │   ├── SmartProperty.Common/      Results/, Pagination/
 │   │   ├── SmartProperty.Domain/      Identity/, Workspaces/
-│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/
+│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/
 │   ├── Infrastructure/
 │   │   └── SmartProperty.Persistence/ Configurations/, Context/, Health/, Repositories/
 │   └── Presentation/
@@ -154,7 +155,7 @@ The EF Core model and entity configurations exist, but **no migrations are commi
 As a result:
 
 - The API starts, and `/health/ready` reports `Healthy` as long as the database accepts connections. Readiness does not check tables.
-- Registration needs the tables defined by the EF Core model (in the `identity` and `platform` schemas) and at least one row in `platform.workspaces`. Against an empty database, `POST /api/auth/register` returns `500`, although validation (`422`) and malformed-request (`400`) errors still work.
+- Registration needs the tables defined by the EF Core model (in the `identity` and `platform` schemas) and at least one row in `platform.workspaces`. Against an empty database, `POST /api/auth/register` returns `500`, although validation (`422`) and malformed-request (`400`) errors still work. Login needs the same tables, and `POST /api/auth/login` also returns `500` against an empty database once validation passes.
 - Until migrations and seed data are added, the schema and workspace data must be prepared manually.
 
 ### 4. Build and Run
@@ -263,9 +264,54 @@ Checks run in this order: request format (`400`), validation (`422`), workspace 
 
 Duplicate detection ignores letter case and surrounding whitespace, so `User@Example.com` conflicts with `user@example.com`. If two registrations for the same new email arrive at the same time, the database unique index rejects the later one, and it returns the same `409` as a sequential duplicate.
 
+## Login API
+
+`POST /api/auth/login` signs in an `Active` user. It is anonymous.
+
+Request, sent with `Content-Type: application/json`:
+
+```json
+{
+  "email": "user@example.com",
+  "password": "example-password"
+}
+```
+
+Successful response, `200 OK`:
+
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "accessTokenExpiresAt": "2026-09-17T12:15:00+00:00",
+  "refreshToken": "q3Jx...",
+  "refreshTokenExpiresAt": "2026-09-24T12:00:00+00:00"
+}
+```
+
+- `accessToken` is a JWT to send as `Authorization: Bearer <token>`. It identifies the user only and carries no role, permission, or workspace claims.
+- `refreshToken` is an opaque random value. The raw value is returned only in this response; the database stores only its hash.
+- Expirations use the default lifetimes (15 minutes and 7 days), which are technical defaults.
+- Only `Active` users receive tokens. Each login creates a new refresh token and leaves earlier ones valid.
+- If the stored password hash uses outdated parameters, it is upgraded during a successful login and saved together with the new refresh token.
+
+Validation uses the registration rules for `email` and `password`: both are required, `email` is at most 320 characters with exactly one `@`, and `password` is at most 128 characters.
+
+### Status Codes
+
+| Status | Code | When |
+| --- | --- | --- |
+| `200` | | Login succeeded. |
+| `400` | `request.malformed` | The body is empty, is not valid JSON, is not a JSON object, or has a value of the wrong type. |
+| `422` | `validation.failed` | A validation rule failed, including a missing field. |
+| `401` | `authentication.invalid_credentials` | The email or password is wrong. |
+| `403` | `authentication.account_unavailable` | The password is correct, but the account is not `Active`. |
+| `500` | `server.unexpected_error` | An unexpected server failure occurred. |
+
+The `401` response is identical whether the email is unknown, the password is wrong, or the stored credential is missing or unusable: `Invalid email or password.`. The account status is checked only after the password is verified, so a wrong password always returns `401`. The `403` message, `This account is not currently allowed to sign in.`, is the same for `Pending`, `Suspended`, and `Deactivated` accounts.
+
 ## Authentication Infrastructure
 
-Authentication infrastructure exists, but the token-issuing Login and Refresh workflows are still pending. No endpoint currently issues tokens or requires authentication.
+Login issues access and refresh tokens (see [Login API](#login-api)). The Refresh workflow is still pending, and no endpoint requires authentication yet.
 
 - **Password hashing:** ASP.NET Core Identity's `PasswordHasher<TUser>` (PBKDF2 with a per-password salt). Only the hasher is used, not Identity's stores, managers, or tables.
 - **JWT Bearer validation:** tokens must be signed with HS256 using `Jwt:SigningKey` and pass signature, issuer, audience, and lifetime validation, with 30 seconds of allowed clock skew.
@@ -295,8 +341,9 @@ Available now:
 | `GET /health/live` | Responds whenever the API is running. |
 | `GET /health/ready` | Returns `200` only when the database is reachable. |
 | `POST /api/auth/register` | Needs the database schema and an existing workspace id. |
+| `POST /api/auth/login` | Needs the database schema and an `Active` user. Frontend and QA can test sign-in with it. |
 
-Not available yet: login, token refresh, current user (`me`), logout, access request approval, and any screen that depends on authentication or authorization. Routes such as `/api/auth/login` currently return `404`.
+Not available yet: token refresh, current user (`me`), logout, access request approval, and any screen that depends on authorization. Routes such as `/api/auth/refresh` currently return `404`.
 
 Integration notes:
 
@@ -304,7 +351,7 @@ Integration notes:
 - No CORS policy is configured, so browsers block calls from a frontend served on a different origin.
 - There is no Swagger or OpenAPI UI.
 - JSON property names are camelCase, and identifiers are GUID strings.
-- Registered users stay `Pending`; the API cannot activate them yet.
+- Registered users stay `Pending`; the API cannot activate them yet, so Login returns `403` for them. To test a successful login, set the user's `status` to `Active` in `identity.users` in a local or test database.
 
 ## Known Limitations
 
@@ -314,9 +361,10 @@ These are planned work items, not defects in the implemented features.
 - No password strength policy has been decided; passwords are only required and limited to 128 characters.
 - Email verification is pending.
 - Rate limiting is pending.
-- Login, Refresh, Me, and Logout are pending.
+- Refresh, Me, and Logout are pending. A refresh token returned by Login cannot be used yet, and earlier refresh tokens are not revoked by a new login.
+- Login performs one password verification on every rejected attempt, including an unknown email and a missing credential, so response time no longer reveals whether an email is registered. This is timing hardening, not a constant-time guarantee: a corrupted stored hash can still fail faster, and registration still reveals a taken email through `409`. Rate limiting and account lockout are pending.
 - Authorization policies and permission enforcement are pending.
-- Standard error bodies for `401` and `403` responses are pending; no endpoint requires authentication yet.
+- Standard error bodies for `401` and `403` responses produced by JWT Bearer authentication are pending; no endpoint requires authentication yet. Login's own `401` and `403` responses already use the standard error body.
 - `405 Method Not Allowed` responses (empty body) and `415 Unsupported Media Type` responses (framework `ProblemDetails` body) do not use the standard error contract yet.
 - Validation errors do not return structured `fieldErrors` yet.
 
@@ -324,7 +372,8 @@ These are planned work items, not defects in the implemented features.
 
 - Never commit JWT signing keys or database credentials. Use User Secrets or environment variables locally, and secure configuration in deployed environments.
 - Passwords are stored only as hashes, never as plaintext.
-- Raw refresh tokens are never persisted; the model stores only their hash.
+- Raw refresh tokens are never persisted; Login returns the raw token to the client and stores only its hash.
+- Login returns the same `401` response for an unknown email, a wrong password, or an unusable stored credential, and checks the account status only after the password is verified.
 - API error responses do not include stack traces, SQL, or database constraint names. Those details go only to server logs.
 - PostgreSQL-specific details, such as error codes and constraint names, stay inside `SmartProperty.Persistence`.
 - The backend is not yet production-ready from a security standpoint: authorization, rate limiting, email verification, and a password policy are still pending.
@@ -335,4 +384,4 @@ These are planned work items, not defects in the implemented features.
 | --- | --- |
 | [API Contract Standard](docs/api-contract-standard.md) | Shared HTTP conventions: identifiers, dates, pagination, errors, status codes, and correlation IDs. |
 | [Identity Access Model](docs/identity-access-model.md) | Workspaces, memberships, roles, permissions, and the access request flow. |
-| [Authentication Model](docs/authentication-model.md) | Credentials, password hashing, tokens, configuration, the commit boundary, and registration. |
+| [Authentication Model](docs/authentication-model.md) | Credentials, password hashing, tokens, configuration, the commit boundary, registration, and login. |

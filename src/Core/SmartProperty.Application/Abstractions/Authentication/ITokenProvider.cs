@@ -19,7 +19,14 @@ public interface ITokenProvider
     string HashRefreshToken(string refreshToken);
 }
 
-public sealed record AccessToken(string Value, DateTimeOffset ExpiresAt);
+public sealed record AccessToken(string Value, DateTimeOffset ExpiresAt)
+{
+    // Keeps the signed token out of logs and debugger displays of the record.
+    public override string ToString()
+    {
+        return $"{nameof(AccessToken)} {{ {nameof(ExpiresAt)} = {ExpiresAt:O} }}";
+    }
+}
 
 public sealed record GeneratedRefreshToken(string Value, string TokenHash, DateTimeOffset ExpiresAt)
 {

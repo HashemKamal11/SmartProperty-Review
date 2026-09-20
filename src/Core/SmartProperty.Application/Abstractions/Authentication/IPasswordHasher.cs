@@ -15,4 +15,11 @@ public interface IPasswordHasher
     /// <see cref="PasswordVerificationStatus.Failed"/>.
     /// </summary>
     PasswordVerificationStatus Verify(string password, string passwordHash);
+
+    /// <summary>
+    /// Runs the same verification work as <see cref="Verify"/> against an internal throwaway hash and discards the
+    /// outcome. Callers use it where no stored credential exists, so that path costs the same as a real failed
+    /// verification instead of returning early. It can never authenticate anyone.
+    /// </summary>
+    void PerformDummyVerification(string password);
 }
