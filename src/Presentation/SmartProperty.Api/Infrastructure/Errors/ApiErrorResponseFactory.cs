@@ -46,6 +46,38 @@ internal static class ApiErrorResponseFactory
             GetCorrelationId(httpContext));
     }
 
+    /// <summary>
+    /// The public response for every authentication challenge. The reason a token was rejected — missing,
+    /// malformed, badly signed, expired, wrong issuer or audience, bad subject — is never disclosed.
+    /// </summary>
+    public static ApiErrorResponse Unauthorized(HttpContext httpContext)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        return new ApiErrorResponse(
+            ApiErrorCodes.Unauthorized,
+            "Authentication is required.",
+            StatusCodes.Status401Unauthorized,
+            FieldErrors: null,
+            GetCorrelationId(httpContext));
+    }
+
+    /// <summary>
+    /// The public response when an authenticated caller fails an authorization requirement. Names no policy,
+    /// role, permission, or handler.
+    /// </summary>
+    public static ApiErrorResponse Forbidden(HttpContext httpContext)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        return new ApiErrorResponse(
+            ApiErrorCodes.Forbidden,
+            "You do not have permission to access this resource.",
+            StatusCodes.Status403Forbidden,
+            FieldErrors: null,
+            GetCorrelationId(httpContext));
+    }
+
     public static ApiErrorResponse UnexpectedFailure(HttpContext httpContext)
     {
         ArgumentNullException.ThrowIfNull(httpContext);

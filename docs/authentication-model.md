@@ -1,6 +1,6 @@
 # Authentication Model
 
-This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, and the Step 05.5E refresh-token rotation use case. Me and Logout use cases, their endpoints, and authorization remain deferred.
+This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, the Step 05.5E refresh-token rotation use case, and the Step 05.5F Me use case with standardized protected-endpoint responses. The Logout use case and the authorization system remain deferred.
 
 ## Architecture
 
@@ -156,7 +156,7 @@ MapControllers / health endpoints
 
 ## User Status Rule
 
-Only `Active` users may receive normal authenticated access. Login and Refresh must not issue tokens to `Pending`, `Suspended`, or `Deactivated` users.
+Only `Active` users may receive normal authenticated access. Login and Refresh must not issue tokens to `Pending`, `Suspended`, or `Deactivated` users, and Me rejects them even when they present a token issued while the account was still active.
 
 The rule belongs to the Application authentication use cases, which load the user and check `User.Status` before calling `ITokenProvider`. The token provider does not enforce it. Login enforces it as described in Login.
 
@@ -358,17 +358,106 @@ Sessions: each successful refresh replaces one session's token. Other refresh to
 
 Secrets: `RefreshCommand` and `RefreshRequest` override `ToString()` to omit the raw refresh token; `RefreshResult` and `RefreshResponse` override it to omit both tokens. JSON serialization of the response is unaffected. Refresh writes no log entries of its own.
 
+## Me Use Case
+
+`GET /api/auth/me` returns the authenticated user's current profile. It is the first permanently protected endpoint: the action carries `[Authorize]`, not `[AllowAnonymous]`.
+
+The identity comes only from the validated principal. `GetMeQueryHandler` reads `ICurrentUser.UserId` and accepts no user id, email, subject, or workspace id from the route, query string, headers, or a body. Application never reads the `Authorization` header, parses a JWT, or references an ASP.NET or token-library type — JWT Bearer already owns token validation, and `CurrentUser` translates the validated principal into a `Guid?` that is null rather than throwing when no usable subject is present.
+
+The query has no input to validate, so there is no validator. It uses the existing `IQuery<TResponse>` / `IQueryHandler<TQuery, TResponse>` abstractions, which already existed unused: Me is a read, and no new CQRS framework was introduced for it.
+
+The handler:
+
+1. reads `ICurrentUser.UserId`; a missing or unusable subject fails closed with `401`
+2. loads the user with `IUserRepository.GetByIdAsync`, propagating the cancellation token
+3. returns `401` when no row matches
+4. returns `403` when `User.Status` is not `Active`
+5. otherwise returns the profile read from the current row
+
+Status is re-read on every call, so an access token minted while the account was active stops working here as soon as the account is no longer active. Tokens are not revoked when this happens; automatic session revocation on a status change remains deferred.
+
+Me is read-only: no `SaveChangesAsync`, no last-login write, no credential or refresh-token access, and no token issuance.
+
+Success returns `200 OK`:
+
+```json
+{
+  "userId": "0b4f2f4e-1f0e-4f2a-9a5e-6d4b8f1c2a30",
+  "email": "user@example.com",
+  "firstName": "First",
+  "lastName": "Last"
+}
+```
+
+The contract uses `userId`, matching the field name Register already returns, rather than a bare `id`. Status is not returned: a successful response already implies the account is active. The response carries no access token, refresh token, `jti`, expiration, password data, credential data, role, permission, platform role, membership, or workspace information, and the access token is unchanged — it stays identity-only, so profile values are read from the database rather than from claims.
+
+Failures use the standard error contract:
+
+| Status | Code | When |
+| --- | --- | --- |
+| `401` | `authentication.unauthorized` | No usable subject, or the subject names a user that no longer exists |
+| `403` | `authentication.account_unavailable` | The user exists but is not `Active` |
+
+A token can outlive the user it names. That returns the same generic `401` as an unauthenticated request — never `404` — so the response does not confirm whether an account id was ever real.
+
+Secrets: `MeResult` and `MeResponse` override `ToString()` to print only the user id, keeping the email and name out of logs and debugger displays. JSON serialization is unaffected, so the response body still carries the full profile.
+
+## Protected Endpoint Responses
+
+JWT Bearer no longer returns the framework's empty bodies. Both events write the same `ApiErrorResponse` contract as the rest of the API, through `ApiErrorResponseFactory`, so there is no second error format and no hand-built JSON.
+
+**`401` challenge** (`JwtBearerEvents.OnChallenge`) — one response for every rejected or absent credential:
+
+```json
+{
+  "code": "authentication.unauthorized",
+  "message": "Authentication is required.",
+  "status": 401,
+  "fieldErrors": null,
+  "correlationId": "..."
+}
+```
+
+It is returned identically for a missing `Authorization` header, a non-Bearer or unknown scheme, an empty or malformed credential, a malformed JWT, a bad signature or wrong signing key, a wrong issuer or audience, an expired token, a disallowed algorithm, and every subject failure — missing, duplicate, non-string, non-canonical, or `Guid.Empty`. Which rule rejected the token is never disclosed, and no JWT material or exception text appears in the body.
+
+`WWW-Authenticate: Bearer` is still sent. `OnChallenge` calls `HandleResponse()` to stop the framework writing a competing response, which also skips the framework's own header, so the bare scheme is re-added explicitly. `IncludeErrorDetails` is set to `false`, so the header carries no `error` or `error_description` naming the failure. `OnAuthenticationFailed` deliberately writes no response: a failure there flows on to the challenge, which owns the single public `401`.
+
+**`403` authorization failure** (`JwtBearerEvents.OnForbidden`) — authentication succeeded but an authorization requirement was not met:
+
+```json
+{
+  "code": "authorization.forbidden",
+  "message": "You do not have permission to access this resource.",
+  "status": 403,
+  "fieldErrors": null,
+  "correlationId": "..."
+}
+```
+
+It names no policy, role, permission, or authorization handler. No `WWW-Authenticate` header is sent, because the caller is already authenticated.
+
+Both events read the request's existing correlation id through `CorrelationIdFeature`; neither generates its own. The correlation-id middleware is registered first in the pipeline, so the id is available to both. Both responses are written with `WriteAsJsonAsync`, so the content type is JSON rather than `text/plain` or framework HTML, and both check `Response.HasStarted` before writing so a response is never written twice.
+
+### Two different `403`s
+
+| Code | Meaning |
+| --- | --- |
+| `authentication.account_unavailable` | The authenticated account itself may not be used — it is `Pending`, `Suspended`, or `Deactivated`. Raised by Login, Refresh, and Me. |
+| `authorization.forbidden` | The account is fine, but the caller lacks permission for this resource. Raised by the authorization middleware. |
+
+They share the `ApiErrorResponse` contract but keep distinct codes and messages, because the causes are different: one is about the account, the other about the resource.
+
 ## Deferred Decisions
 
 - Password policy (length, complexity).
 - Production access and refresh token lifetimes.
 - Refresh-token families: family-wide revocation when a rotated token is replayed, and reuse-chain detection. Replay of a rotated token is rejected on its own, but the tokens issued after it are not revoked.
 - Logout and revocation workflow.
-- Me and Logout endpoints.
+- Logout endpoint.
 - Session policy (single session, device sessions, session lists, revoke-all-sessions). Each login adds a session and each refresh replaces one; neither revokes the others.
 - Whether a status change to Pending, Suspended, or Deactivated should revoke that user's existing refresh tokens. A non-active user cannot refresh, but their tokens are left untouched.
 - A formal constant-time login. Unknown emails and missing credentials now perform the same password verification work as a wrong password (see Login Timing), but the paths are not provably indistinguishable, and a corrupted stored hash still fails faster.
-- 401 challenge and 403 forbidden response bodies. JWT Bearer currently returns the default empty ASP.NET Core responses, not `ApiErrorResponse`. This must be integrated before the first protected endpoint is introduced.
+- Authorization itself: policies, roles, permissions, workspace scoping, and Platform Admin rules. The standardized `authorization.forbidden` response exists (see Protected Endpoint Responses), but no requirement yet produces it in tracked source.
 - `415 Unsupported Media Type` and `405 Method Not Allowed` response bodies. Controllers currently return the framework `ProblemDetails` body for 415 and an empty body for 405, not `ApiErrorResponse`.
 - Structured `fieldErrors` for Application validation failures.
 - Claims and authorization strategy.

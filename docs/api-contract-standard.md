@@ -145,6 +145,20 @@ Use these status meanings:
 - `422`: request structure is valid but validation failed.
 - `500`: unexpected server error.
 
+### Protected Endpoint Responses
+
+Authentication and authorization failures on protected endpoints use the standard error body, not the framework's default empty response or `ProblemDetails`.
+
+| Situation | Status | Code |
+| --- | --- | --- |
+| Credential missing, malformed, or rejected by token validation | `401` | `authentication.unauthorized` |
+| Authenticated, but an authorization requirement was not met | `403` | `authorization.forbidden` |
+| Authenticated, but the account itself may not be used | `403` | `authentication.account_unavailable` |
+
+The `401` is a single generic response for every cause — no header, a non-Bearer scheme, a malformed or expired token, a bad signature, a wrong issuer or audience, a disallowed algorithm, or an invalid subject. Which rule rejected the credential is never disclosed. A `401` challenge still carries `WWW-Authenticate: Bearer`, with no `error` or `error_description` naming the failure.
+
+The two `403`s are deliberately distinct: `authorization.forbidden` is about the resource, `authentication.account_unavailable` is about the account. Neither names a policy, role, permission, or account status.
+
 ## 9. Correlation ID
 
 Every HTTP request has a correlation identifier.

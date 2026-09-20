@@ -5,6 +5,7 @@ using SmartProperty.Api.Contracts.Authentication;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Authentication.Login;
+using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
 
@@ -105,6 +106,33 @@ public sealed class AuthController : ControllerBase
             refresh.AccessTokenExpiresAt,
             refresh.RefreshToken,
             refresh.RefreshTokenExpiresAt);
+
+        return Ok(response);
+    }
+
+    // The first protected endpoint. The identity comes only from the validated principal: no user id, email,
+    // or subject is accepted from the route, query string, headers, or a body.
+    [Authorize]
+    [HttpGet("me")]
+    public async Task<IActionResult> Me(
+        [FromServices] IQueryHandler<GetMeQuery, MeResult> handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(new GetMeQuery(), cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        var me = result.Value;
+        var response = new MeResponse(
+            me.UserId,
+            me.Email,
+            me.FirstName,
+            me.LastName);
 
         return Ok(response);
     }

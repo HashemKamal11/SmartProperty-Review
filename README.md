@@ -2,7 +2,7 @@
 
 SmartProperty is the backend foundation for a multi-workspace property platform. It is an ASP.NET Core API on .NET 10 that follows Clean Architecture and stores data in PostgreSQL through EF Core.
 
-The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and three business workflows: user registration, login, and refresh-token rotation. The current-user endpoint, logout, and authorization are not implemented yet.
+The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and four authentication workflows: user registration, login, refresh-token rotation, and the current-user endpoint. Logout and authorization are not implemented yet.
 
 ## Current Status
 
@@ -14,14 +14,16 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Workspaces and workspace access requests | Implemented | Workspaces are database records; access requests start as `Pending` |
 | Memberships, roles, and permissions | Data model only | Domain entities, EF Core mappings, and repositories; no workflows use them |
 | Password hashing | Implemented | ASP.NET Core Identity password hasher |
-| JWT access tokens | Implemented | Issued by Login; bearer validation exists, but no endpoint requires a token yet |
+| JWT access tokens | Implemented | Issued by Login and Refresh; required by `GET /api/auth/me` |
 | Refresh tokens | Implemented | Issued by Login, persisted as hashes, and rotated single-use by `POST /api/auth/refresh` |
-| Current user (`ICurrentUser`) | Implemented | Reads the user id from a validated access token; no endpoint uses it yet |
+| Current user (`ICurrentUser`) | Implemented | Reads the user id from a validated access token; used by `GET /api/auth/me` |
 | Commit boundary (`IUnitOfWork`) | Implemented | One save per use case |
 | `POST /api/auth/register` | Implemented | Creates `Pending` users |
 | `POST /api/auth/login` | Implemented | Active users only; returns access and refresh tokens |
 | `POST /api/auth/refresh` | Implemented | Active users only; single-use rotation returning a new token pair |
-| Me and Logout endpoints | Not implemented | |
+| `GET /api/auth/me` | Implemented | First protected endpoint; Active users only |
+| Standardized protected `401` and `403` bodies | Implemented | JWT Bearer challenge and authorization failures use the standard error contract |
+| Logout endpoint | Not implemented | |
 | Authorization policies, permission enforcement, and workspace authorization | Not implemented | |
 | Access request approval and role assignment workflows | Not implemented | |
 | Password policy, email verification, and rate limiting | Not implemented | |
@@ -51,7 +53,7 @@ Persistence  -> Application, Domain
 Api          -> Application, Persistence
 ```
 
-Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration, Login, and Refresh are the only use cases so far, there are no query handlers yet, and handlers are registered explicitly in the API.
+Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration, Login, Refresh, and Me are the only use cases so far; Me is the first query handler, and handlers are registered explicitly in the API.
 
 ```text
 SmartProperty/
@@ -60,7 +62,7 @@ SmartProperty/
 │   ├── Core/
 │   │   ├── SmartProperty.Common/      Results/, Pagination/
 │   │   ├── SmartProperty.Domain/      Identity/, Workspaces/
-│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/
+│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/, Authentication/Me/
 │   ├── Infrastructure/
 │   │   └── SmartProperty.Persistence/ Configurations/, Context/, Health/, Repositories/
 │   └── Presentation/
@@ -351,9 +353,66 @@ Successful response, `200 OK`:
 
 The `401` body is identical in every case: `Invalid or expired refresh token.`. It never says which case occurred. A `401` here means the client must sign in again.
 
+## Me API
+
+`GET /api/auth/me` returns the signed-in user's current profile. It is the first protected endpoint: a valid access token is required.
+
+```text
+GET /api/auth/me
+Authorization: Bearer <access-token>
+```
+
+Successful response, `200 OK`:
+
+```json
+{
+  "userId": "0b4f2f4e-1f0e-4f2a-9a5e-6d4b8f1c2a30",
+  "email": "user@example.com",
+  "firstName": "First",
+  "lastName": "Last"
+}
+```
+
+- The identity comes from the access token alone. Supplying a `userId` or `email` in the query string, headers, or a body changes nothing.
+- The profile is read from the database on every call, so a name changed elsewhere shows up immediately. The access token itself carries no profile data.
+- Only `Active` users succeed. If the account became `Pending`, `Suspended`, or `Deactivated` after the token was issued, the call returns `403` even though the token is still valid.
+- Nothing is written: no last-login timestamp, no session or token changes.
+- No token, password, credential, role, permission, or workspace information is returned.
+
+### Status Codes
+
+| Status | Code | When |
+| --- | --- | --- |
+| `200` | | The profile was returned. |
+| `401` | `authentication.unauthorized` | No token, or a token that failed validation; also a valid token whose user no longer exists. |
+| `403` | `authentication.account_unavailable` | The token is valid, but the account is not `Active`. |
+| `500` | `server.unexpected_error` | An unexpected server failure occurred. |
+
+## Protected Endpoint Errors
+
+Every protected endpoint uses the standard error body for authentication and authorization failures — never an empty response.
+
+**`401 authentication.unauthorized`** — one identical response for a missing `Authorization` header, a non-Bearer scheme, a malformed or expired token, a bad signature, a wrong issuer or audience, a disallowed algorithm, and any invalid subject. The body never says which check failed:
+
+```json
+{
+  "code": "authentication.unauthorized",
+  "message": "Authentication is required.",
+  "status": 401,
+  "fieldErrors": null,
+  "correlationId": "..."
+}
+```
+
+Challenge responses carry `WWW-Authenticate: Bearer`, with no `error_description` or other detail about the failure.
+
+**`403 authorization.forbidden`** — the caller is authenticated but lacks permission for the resource. It names no policy, role, or permission. This response is standardized and ready, but no authorization requirement exists in the API yet, so nothing currently returns it.
+
+Note that `403 authentication.account_unavailable` is a different thing: it means the account itself may not be used, not that it lacks a permission.
+
 ## Authentication Infrastructure
 
-Login issues access and refresh tokens (see [Login API](#login-api)), and Refresh rotates them (see [Refresh API](#refresh-api)). No endpoint requires authentication yet.
+Login issues access and refresh tokens (see [Login API](#login-api)), Refresh rotates them (see [Refresh API](#refresh-api)), and `GET /api/auth/me` (see [Me API](#me-api)) is the first endpoint that requires one. Authorization policies, roles, and permissions are still not implemented.
 
 - **Password hashing:** ASP.NET Core Identity's `PasswordHasher<TUser>` (PBKDF2 with a per-password salt). Only the hasher is used, not Identity's stores, managers, or tables.
 - **JWT Bearer validation:** tokens must be signed with HS256 using `Jwt:SigningKey` and pass signature, issuer, audience, and lifetime validation, with 30 seconds of allowed clock skew.
@@ -385,8 +444,9 @@ Available now:
 | `POST /api/auth/register` | Needs the database schema and an existing workspace id. |
 | `POST /api/auth/login` | Needs the database schema and an `Active` user. Frontend and QA can test sign-in with it. |
 | `POST /api/auth/refresh` | Needs a refresh token from a login or an earlier refresh. Frontend and QA can test session renewal with it. |
+| `GET /api/auth/me` | Needs an access token from a login or refresh. Frontend and QA can test the protected-endpoint flow with it. |
 
-Not available yet: current user (`me`), logout, access request approval, and any screen that depends on authorization. Routes such as `/api/auth/me` currently return `404`.
+Not available yet: logout, access request approval, and any screen that depends on authorization. Routes such as `/api/auth/logout` currently return `404`.
 
 Integration notes:
 
@@ -404,10 +464,11 @@ These are planned work items, not defects in the implemented features.
 - No password strength policy has been decided; passwords are only required and limited to 128 characters.
 - Email verification is pending.
 - Rate limiting is pending.
-- Me and Logout are pending. Refresh rotates one token at a time; it does not revoke a user's other sessions, and a replayed token does not revoke the tokens issued after it (refresh-token families are not implemented).
+- Logout is pending. Refresh rotates one token at a time; it does not revoke a user's other sessions, and a replayed token does not revoke the tokens issued after it (refresh-token families are not implemented).
+- The standardized `403 authorization.forbidden` response exists, but no authorization requirement produces it yet. Roles, permissions, and workspace authorization are still not enforced anywhere.
 - Login performs one password verification on every rejected attempt, including an unknown email and a missing credential, so response time no longer reveals whether an email is registered. This is timing hardening, not a constant-time guarantee: a corrupted stored hash can still fail faster, and registration still reveals a taken email through `409`. Rate limiting and account lockout are pending.
 - Authorization policies and permission enforcement are pending.
-- Standard error bodies for `401` and `403` responses produced by JWT Bearer authentication are pending; no endpoint requires authentication yet. Login's own `401` and `403` responses already use the standard error body.
+- Authentication is enforced on `GET /api/auth/me` only. Its JWT Bearer `401` challenge and `403` authorization responses already use the standard error body; Logout and the broader role, permission, and workspace authorization remain pending.
 - `405 Method Not Allowed` responses (empty body) and `415 Unsupported Media Type` responses (framework `ProblemDetails` body) do not use the standard error contract yet.
 - Validation errors do not return structured `fieldErrors` yet.
 
