@@ -1,8 +1,8 @@
 # Authorization Model
 
-This document records the Step 05.6A authorization foundation: the scope semantics, contracts, and rules that later steps must implement. It is a design and contract baseline only. Permission resolution against the database, ASP.NET Core policy integration, endpoint enforcement, the permission catalog, seeds, and caching are all deferred.
+This document records the authorization scope semantics, contracts, and rules, and how permission resolution implements them. Step 05.6A established the model and contracts; Step 05.6B supplied the resolver that answers a permission question from the database.
 
-Nothing in this step enforces a permission on any endpoint.
+ASP.NET Core policy integration, endpoint enforcement, the permission catalog, seeds, and caching remain deferred. **Nothing enforces a permission on any endpoint yet**: a resolver exists, but no production code calls it.
 
 ## Authentication Versus Authorization
 
@@ -75,7 +75,13 @@ Task<AuthorizationDecision> CheckAsync(
 
 It is named to avoid collision with ASP.NET Core's `IAuthorizationService`. There is deliberately one authorization boundary rather than a family of overlapping `IPermissionService` / `IRoleChecker` / `IPolicyService` interfaces.
 
-**No implementation exists yet.** Supplying one is Step 05.6B.
+### Implementation
+
+`PermissionChecker` (Persistence/Authorization) implements it against EF Core and PostgreSQL, registered `Scoped` in `AddPersistence` alongside the repositories. The implementation is `internal` to the Persistence assembly: callers depend on the Application-layer interface, and no EF Core type appears anywhere in the contract.
+
+Persistence is the right layer for it because resolving a permission is a database question. The Application layer defines what is being asked; it does not know how the answer is found. The API knows neither.
+
+It contributed no repository: the two questions are existence checks rather than entity lookups, so they are expressed directly against `ApplicationDbContext` instead of behind `IUserPlatformRoleRepository` / `IWorkspaceMembershipRoleRepository` / `IRolePermissionRepository`, which would have cost three abstractions and several round trips to answer one question.
 
 ## Permissions Are the Authorization Contract
 
@@ -147,7 +153,7 @@ User
                 └─> Permission (Code)
 ```
 
-Rules a resolver must honour:
+Rules the resolver enforces, restated as predicates in the query itself:
 
 - the role reached must have `Scope = Platform`
 - the permission must be reachable through a platform role assigned to this user
@@ -165,7 +171,7 @@ User
                      └─> Permission (Code)
 ```
 
-Rules a resolver must honour:
+Rules the resolver enforces, restated as predicates in the query itself:
 
 - the membership must belong to this user **and** to the target workspace
 - the role reached must have `Scope = Workspace`
@@ -187,7 +193,7 @@ Only a currently persisted `UserStatus.Active` user may be allowed. This is chec
 
 ## Fail-Closed Rules
 
-Authorization denies unless it can positively establish access. A resolver must return `Denied` for every one of:
+Authorization denies unless it can positively establish access. The resolver returns `Denied` for every one of:
 
 - the user row is missing
 - the user is not `Active`
@@ -216,20 +222,53 @@ That response must never disclose the missing permission code, the missing role,
 
 Note the existing distinction: `403 authentication.account_unavailable` means the account itself may not be used, while `403 authorization.forbidden` means the account lacks permission for this resource.
 
-## Future Query Shape
+## Query Shape
 
-Permission resolution should be an existence check, not an object-graph load. The intended shape is a single `AnyAsync` per question — compiling to `SELECT EXISTS (...)` — joining the path above and filtering on user id, permission code, role scope, and (for workspace targets) workspace id.
+Permission resolution is an existence check, not an object-graph load. Each question is **one** database command: a single `AnyAsync` over the joined path, which PostgreSQL answers as `SELECT EXISTS (...)`. Nothing is materialized — no `Include`, no `ToList`, no entity instance, and therefore no tracking concern and no N+1.
 
-What to avoid: loading the user, then their roles, then those roles' permissions, and searching in memory. That is several round trips and an N+1 waiting to happen.
+Platform:
 
-Current repository contracts (`IUserRepository`, `IRoleRepository`, `IPermissionRepository`, `IWorkspaceMembershipRepository`) return single entities and are **not** sufficient for this; there are no repositories for `UserPlatformRole`, `WorkspaceMembershipRole`, or `RolePermission`. Step 05.6B should add the smallest purpose-built authorization read contract — two existence queries, one per scope — rather than generic collection getters. No `IRepository<T>`, `GetAll()`, or `FindAll()` is to be introduced for authorization.
+```sql
+SELECT EXISTS (
+    SELECT 1
+    FROM identity.users AS u
+    INNER JOIN identity.user_platform_roles AS u0 ON u.id = u0.user_id
+    INNER JOIN identity.roles AS r ON u0.role_id = r.id
+    INNER JOIN identity.role_permissions AS r0 ON r.id = r0.role_id
+    INNER JOIN identity.permissions AS p ON r0.permission_id = p.id
+    WHERE u.id = @userId AND u.status = 'Active'
+      AND r.scope = 'Platform' AND r.workspace_id IS NULL
+      AND p.code = @permissionCode)
+```
 
-No repository method was added in this step, because nothing here resolves a permission yet.
+Workspace:
+
+```sql
+SELECT EXISTS (
+    SELECT 1
+    FROM identity.users AS u
+    INNER JOIN identity.workspace_memberships AS w ON u.id = w.user_id
+    INNER JOIN identity.workspace_membership_roles AS w0 ON w.id = w0.workspace_membership_id
+    INNER JOIN identity.roles AS r ON w0.role_id = r.id
+    INNER JOIN identity.role_permissions AS r0 ON r.id = r0.role_id
+    INNER JOIN identity.permissions AS p ON r0.permission_id = p.id
+    WHERE u.id = @userId AND u.status = 'Active'
+      AND w.workspace_id = @workspaceId
+      AND r.scope = 'Workspace' AND r.workspace_id = @workspaceId2
+      AND p.code = @permissionCode)
+```
+
+The active-user rule is a predicate in the same command rather than a separate lookup, so a check never costs two round trips. The permission code is compared as `p.code = @permissionCode` — exact and case-sensitive, matching how `Permission` stores it; nothing lowercases either side.
+
+Note that the workspace query constrains the target workspace **twice**, on the membership and on the role. Either constraint alone would be enough against data the domain constructors built, but authorization has to fail closed against rows that arrived by import or by hand: a membership in workspace A carrying a role owned by workspace B is denied rather than allowed.
+
+Cancellation flows into `AnyAsync`, so a cancelled request surfaces as `OperationCanceledException` and never as a decision.
+
+Repositories were deliberately not extended for this. `IUserRepository`, `IRoleRepository`, `IPermissionRepository`, and `IWorkspaceMembershipRepository` return single entities and could only have answered these questions across several round trips, and no repository exists — or was added — for `UserPlatformRole`, `WorkspaceMembershipRole`, or `RolePermission`. No `IRepository<T>`, `GetAll()`, or `FindAll()` exists for authorization.
 
 ## Deferred
 
-- **Permission resolution** — implementing `IPermissionChecker` against the database (Step 05.6B).
-- **Platform enforcement** and **workspace enforcement** on real endpoints.
+- **Platform enforcement** and **workspace enforcement** on real endpoints. Resolution works, but no endpoint asks it anything.
 - **ASP.NET Core integration** — `AuthorizationHandler`, `IAuthorizationRequirement`, a dynamic policy provider, a `RequirePermission` attribute, endpoint filters, resource-based authorization.
 - **Permission catalog** and role/permission **seed data**; no migrations.
 - **Caching** of authorization results, in memory or Redis.

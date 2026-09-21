@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SmartProperty.Application.Abstractions.Authorization;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
+using SmartProperty.Persistence.Authorization;
 using SmartProperty.Persistence.Context;
 using SmartProperty.Persistence.Health;
 using SmartProperty.Persistence.Repositories.Identity;
@@ -34,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkspaceMembershipRepository, WorkspaceMembershipRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IPermissionRepository, PermissionRepository>();
+        services.AddScoped<IPermissionChecker, PermissionChecker>();
 
         services.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"], timeout: TimeSpan.FromSeconds(5));

@@ -2,7 +2,7 @@
 
 SmartProperty is the backend foundation for a multi-workspace property platform. It is an ASP.NET Core API on .NET 10 that follows Clean Architecture and stores data in PostgreSQL through EF Core.
 
-The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and five authentication workflows: user registration, login, refresh-token rotation, the current-user endpoint, and logout. Authorization has a model and contracts but no enforcement yet.
+The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and five authentication workflows: user registration, login, refresh-token rotation, the current-user endpoint, and logout. Authorization resolves permissions from current persisted data, but no endpoint enforces one yet.
 
 ## Current Status
 
@@ -12,7 +12,7 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Health checks | Implemented | `GET /health/live` and `GET /health/ready` |
 | User identity (`User`, `UserCredential`) | Implemented | New users start as `Pending` |
 | Workspaces and workspace access requests | Implemented | Workspaces are database records; access requests start as `Pending` |
-| Memberships, roles, and permissions | Data model only | Domain entities, EF Core mappings, and repositories; no workflows use them |
+| Memberships, roles, and permissions | Data model and resolution | Domain entities, EF Core mappings, repositories, and permission resolution; no workflow assigns them yet |
 | Password hashing | Implemented | ASP.NET Core Identity password hasher |
 | JWT access tokens | Implemented | Issued by Login and Refresh; required by `GET /api/auth/me` |
 | Refresh tokens | Implemented | Issued by Login, persisted as hashes, rotated single-use by `POST /api/auth/refresh`, and revoked by `POST /api/auth/logout` |
@@ -25,8 +25,11 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Standardized protected `401` and `403` bodies | Implemented | JWT Bearer challenge and authorization failures use the standard error contract |
 | `POST /api/auth/logout` | Implemented | Revokes the presented refresh token; idempotent `204` |
 | Logout-all-sessions and device management | Not implemented | |
-| Authorization model and contracts | Foundation only | Scopes, permission-check contracts, and rules; see [Authorization Model](docs/authorization-model.md) |
-| Permission resolution and enforcement | Not implemented | Nothing evaluates permissions or protects a business endpoint yet |
+| Authorization model and contracts | Implemented | Scopes, permission-check contracts, and rules; see [Authorization Model](docs/authorization-model.md) |
+| Permission resolution (`IPermissionChecker`) | Implemented | Resolves platform and workspace permissions from current persisted data, one query per check |
+| ASP.NET authorization policies and enforcement | Not implemented | Nothing calls the resolver; no endpoint requires a permission |
+| Platform and workspace endpoint enforcement | Not implemented | |
+| Business endpoint authorization | Not implemented | |
 | Access request approval and role assignment workflows | Not implemented | |
 | Password policy, email verification, and rate limiting | Not implemented | |
 | MFA, password reset, and account lockout | Not implemented | |
@@ -42,7 +45,7 @@ The solution follows Clean Architecture. The inner layers do not depend on web, 
 | `SmartProperty.Domain` | Entities and their invariants: users, credentials, refresh tokens, workspaces, access requests, memberships, roles, and permissions. No framework dependencies. |
 | `SmartProperty.Common` | Shared `Result` and `Error` types and pagination primitives. No framework dependencies. |
 | `SmartProperty.Application` | Abstractions (repositories, `IUnitOfWork`, `IPasswordHasher`, `ITokenProvider`, `ICurrentUser`, `IDateTimeProvider`), command and query contracts, and use cases. No EF Core, ASP.NET Core, or JWT dependencies. |
-| `SmartProperty.Persistence` | EF Core with PostgreSQL (Npgsql): `ApplicationDbContext`, entity configurations, repositories, `UnitOfWork`, the database health check, and translation of recognized PostgreSQL unique-constraint violations and refresh-token concurrency conflicts into provider-neutral exceptions. |
+| `SmartProperty.Persistence` | EF Core with PostgreSQL (Npgsql): `ApplicationDbContext`, entity configurations, repositories, `UnitOfWork`, permission resolution (`IPermissionChecker`), the database health check, and translation of recognized PostgreSQL unique-constraint violations and refresh-token concurrency conflicts into provider-neutral exceptions. |
 | `SmartProperty.Api` | ASP.NET Core host: controllers and HTTP DTOs, JWT Bearer authentication, error mapping, correlation IDs, health endpoints, and the dependency injection composition root. |
 
 Project references:
@@ -66,7 +69,7 @@ SmartProperty/
 │   │   ├── SmartProperty.Domain/      Identity/, Workspaces/
 │   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/, Authentication/Logout/, Authentication/Me/, Authorization/
 │   ├── Infrastructure/
-│   │   └── SmartProperty.Persistence/ Configurations/, Context/, Health/, Repositories/
+│   │   └── SmartProperty.Persistence/ Authorization/, Configurations/, Context/, Health/, Repositories/
 │   └── Presentation/
 │       └── SmartProperty.Api/         Contracts/, Controllers/, Infrastructure/
 ├── tests/                             Placeholder; no test projects yet
@@ -443,7 +446,7 @@ Note that `403 authentication.account_unavailable` is a different thing: it mean
 
 ## Authentication Infrastructure
 
-Login issues access and refresh tokens (see [Login API](#login-api)), Refresh rotates them (see [Refresh API](#refresh-api)), and `GET /api/auth/me` (see [Me API](#me-api)) is the first endpoint that requires one. Authorization policies, roles, and permissions are still not implemented.
+Login issues access and refresh tokens (see [Login API](#login-api)), Refresh rotates them (see [Refresh API](#refresh-api)), and `GET /api/auth/me` (see [Me API](#me-api)) is the first endpoint that requires one. Role/permission modeling and persisted permission resolution are implemented; ASP.NET authorization policies and production endpoint permission enforcement remain pending.
 
 - **Password hashing:** ASP.NET Core Identity's `PasswordHasher<TUser>` (PBKDF2 with a per-password salt). Only the hasher is used, not Identity's stores, managers, or tables.
 - **JWT Bearer validation:** tokens must be signed with HS256 using `Jwt:SigningKey` and pass signature, issuer, audience, and lifetime validation, with 30 seconds of allowed clock skew.
@@ -497,9 +500,9 @@ These are planned work items, not defects in the implemented features.
 - Email verification is pending.
 - Rate limiting is pending.
 - Logout revokes only the refresh token presented to it. A user's other sessions stay active, there is no logout-all or device management, and an access token issued before logout keeps working until it expires. Refresh likewise rotates one token at a time, and a replayed token does not revoke the tokens issued after it (refresh-token families are not implemented).
-- The standardized `403 authorization.forbidden` response exists, but no authorization requirement produces it yet. Roles, permissions, and workspace authorization are still not enforced anywhere.
+- The standardized `403 authorization.forbidden` response exists, but no authorization requirement produces it yet. Permissions resolve correctly against the database, but nothing enforces them on an endpoint: a working resolver is not a protected API.
 - Login performs one password verification on every rejected attempt, including an unknown email and a missing credential, so response time no longer reveals whether an email is registered. This is timing hardening, not a constant-time guarantee: a corrupted stored hash can still fail faster, and registration still reveals a taken email through `409`. Rate limiting and account lockout are pending.
-- Authorization has a documented model and framework-neutral contracts, but nothing resolves permissions or enforces them on an endpoint yet. See [Authorization Model](docs/authorization-model.md).
+- Authorization has a documented model, framework-neutral contracts, and a persistence resolver that answers permission questions from current data — including the active-user rule and platform/workspace isolation — but nothing calls it from an endpoint yet. See [Authorization Model](docs/authorization-model.md).
 - Authentication is enforced on `GET /api/auth/me` only. Its JWT Bearer `401` challenge and `403` authorization responses already use the standard error body, and presented-token logout is implemented at `POST /api/auth/logout`; logout-all, device and session management, and the broader role, permission, and workspace authorization remain pending.
 - `405 Method Not Allowed` responses (empty body) and `415 Unsupported Media Type` responses (framework `ProblemDetails` body) do not use the standard error contract yet.
 - Validation errors do not return structured `fieldErrors` yet.
@@ -524,4 +527,4 @@ These are planned work items, not defects in the implemented features.
 | [API Contract Standard](docs/api-contract-standard.md) | Shared HTTP conventions: identifiers, dates, pagination, errors, status codes, and correlation IDs. |
 | [Identity Access Model](docs/identity-access-model.md) | Workspaces, memberships, roles, permissions, and the access request flow. |
 | [Authentication Model](docs/authentication-model.md) | Credentials, password hashing, tokens, configuration, the commit boundary, registration, and login. |
-| [Authorization Model](docs/authorization-model.md) | Authorization scopes, permission contracts, role-to-permission paths, and fail-closed rules. Foundation only; no enforcement yet. |
+| [Authorization Model](docs/authorization-model.md) | Authorization scopes, permission contracts, role-to-permission paths, fail-closed rules, and how permission resolution queries them. No endpoint enforcement yet. |
