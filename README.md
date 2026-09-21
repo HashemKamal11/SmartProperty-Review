@@ -2,7 +2,7 @@
 
 SmartProperty is the backend foundation for a multi-workspace property platform. It is an ASP.NET Core API on .NET 10 that follows Clean Architecture and stores data in PostgreSQL through EF Core.
 
-The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and five authentication workflows: user registration, login, refresh-token rotation, the current-user endpoint, and logout. Authorization is not implemented yet.
+The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and five authentication workflows: user registration, login, refresh-token rotation, the current-user endpoint, and logout. Authorization has a model and contracts but no enforcement yet.
 
 ## Current Status
 
@@ -25,7 +25,8 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Standardized protected `401` and `403` bodies | Implemented | JWT Bearer challenge and authorization failures use the standard error contract |
 | `POST /api/auth/logout` | Implemented | Revokes the presented refresh token; idempotent `204` |
 | Logout-all-sessions and device management | Not implemented | |
-| Authorization policies, permission enforcement, and workspace authorization | Not implemented | |
+| Authorization model and contracts | Foundation only | Scopes, permission-check contracts, and rules; see [Authorization Model](docs/authorization-model.md) |
+| Permission resolution and enforcement | Not implemented | Nothing evaluates permissions or protects a business endpoint yet |
 | Access request approval and role assignment workflows | Not implemented | |
 | Password policy, email verification, and rate limiting | Not implemented | |
 | MFA, password reset, and account lockout | Not implemented | |
@@ -63,7 +64,7 @@ SmartProperty/
 │   ├── Core/
 │   │   ├── SmartProperty.Common/      Results/, Pagination/
 │   │   ├── SmartProperty.Domain/      Identity/, Workspaces/
-│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/, Authentication/Logout/, Authentication/Me/
+│   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/, Authentication/Logout/, Authentication/Me/, Authorization/
 │   ├── Infrastructure/
 │   │   └── SmartProperty.Persistence/ Configurations/, Context/, Health/, Repositories/
 │   └── Presentation/
@@ -498,7 +499,7 @@ These are planned work items, not defects in the implemented features.
 - Logout revokes only the refresh token presented to it. A user's other sessions stay active, there is no logout-all or device management, and an access token issued before logout keeps working until it expires. Refresh likewise rotates one token at a time, and a replayed token does not revoke the tokens issued after it (refresh-token families are not implemented).
 - The standardized `403 authorization.forbidden` response exists, but no authorization requirement produces it yet. Roles, permissions, and workspace authorization are still not enforced anywhere.
 - Login performs one password verification on every rejected attempt, including an unknown email and a missing credential, so response time no longer reveals whether an email is registered. This is timing hardening, not a constant-time guarantee: a corrupted stored hash can still fail faster, and registration still reveals a taken email through `409`. Rate limiting and account lockout are pending.
-- Authorization policies and permission enforcement are pending.
+- Authorization has a documented model and framework-neutral contracts, but nothing resolves permissions or enforces them on an endpoint yet. See [Authorization Model](docs/authorization-model.md).
 - Authentication is enforced on `GET /api/auth/me` only. Its JWT Bearer `401` challenge and `403` authorization responses already use the standard error body, and presented-token logout is implemented at `POST /api/auth/logout`; logout-all, device and session management, and the broader role, permission, and workspace authorization remain pending.
 - `405 Method Not Allowed` responses (empty body) and `415 Unsupported Media Type` responses (framework `ProblemDetails` body) do not use the standard error contract yet.
 - Validation errors do not return structured `fieldErrors` yet.
@@ -523,3 +524,4 @@ These are planned work items, not defects in the implemented features.
 | [API Contract Standard](docs/api-contract-standard.md) | Shared HTTP conventions: identifiers, dates, pagination, errors, status codes, and correlation IDs. |
 | [Identity Access Model](docs/identity-access-model.md) | Workspaces, memberships, roles, permissions, and the access request flow. |
 | [Authentication Model](docs/authentication-model.md) | Credentials, password hashing, tokens, configuration, the commit boundary, registration, and login. |
+| [Authorization Model](docs/authorization-model.md) | Authorization scopes, permission contracts, role-to-permission paths, and fail-closed rules. Foundation only; no enforcement yet. |

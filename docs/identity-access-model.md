@@ -32,7 +32,9 @@ Permissions are assigned through roles:
 - Platform authorization: User -> Platform Role -> Permission.
 - Workspace authorization: User -> WorkspaceMembership -> Workspace Role -> Permission.
 
-There are no direct User -> Permission assignments in this foundation. Permission codes are database-driven machine-readable identifiers such as `Admin.Users.View` or `Compliance.Documents.Verify`, but no permission catalog is seeded in this step.
+There are no direct User -> Permission assignments in this foundation. Permission codes are database-driven machine-readable identifiers, and no permission catalog is seeded in this step.
+
+Roles aggregate permissions; permissions are what authorization checks. The two scopes stay separate: a workspace role never grants platform access, and a platform role is not automatically a workspace role. The naming convention for permission codes and the full enforcement design are documented separately in [authorization-model.md](authorization-model.md).
 
 ## Access Request Flow
 
