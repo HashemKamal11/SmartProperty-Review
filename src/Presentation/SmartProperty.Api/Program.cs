@@ -11,6 +11,7 @@ builder.Services.AddControllers();
 builder.Services.AddApiConventions();
 builder.Services.AddDateTimeProvider();
 builder.Services.AddApiAuthentication(builder.Configuration);
+builder.Services.AddApiAuthorization();
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddApplicationHandlers();
 

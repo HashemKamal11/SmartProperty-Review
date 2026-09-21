@@ -7,9 +7,10 @@ namespace SmartProperty.Application.Abstractions.Authorization;
 /// </summary>
 /// <remarks>
 /// Named to avoid collision with ASP.NET Core's <c>IAuthorizationService</c>; this contract knows nothing about
-/// HTTP, policies, or principals. No implementation exists yet — resolving permissions against persisted roles
-/// is Step 05.6B. See docs/authorization-model.md for the resolution paths and the fail-closed rules an
-/// implementation must honour.
+/// HTTP, policies, or principals. Application owns the boundary, Persistence resolves it against persisted role
+/// and permission assignments, and the API reaches it through the ASP.NET permission authorization bridge —
+/// which no production endpoint applies yet. See docs/authorization-model.md for the resolution paths and the
+/// fail-closed rules an implementation must honour.
 /// </remarks>
 public interface IPermissionChecker
 {

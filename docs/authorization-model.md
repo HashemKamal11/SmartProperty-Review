@@ -1,8 +1,8 @@
 # Authorization Model
 
-This document records the authorization scope semantics, contracts, and rules, and how permission resolution implements them. Step 05.6A established the model and contracts; Step 05.6B supplied the resolver that answers a permission question from the database.
+This document records the authorization scope semantics, contracts, and rules, how permission resolution implements them, and how ASP.NET Core authorization reaches them. Step 05.6A established the model and contracts; Step 05.6B supplied the resolver that answers a permission question from the database; Step 05.6C added the reusable ASP.NET bridge.
 
-ASP.NET Core policy integration, endpoint enforcement, the permission catalog, seeds, and caching remain deferred. **Nothing enforces a permission on any endpoint yet**: a resolver exists, but no production code calls it.
+The permission catalog, seeds, route workspace-id extraction, a `RequirePermission` attribute, a dynamic policy provider, and caching remain deferred. **No production endpoint requires a permission yet**: the bridge is reusable and tested, but nothing in `AuthController` or any other tracked controller uses it.
 
 ## Authentication Versus Authorization
 
@@ -82,6 +82,55 @@ It is named to avoid collision with ASP.NET Core's `IAuthorizationService`. Ther
 Persistence is the right layer for it because resolving a permission is a database question. The Application layer defines what is being asked; it does not know how the answer is found. The API knows neither.
 
 It contributed no repository: the two questions are existence checks rather than entity lookups, so they are expressed directly against `ApplicationDbContext` instead of behind `IUserPlatformRoleRepository` / `IWorkspaceMembershipRoleRepository` / `IRolePermissionRepository`, which would have cost three abstractions and several round trips to answer one question.
+
+## ASP.NET Core Integration
+
+Two types in the API (`Infrastructure/Authorization`) connect ASP.NET Core authorization to the checker. Both are `internal`, like the rest of the API's infrastructure, and neither has an equivalent in Application or Domain — `IAuthorizationRequirement`, `AuthorizationHandler`, `ClaimsPrincipal`, and `HttpContext` stay in the API.
+
+**`PermissionRequirement`** names one permission code and nothing else:
+
+```csharp
+new PermissionRequirement("property.read")
+```
+
+It trims the code and preserves case, matching `Permission.Code` semantics exactly. A blank code throws `ArgumentException` — a requirement is server configuration, not user input, so a bad one is a startup-time programming error rather than an HTTP response.
+
+It deliberately does **not** carry a workspace id or a scope flag. What the permission is exercised against is the authorization *resource*:
+
+**`PermissionAuthorizationHandler`** is `AuthorizationHandler<PermissionRequirement, AuthorizationTarget>` — the Application-layer `AuthorizationTarget` is the ASP.NET resource. Typing it that way means a second Platform/Workspace model never gets invented in the web layer, and that the framework simply never invokes the handler for any other resource, including a null one. An unexpected resource therefore leaves the requirement unsatisfied; there is no loose `object` switch that could fall through to success.
+
+The flow is a translation and nothing more:
+
+```text
+HttpContext (RequestAborted)
+ICurrentUser.UserId          ─┐
+requirement.PermissionCode   ─┼─> AuthorizationRequest.For(...)
+AuthorizationTarget resource ─┘         ↓
+                                 IPermissionChecker.CheckAsync
+                                        ↓
+                          Allowed -> context.Succeed(requirement)
+                          Denied  -> requirement left unsatisfied
+```
+
+Details worth stating, because each is a rule the handler has to honour rather than an implementation accident:
+
+- **Identity comes only from the authenticated principal**, through `ICurrentUser`. The handler never parses the `Authorization` header, re-validates a token, or accepts a user id from a route, query, or body. If no usable id is present the requirement stays unsatisfied and the checker is not called — `Guid.Empty` is never passed down.
+- **Only `Allowed` succeeds.** No role-name shortcut, no Platform Admin bypass, no claim-based bypass, and "authenticated" alone is never enough.
+- **A denial is a silent non-success**, not `context.Fail()`. Failing outright would block any other handler that might legitimately satisfy the same requirement later, and no public failure reason is wanted in any case.
+- **`HttpContext.RequestAborted` is passed to the checker**, not `CancellationToken.None`, so an abandoned request stops querying.
+- **Nothing is caught.** A checker exception — a database outage — propagates to the normal exception pipeline and surfaces as `500`. Turning it into a denial would disguise an outage as a permissions problem. Cancellation propagates for the same reason.
+- **The handler writes no response.** It sets no status code, adds no header, and calls neither `ForbidAsync` nor `ChallengeAsync`; the existing JwtBearer `OnChallenge` and `OnForbidden` events own the standardized bodies.
+
+Registration is `AddApiAuthorization()` in `Program`, adding `IAuthorizationHandler → PermissionAuthorizationHandler` as `Scoped` because it reaches the scoped checker. Authorization services themselves were already registered by `AddControllers`, which is why `[Authorize]` on `GET /api/auth/me` has always worked; nothing about that configuration changed.
+
+### Responses
+
+| Caller | Outcome |
+| --- | --- |
+| Unauthenticated | existing `401 authentication.unauthorized`, `WWW-Authenticate: Bearer` |
+| Authenticated, decision `Denied` | existing `403 authorization.forbidden` |
+
+Both are the responses that already existed; this step added no error code and changed no contract. The `403` still names no permission code, role, workspace, policy, or handler.
 
 ## Permissions Are the Authorization Contract
 
@@ -268,8 +317,8 @@ Repositories were deliberately not extended for this. `IUserRepository`, `IRoleR
 
 ## Deferred
 
-- **Platform enforcement** and **workspace enforcement** on real endpoints. Resolution works, but no endpoint asks it anything.
-- **ASP.NET Core integration** — `AuthorizationHandler`, `IAuthorizationRequirement`, a dynamic policy provider, a `RequirePermission` attribute, endpoint filters, resource-based authorization.
+- **Platform enforcement** and **workspace enforcement** on real endpoints. The requirement, the handler, and resolution all work; no production endpoint applies them.
+- **Permission policy plumbing** — a `RequirePermission` attribute, a dynamic policy provider, endpoint filters, and a named-policy catalog. The reusable requirement and handler exist; how endpoints declare a permission is a later decision.
 - **Permission catalog** and role/permission **seed data**; no migrations.
 - **Caching** of authorization results, in memory or Redis.
 - **Platform Admin semantics** — whether it implies all permissions, and whether it reaches into workspaces.

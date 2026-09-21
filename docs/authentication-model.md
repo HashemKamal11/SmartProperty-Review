@@ -1,6 +1,6 @@
 # Authentication Model
 
-This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, the Step 05.5E refresh-token rotation use case, the Step 05.5F Me use case with standardized protected-endpoint responses, and the Step 05.5G logout use case. The authorization system remains deferred.
+This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, the Step 05.5E refresh-token rotation use case, the Step 05.5F Me use case with standardized protected-endpoint responses, and the Step 05.5G logout use case. Authorization has its own infrastructure and its own document; no production endpoint is permission-protected yet. See [authorization-model.md](authorization-model.md).
 
 ## Architecture
 
@@ -10,7 +10,7 @@ SmartProperty uses custom authentication built on its own identity model:
 - Opaque refresh tokens, persisted only as hashes.
 - The existing custom `User` model. ASP.NET Core Identity users, stores, managers, and schema are not used.
 
-Authentication identifies the caller. Authorization (roles, permissions, workspace access) is a separate concern and is not implemented yet.
+Authentication identifies the caller. Authorization (roles, permissions, workspace access) is a separate concern with its own contracts, persisted permission resolution, and ASP.NET requirement and handler — none of which this document covers, and none of which any production endpoint applies yet. See [authorization-model.md](authorization-model.md).
 
 ```text
 Application (framework-independent)
@@ -152,7 +152,7 @@ UseAuthorization
 MapControllers / health endpoints
 ```
 
-`UseAuthentication` and `UseAuthorization` are called explicitly. Otherwise `WebApplication` automatically inserts them ahead of all application middleware, before the correlation ID and exception handling. No authorization policies, requirements, or handlers are registered. Health endpoints remain anonymous.
+`UseAuthentication` and `UseAuthorization` are called explicitly. Otherwise `WebApplication` automatically inserts them ahead of all application middleware, before the correlation ID and exception handling. The permission authorization handler is registered (see [authorization-model.md](authorization-model.md)), but no production endpoint declares a permission requirement, so `UseAuthorization` currently enforces only `[Authorize]`. Health endpoints remain anonymous.
 
 ## User Status Rule
 
@@ -525,7 +525,7 @@ They share the `ApiErrorResponse` contract but keep distinct codes and messages,
 - Session policy (single session, device sessions, session lists, revoke-all-sessions). Each login adds a session and each refresh replaces one; neither revokes the others.
 - Whether a status change to Pending, Suspended, or Deactivated should revoke that user's existing refresh tokens. A non-active user cannot refresh, but their tokens are left untouched.
 - A formal constant-time login. Unknown emails and missing credentials now perform the same password verification work as a wrong password (see Login Timing), but the paths are not provably indistinguishable, and a corrupted stored hash still fails faster.
-- Authorization itself: policies, roles, permissions, workspace scoping, and Platform Admin rules. The standardized `authorization.forbidden` response exists (see Protected Endpoint Responses), but no requirement yet produces it in tracked source.
+- Applying authorization to endpoints. The contracts, persisted permission resolution, and the ASP.NET requirement and handler are implemented, and they produce the standardized `authorization.forbidden` response correctly (see Protected Endpoint Responses). What remains is production enforcement: no endpoint declares a permission, no workspace id is taken from a route, and the permission catalog, `RequirePermission` attribute, dynamic policies, Platform Admin semantics, and caching are all still open. See [authorization-model.md](authorization-model.md).
 - `415 Unsupported Media Type` and `405 Method Not Allowed` response bodies. Controllers currently return the framework `ProblemDetails` body for 415 and an empty body for 405, not `ApiErrorResponse`.
 - Structured `fieldErrors` for Application validation failures.
 - Claims and authorization strategy.

@@ -1,5 +1,6 @@
 #nullable enable
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -7,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.Net.Http.Headers;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Infrastructure.Authentication;
+using SmartProperty.Api.Infrastructure.Authorization;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Time;
 using SmartProperty.Application.Abstractions.Authentication;
@@ -174,6 +176,20 @@ internal static class ServiceCollectionExtensions
 
         // WriteAsJsonAsync sets the JSON content type, so these never fall back to text/plain or HTML.
         return httpContext.Response.WriteAsJsonAsync(response);
+    }
+
+    /// <summary>
+    /// Registers the permission authorization bridge. Authorization services themselves already come from
+    /// <c>AddControllers</c>, which is why <c>[Authorize]</c> works today; only the handler is added here.
+    /// </summary>
+    public static IServiceCollection AddApiAuthorization(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        // Scoped: it reaches IPermissionChecker, which is scoped around ApplicationDbContext.
+        services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+        return services;
     }
 
     public static IServiceCollection AddApplicationHandlers(this IServiceCollection services)
