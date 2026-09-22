@@ -36,7 +36,7 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Password policy, email verification, and rate limiting | Not implemented | |
 | MFA, password reset, and account lockout | Not implemented | |
 | EF Core migrations and seed data | Not implemented | See [Database Schema](#3-database-schema) |
-| Automated tests | Implemented foundation | Permanent unit and API integration suites; no database-backed tests yet. See [Testing Strategy](docs/testing-strategy.md) |
+| Automated tests | Implemented foundation | Permanent unit, API integration, and PostgreSQL persistence/concurrency suites. See [Testing Strategy](docs/testing-strategy.md) |
 
 ## Architecture
 
@@ -76,7 +76,8 @@ SmartProperty/
 │       └── SmartProperty.Api/         Contracts/, Controllers/, Infrastructure/ (Authentication/, Authorization/, Errors/, Http/, Time/)
 ├── tests/
 │   ├── SmartProperty.UnitTests/       Domain/, Application/, TestDoubles/
-│   └── SmartProperty.Api.IntegrationTests/ Infrastructure/, Authentication/, Authorization/
+│   ├── SmartProperty.Api.IntegrationTests/ Infrastructure/, Authentication/, Authorization/
+│   └── SmartProperty.Persistence.IntegrationTests/ Infrastructure/, Persistence/, Concurrency/, Authorization/
 ├── Directory.Build.props              Shared build settings
 ├── Directory.Packages.props           Central package versions
 ├── docker-compose.yml                 Local PostgreSQL
@@ -103,7 +104,10 @@ SmartProperty/
 | xunit.runner.visualstudio | `3.1.4` | `Directory.Packages.props` (test projects only) |
 | Microsoft.NET.Test.Sdk | `17.14.1` | `Directory.Packages.props` (test projects only) |
 | Microsoft.AspNetCore.Mvc.Testing | `10.0.11` | `Directory.Packages.props` (test projects only) |
+| Microsoft.Extensions.Configuration | `10.0.11` | `Directory.Packages.props` (test projects only) |
+| Testcontainers.PostgreSql | `4.15.0` | `Directory.Packages.props` (persistence integration tests only) |
 | PostgreSQL for local development | `postgres:17` image | `docker-compose.yml` |
+| PostgreSQL for persistence integration tests | `postgres:17` image, started and removed by Testcontainers | `tests/SmartProperty.Persistence.IntegrationTests` |
 
 All projects enable nullable reference types and build with warnings treated as errors.
 
@@ -509,13 +513,34 @@ dotnet build SmartProperty.sln --configuration Release
 dotnet test SmartProperty.sln --configuration Release --no-build
 ```
 
-No database, Docker container, User Secret, or environment variable is required: the suite runs entirely in
-process on a clean checkout.
+A working Docker daemon is required, and only by `tests/SmartProperty.Persistence.IntegrationTests`. The other
+two projects run entirely in process on a clean checkout, with no database, User Secret, or environment
+variable.
 
 | Project | Owns |
 | --- | --- |
 | `tests/SmartProperty.UnitTests` | Domain invariants, the Application authorization contracts, and the Login, Refresh, Logout, and Me handlers against hand-written test doubles. |
 | `tests/SmartProperty.Api.IntegrationTests` | The real ASP.NET Core host over `WebApplicationFactory<Program>`: JWT Bearer authentication, the permission authorization bridge, the standardized `401` and `403` bodies, and correlation IDs. |
+| `tests/SmartProperty.Persistence.IntegrationTests` | The real `ApplicationDbContext` over the real Npgsql provider against real PostgreSQL: schema creation, constraints, repository round trips, the unit of work, refresh-token optimistic concurrency, same-token refresh and refresh/logout races, and `PermissionChecker` resolution against persisted access state. |
+
+### The persistence suite and Docker
+
+`tests/SmartProperty.Persistence.IntegrationTests` runs against an **ephemeral PostgreSQL 17 container that
+Testcontainers starts and removes for the run** — a random host port, no named volume, no bind mount, no fixed
+`5432` mapping, and credentials generated on the spot.
+
+It does **not** use the development database. It never reads a connection string from configuration, User
+Secrets, an environment variable, or `localhost`; it never reuses, reconfigures, or removes any container,
+volume, or network that already exists; and it issues no `docker` command of its own. Running it leaves the
+`docker-compose.yml` PostgreSQL untouched.
+
+Each test gets its own database on that one container, copied from a template built once with
+`Database.EnsureCreated()` against the current EF model. That verifies the model works on PostgreSQL. It
+verifies nothing about production migrations, upgrade paths, rollback, migration ordering, or the operational
+safety of a schema change — the repository has no migrations, and this suite adds none.
+
+If Docker is unavailable the persistence project fails. It never falls back to EF Core InMemory, to SQLite, or
+to a local database.
 
 Current permanent coverage:
 
@@ -527,13 +552,21 @@ Current permanent coverage:
 - API `401` and `403` integration against the real pipeline, including that a denial never names the
   permission involved.
 - Correlation-ID integration on both `401` and `403`.
+- Real PostgreSQL schema creation from the current EF model, and the unique indexes, check constraints, and
+  restrictive foreign keys the configurations declare.
+- Real unique-constraint and foreign-key rejections, and how each one reaches the Application layer today.
+- Real refresh-token optimistic concurrency across two independent contexts, and its translation into
+  `ConcurrencyConflictException` at the persistence boundary.
+- A real same-token refresh race and a real refresh/logout race, each competing call in its own scope, with
+  exactly one winner and at most one replacement token.
+- `PermissionChecker` against persisted access state: platform and workspace grants, workspace isolation,
+  platform/workspace scope isolation, non-active users, exact-case permission codes, one database command per
+  check, and an infrastructure failure propagating instead of becoming a denial.
 
-Still deferred to STEP 05.7B:
+Still deferred:
 
-- Real PostgreSQL integration and migration-backed schema tests.
-- Real EF Core concurrency and race tests, including two requests rotating the same refresh token.
-- `PermissionChecker` resolution against persisted roles and permissions.
-- Full end-to-end business flows.
+- Migration-backed schema tests and the migration lifecycle. No migrations exist yet.
+- Full end-to-end business flows over HTTP against a real database.
 
 This is a foundation, not full coverage, and not a security-coverage or production-readiness claim. See
 [Testing Strategy](docs/testing-strategy.md).
@@ -575,4 +608,4 @@ These are planned work items, not defects in the implemented features.
 | [Identity Access Model](docs/identity-access-model.md) | Workspaces, memberships, roles, permissions, and the access request flow. |
 | [Authentication Model](docs/authentication-model.md) | Credentials, password hashing, tokens, configuration, the commit boundary, registration, and login. |
 | [Authorization Model](docs/authorization-model.md) | Authorization scopes, permission contracts, role-to-permission paths, fail-closed rules, how permission resolution queries them, and the ASP.NET authorization bridge. No endpoint enforcement yet. |
-| [Testing Strategy](docs/testing-strategy.md) | What each test project owns, why STEP 05.7A uses no PostgreSQL or Docker, and which coverage is deferred to STEP 05.7B. |
+| [Testing Strategy](docs/testing-strategy.md) | What each test project owns, which one needs Docker and what it is not allowed to touch, what `EnsureCreated` does and does not prove, and which coverage is still deferred. |
