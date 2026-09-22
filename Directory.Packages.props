@@ -8,6 +8,22 @@
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
+    <!--
+      Npgsql.EntityFrameworkCore.PostgreSQL only requires Relational >= 10.0.4, so a project that does not also
+      reference Microsoft.EntityFrameworkCore.Design (which requires 10.0.11) restores the 10.0.4 assembly while
+      linking against production assemblies compiled against 10.0.11. Design carries PrivateAssets="all" and so
+      does not flow to the API integration test project, which is exactly where that split surfaced as MSB3277.
+      Pinning the version centrally lets that project reference Relational explicitly and resolve the same
+      10.0.11 assembly the production projects already use. Production EF Core versions are unchanged.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+  </ItemGroup>
+  <!-- Test-only packages. Referenced exclusively by projects under tests/. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
 </Project>

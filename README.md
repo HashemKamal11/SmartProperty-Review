@@ -36,7 +36,7 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Password policy, email verification, and rate limiting | Not implemented | |
 | MFA, password reset, and account lockout | Not implemented | |
 | EF Core migrations and seed data | Not implemented | See [Database Schema](#3-database-schema) |
-| Automated tests | Not implemented | `tests/` is a placeholder |
+| Automated tests | Implemented foundation | Permanent unit and API integration suites; no database-backed tests yet. See [Testing Strategy](docs/testing-strategy.md) |
 
 ## Architecture
 
@@ -74,7 +74,9 @@ SmartProperty/
 │   │   └── SmartProperty.Persistence/ Authorization/, Configurations/, Context/, Health/, Repositories/
 │   └── Presentation/
 │       └── SmartProperty.Api/         Contracts/, Controllers/, Infrastructure/ (Authentication/, Authorization/, Errors/, Http/, Time/)
-├── tests/                             Placeholder; no test projects yet
+├── tests/
+│   ├── SmartProperty.UnitTests/       Domain/, Application/, TestDoubles/
+│   └── SmartProperty.Api.IntegrationTests/ Infrastructure/, Authentication/, Authorization/
 ├── Directory.Build.props              Shared build settings
 ├── Directory.Packages.props           Central package versions
 ├── docker-compose.yml                 Local PostgreSQL
@@ -92,10 +94,15 @@ SmartProperty/
 | C# | SDK default for `net10.0` (`LangVersion` is not set) | |
 | Microsoft.EntityFrameworkCore | `10.0.11` | `Directory.Packages.props` |
 | Microsoft.EntityFrameworkCore.Design | `10.0.11` | `Directory.Packages.props` |
+| Microsoft.EntityFrameworkCore.Relational | `10.0.11` | `Directory.Packages.props` (pinned so test projects resolve the same assembly the production projects use) |
 | Npgsql.EntityFrameworkCore.PostgreSQL | `10.0.3` | `Directory.Packages.props` |
 | Microsoft.AspNetCore.Authentication.JwtBearer | `10.0.11` | `Directory.Packages.props` |
 | Microsoft.Extensions.Diagnostics.HealthChecks | `10.0.11` | `Directory.Packages.props` |
 | Microsoft.Extensions.Configuration.Abstractions | `10.0.11` | `Directory.Packages.props` |
+| xunit | `2.9.3` | `Directory.Packages.props` (test projects only) |
+| xunit.runner.visualstudio | `3.1.4` | `Directory.Packages.props` (test projects only) |
+| Microsoft.NET.Test.Sdk | `17.14.1` | `Directory.Packages.props` (test projects only) |
+| Microsoft.AspNetCore.Mvc.Testing | `10.0.11` | `Directory.Packages.props` (test projects only) |
 | PostgreSQL for local development | `postgres:17` image | `docker-compose.yml` |
 
 All projects enable nullable reference types and build with warnings treated as errors.
@@ -493,6 +500,44 @@ Integration notes:
 - JSON property names are camelCase, and identifiers are GUID strings.
 - Registered users stay `Pending`; the API cannot activate them yet, so Login returns `403` for them. To test a successful login, set the user's `status` to `Active` in `identity.users` in a local or test database.
 
+## Testing
+
+Permanent automated tests are implemented as a foundation. Run them with:
+
+```bash
+dotnet build SmartProperty.sln --configuration Release
+dotnet test SmartProperty.sln --configuration Release --no-build
+```
+
+No database, Docker container, User Secret, or environment variable is required: the suite runs entirely in
+process on a clean checkout.
+
+| Project | Owns |
+| --- | --- |
+| `tests/SmartProperty.UnitTests` | Domain invariants, the Application authorization contracts, and the Login, Refresh, Logout, and Me handlers against hand-written test doubles. |
+| `tests/SmartProperty.Api.IntegrationTests` | The real ASP.NET Core host over `WebApplicationFactory<Program>`: JWT Bearer authentication, the permission authorization bridge, the standardized `401` and `403` bodies, and correlation IDs. |
+
+Current permanent coverage:
+
+- Domain and Application unit tests.
+- Authentication use-case regression: the login dummy-verification timing hardening, non-active account
+  statuses, password re-hash on login, refresh rotation and its invalid paths, and logout idempotency.
+- Authorization bridge regression: `PermissionRequirement`, `PermissionAuthorizationHandler`, resource typing,
+  AND semantics across multiple requirements, cancellation, and infrastructure-failure propagation.
+- API `401` and `403` integration against the real pipeline, including that a denial never names the
+  permission involved.
+- Correlation-ID integration on both `401` and `403`.
+
+Still deferred to STEP 05.7B:
+
+- Real PostgreSQL integration and migration-backed schema tests.
+- Real EF Core concurrency and race tests, including two requests rotating the same refresh token.
+- `PermissionChecker` resolution against persisted roles and permissions.
+- Full end-to-end business flows.
+
+This is a foundation, not full coverage, and not a security-coverage or production-readiness claim. See
+[Testing Strategy](docs/testing-strategy.md).
+
 ## Known Limitations
 
 These are planned work items, not defects in the implemented features.
@@ -530,3 +575,4 @@ These are planned work items, not defects in the implemented features.
 | [Identity Access Model](docs/identity-access-model.md) | Workspaces, memberships, roles, permissions, and the access request flow. |
 | [Authentication Model](docs/authentication-model.md) | Credentials, password hashing, tokens, configuration, the commit boundary, registration, and login. |
 | [Authorization Model](docs/authorization-model.md) | Authorization scopes, permission contracts, role-to-permission paths, fail-closed rules, how permission resolution queries them, and the ASP.NET authorization bridge. No endpoint enforcement yet. |
+| [Testing Strategy](docs/testing-strategy.md) | What each test project owns, why STEP 05.7A uses no PostgreSQL or Docker, and which coverage is deferred to STEP 05.7B. |
