@@ -1,0 +1,25 @@
+# Keep host build output and local tooling state out of the build context.
+# Copying a Windows bin/ or obj/ into the Linux SDK image breaks restore.
+**/bin/
+**/obj/
+**/TestResults/
+artifacts/
+
+.git/
+.vs/
+.idea/
+.claude/
+
+# Never copy local secrets into an image layer.
+.env
+.env.*
+!.env.example
+**/appsettings.Local.json
+
+# Not needed to build or run the API.
+tests/
+docs/
+README.md
+docker-compose*.yml
+Dockerfile
+.dockerignore

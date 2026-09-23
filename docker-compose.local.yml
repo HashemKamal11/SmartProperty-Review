@@ -1,0 +1,13 @@
+# Local development only. Not used on the staging server.
+#
+# Republishes PostgreSQL on the loopback interface so the API can be run from the IDE
+# against the Compose database, which the base file deliberately keeps unpublished.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d postgres
+#
+# Or set COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml in your local .env
+# (which is git-ignored) and keep using plain `docker compose` commands.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"

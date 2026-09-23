@@ -5,8 +5,9 @@ services:
       POSTGRES_DB: smart_property
       POSTGRES_USER: smart_property
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your shell before running Docker Compose}
-    ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    # No host port is published: the database is reachable only from other services on
+    # this project's Compose network, as "postgres:5432". For local development that needs
+    # a host port, add the opt-in docker-compose.local.yml override.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +16,25 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      ASPNETCORE_URLS: http://+:8080
+      # Reaches PostgreSQL over the Compose network by service name, never via the host.
+      ConnectionStrings__Database: Host=postgres;Port=5432;Database=smart_property;Username=smart_property;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your shell before running Docker Compose}
+      Jwt__Issuer: SmartProperty
+      Jwt__Audience: SmartProperty.Api
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in your shell before running Docker Compose}
+    ports:
+      - "${API_PORT:-5000}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
