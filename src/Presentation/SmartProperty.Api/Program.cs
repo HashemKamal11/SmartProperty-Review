@@ -1,5 +1,5 @@
-
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Scalar.AspNetCore;
 using SmartProperty.Api.Infrastructure;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Http;
@@ -8,6 +8,8 @@ using SmartProperty.Persistence;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddOpenApi();
+
 builder.Services.AddApiConventions();
 builder.Services.AddDateTimeProvider();
 builder.Services.AddApiAuthentication(builder.Configuration);
@@ -33,6 +35,11 @@ app.UseExceptionHandler(exceptionHandlerApp =>
     });
 });
 
+if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference();
+}
 // Explicit placement keeps authentication after correlation ID and exception handling;
 // otherwise WebApplication inserts these ahead of all other middleware.
 app.UseAuthentication();
