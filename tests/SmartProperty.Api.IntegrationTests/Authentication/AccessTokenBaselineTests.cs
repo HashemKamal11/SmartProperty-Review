@@ -16,11 +16,17 @@ namespace SmartProperty.Api.IntegrationTests.Authentication;
 /// depends on — chiefly that no role, permission, or workspace claim travels in the token, so authorization can
 /// never be decided from a token alone.
 /// </remarks>
+[Collection(ApiPostgreSqlCollection.Name)]
 public sealed class AccessTokenBaselineTests : IDisposable
 {
     private const string Endpoint = "/__tests__/authorization/platform";
 
-    private readonly SmartPropertyApiFactory _factory = new();
+    private readonly SmartPropertyApiFactory _factory;
+
+    public AccessTokenBaselineTests(ApiPostgreSqlFixture fixture)
+    {
+        _factory = new SmartPropertyApiFactory(fixture);
+    }
 
     public void Dispose()
     {

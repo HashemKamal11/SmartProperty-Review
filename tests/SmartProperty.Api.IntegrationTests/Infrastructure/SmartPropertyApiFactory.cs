@@ -10,7 +10,7 @@ using SmartProperty.Application.Abstractions.Authorization;
 namespace SmartProperty.Api.IntegrationTests.Infrastructure;
 
 /// <summary>
-/// The real API host, started in memory with no database and no developer machine configuration.
+/// The real API host, started in memory with an isolated test database and no developer machine configuration.
 /// </summary>
 /// <remarks>
 /// Everything that decides the outcome of an authentication or authorization test stays production code:
@@ -19,21 +19,20 @@ namespace SmartProperty.Api.IntegrationTests.Infrastructure;
 /// model binding, and JSON serialization. No fake authentication scheme is installed: a test that asserts the
 /// 401 contract has to go through the real bearer handler for that assertion to mean anything.
 ///
-/// Only <see cref="IPermissionChecker"/> is replaced, because it is the one seam that would otherwise reach
-/// PostgreSQL. EF Core stays registered exactly as production registers it, pointed at a connection string
-/// that names no reachable server: <c>AddDbContext</c> opens nothing, and no route these tests exercise runs a
-/// query. The database health check is registered as in production and is never invoked, because
-/// <c>/health/ready</c> is not among the routes under test.
+/// Only <see cref="IPermissionChecker"/> is replaced, because these tests assert the HTTP authentication and
+/// authorization boundary rather than permission graph queries. EF Core stays registered exactly as production
+/// registers it, pointed at the collection fixture's migrated PostgreSQL database.
 /// </remarks>
 internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
 {
-    /// <summary>
-    /// Syntactically valid and deliberately unreachable. Npgsql connects lazily, so this is never dialled;
-    /// it exists only because <c>AddPersistence</c> refuses to start without a connection string.
-    /// </summary>
-    private const string UnreachableConnectionString =
-        "Host=no-such-host.smartproperty.invalid;Database=smartproperty_tests_no_database;" +
-        "Username=tests;Password=tests;Timeout=1";
+    private readonly string databaseConnectionString;
+
+    public SmartPropertyApiFactory(ApiPostgreSqlFixture database)
+    {
+        ArgumentNullException.ThrowIfNull(database);
+
+        databaseConnectionString = database.GetConnectionString();
+    }
 
     public FakePermissionChecker PermissionChecker { get; } = new();
 
@@ -49,7 +48,7 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
             // appsettings.Local file, or an environment variable on the machine running the suite.
             configuration.AddInMemoryCollection(
             [
-                new KeyValuePair<string, string?>("ConnectionStrings:Database", UnreachableConnectionString),
+                new KeyValuePair<string, string?>("ConnectionStrings:Database", databaseConnectionString),
                 .. TestJwt.Configuration()
             ]);
         });

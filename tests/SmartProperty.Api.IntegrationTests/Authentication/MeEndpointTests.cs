@@ -14,11 +14,17 @@ namespace SmartProperty.Api.IntegrationTests.Authentication;
 /// Regression for the first protected production route. Only the unauthenticated paths are covered here: a
 /// successful /me reads a real user row, which belongs to the database-backed tests in STEP 05.7B.
 /// </summary>
+[Collection(ApiPostgreSqlCollection.Name)]
 public sealed class MeEndpointTests : IDisposable
 {
     private const string Endpoint = "/api/auth/me";
 
-    private readonly SmartPropertyApiFactory _factory = new();
+    private readonly SmartPropertyApiFactory _factory;
+
+    public MeEndpointTests(ApiPostgreSqlFixture fixture)
+    {
+        _factory = new SmartPropertyApiFactory(fixture);
+    }
 
     public void Dispose()
     {
@@ -55,8 +61,6 @@ public sealed class MeEndpointTests : IDisposable
     [Fact]
     public async Task AnonymousRequest_IsChallengedBeforeAnythingQueriesTheDatabase()
     {
-        // The test host points EF Core at an unreachable server, so a query before the challenge would surface
-        // as a connection failure — a 500, or a much slower response — rather than the 401 asserted here.
         using var client = _factory.CreateClient();
 
         var response = await client.GetAsync(Endpoint);

@@ -21,11 +21,17 @@ namespace SmartProperty.Api.IntegrationTests.Authorization;
 /// xUnit constructs a new instance per test method, so each test gets its own host and its own
 /// <see cref="FakePermissionChecker"/>. No state crosses tests.
 /// </remarks>
+[Collection(ApiPostgreSqlCollection.Name)]
 public sealed class PermissionEndpointTests : IDisposable
 {
     private const string Endpoint = "/__tests__/authorization/platform";
 
-    private readonly SmartPropertyApiFactory _factory = new();
+    private readonly SmartPropertyApiFactory _factory;
+
+    public PermissionEndpointTests(ApiPostgreSqlFixture fixture)
+    {
+        _factory = new SmartPropertyApiFactory(fixture);
+    }
 
     public void Dispose()
     {

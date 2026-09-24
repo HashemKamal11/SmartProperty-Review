@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -23,6 +24,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\SmartProperty.Application\SmartProperty.Application.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\SmartProperty.Persistence\SmartProperty.Persistence.csproj" />
     <ProjectReference Include="..\..\src\Presentation\SmartProperty.Api\SmartProperty.Api.csproj" />
   </ItemGroup>
 </Project>
