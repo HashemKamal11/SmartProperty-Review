@@ -1,14 +1,56 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using SmartProperty.Api.Infrastructure;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Http;
 using SmartProperty.Persistence;
 
+const string BearerSecuritySchemeName = "Bearer";
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Components ??= new OpenApiComponents();
+        var components = document.Components;
+
+        components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        components.SecuritySchemes[BearerSecuritySchemeName] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.Http,
+            Scheme = JwtBearerDefaults.AuthenticationScheme.ToLowerInvariant(),
+            BearerFormat = "JWT"
+        };
+
+        return Task.CompletedTask;
+    });
+
+    options.AddOperationTransformer((operation, context, _) =>
+    {
+        var metadata = context.Description.ActionDescriptor.EndpointMetadata;
+        var allowsAnonymous = metadata.OfType<IAllowAnonymous>().Any();
+        var requiresAuthorization = metadata.OfType<IAuthorizeData>().Any();
+
+        if (allowsAnonymous || !requiresAuthorization)
+        {
+            return Task.CompletedTask;
+        }
+
+        operation.Security ??= [];
+        operation.Security.Add(new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference(BearerSecuritySchemeName, context.Document)] = []
+        });
+
+        return Task.CompletedTask;
+    });
+});
 
 builder.Services.AddApiConventions();
 builder.Services.AddDateTimeProvider();
