@@ -104,7 +104,11 @@ public sealed class ApiPostgreSqlFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable(name, value);
     }
 
-    private ApplicationDbContext CreateContext()
+    /// <summary>
+    /// A standalone context on the test database, outside the API host's service provider. Test arrangement and
+    /// verification use these so nothing is observed through a context a request under test is also using.
+    /// </summary>
+    public ApplicationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(ConnectionString)
