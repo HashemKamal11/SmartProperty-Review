@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using SmartProperty.Api.Contracts.Authentication;
 using SmartProperty.Domain.Workspaces;
+using SmartProperty.Persistence.Context;
 
 namespace SmartProperty.Api.IntegrationTests.Infrastructure;
 
@@ -14,8 +15,9 @@ namespace SmartProperty.Api.IntegrationTests.Infrastructure;
 /// Every value this produces is unique to the calling test — workspace, email, and refresh token — so the tests
 /// are order-independent on a database they share and never observe another test's rows. Nothing here asserts,
 /// and nothing here reaches around the API: registration and login go through the real HTTP endpoints, and the
-/// only direct database writes are the two things no endpoint can do yet. Creating a workspace has no API, and
-/// activating a user is the workspace-approval workflow that does not exist yet, so both are done through the
+/// only direct database writes are the things an authentication test must not route through another feature.
+/// Creating a workspace has no API, and activating a user is what the workspace approval endpoint does — using
+/// that endpoint here would make every authentication test depend on it — so both are done through the
 /// domain model on a test context rather than by inserting rows.
 /// </remarks>
 internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
@@ -74,12 +76,13 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
 
         var body = (await response.Content.ReadFromJsonAsync<RegisterResponse>())!;
 
-        return new RegisteredUser(body.UserId, email, workspaceId);
+        return new RegisteredUser(body.UserId, email, workspaceId, body.WorkspaceAccessRequestId);
     }
 
     /// <summary>
-    /// A registered user promoted to Active. Registration deliberately produces a Pending user and the approval
-    /// workflow that would activate one is not built yet, so this calls the same domain method that workflow will.
+    /// A registered user promoted to Active. Registration deliberately produces a Pending user, and this calls the
+    /// same domain method the approval workflow calls rather than going through that endpoint — an authentication
+    /// test must not fail because workspace approval broke.
     /// </summary>
     public async Task<RegisteredUser> RegisterActiveUserAsync(HttpClient client)
     {
@@ -133,6 +136,84 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
         return client.PostAsJsonAsync("/api/auth/logout", new LogoutRequest(refreshToken));
     }
 
+    /// <summary>
+    /// Persists a complete platform grant for an existing user: a platform-scoped role carrying
+    /// <paramref name="permissionCode"/>, assigned to that user.
+    /// </summary>
+    /// <remarks>
+    /// Written through the domain constructors on a test context, because nothing but the bootstrap mechanism can
+    /// create a platform role assignment, and a test that wants to prove the bootstrap works must not be the thing
+    /// that arranged the grant. Used by the tests that run against the real persistence-backed permission checker.
+    /// </remarks>
+    public async Task GrantPlatformPermissionAsync(Guid userId, string permissionCode)
+    {
+        await using var context = fixture.CreateContext();
+
+        var role = new Domain.Identity.Role(
+            Guid.NewGuid(),
+            $"Test Platform Role {Guid.NewGuid():n}",
+            Domain.Identity.RoleScope.Platform,
+            workspaceId: null,
+            DateTimeOffset.UtcNow);
+
+        var permission = await EnsurePermissionAsync(context, permissionCode);
+
+        context.Roles.Add(role);
+        context.RolePermissions.Add(new Domain.Identity.RolePermission(role.Id, permission.Id));
+        context.UserPlatformRoles.Add(new Domain.Identity.UserPlatformRole(userId, role.Id));
+
+        await context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Persists the same permission as a <i>workspace</i> grant instead: a membership plus a workspace-scoped role
+    /// carrying it. Nothing about this may satisfy a platform target, which is what the test using it asserts.
+    /// </summary>
+    public async Task GrantWorkspacePermissionAsync(Guid userId, Guid workspaceId, string permissionCode)
+    {
+        await using var context = fixture.CreateContext();
+
+        var membership = new WorkspaceMembership(Guid.NewGuid(), userId, workspaceId, DateTimeOffset.UtcNow);
+        var role = new Domain.Identity.Role(
+            Guid.NewGuid(),
+            $"Test Workspace Role {Guid.NewGuid():n}",
+            Domain.Identity.RoleScope.Workspace,
+            workspaceId,
+            DateTimeOffset.UtcNow);
+
+        var permission = await EnsurePermissionAsync(context, permissionCode);
+
+        context.WorkspaceMemberships.Add(membership);
+        context.Roles.Add(role);
+        context.RolePermissions.Add(new Domain.Identity.RolePermission(role.Id, permission.Id));
+        context.WorkspaceMembershipRoles.Add(
+            new Domain.Workspaces.WorkspaceMembershipRole(membership.Id, role.Id));
+
+        await context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The permission row for this code, created if the shared test database does not have it yet. The code is
+    /// unique, and every test in the collection runs against one database, so it may already exist.
+    /// </summary>
+    private static async Task<Domain.Identity.Permission> EnsurePermissionAsync(
+        ApplicationDbContext context,
+        string permissionCode)
+    {
+        var existing = await context.Permissions
+            .FirstOrDefaultAsync(permission => permission.Code == permissionCode);
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var permission = new Domain.Identity.Permission(Guid.NewGuid(), permissionCode);
+        context.Permissions.Add(permission);
+
+        return permission;
+    }
+
     /// <summary>A client whose requests carry the given access token, which login issued.</summary>
     public static HttpClient Authenticate(HttpClient client, string accessToken)
     {
@@ -145,6 +226,10 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
     }
 }
 
-internal sealed record RegisteredUser(Guid UserId, string Email, Guid WorkspaceId);
+internal sealed record RegisteredUser(
+    Guid UserId,
+    string Email,
+    Guid WorkspaceId,
+    Guid WorkspaceAccessRequestId);
 
 internal sealed record SignedInUser(RegisteredUser User, LoginResponse Tokens);

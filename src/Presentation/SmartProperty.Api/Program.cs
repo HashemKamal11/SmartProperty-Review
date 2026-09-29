@@ -13,6 +13,8 @@ const string BearerSecuritySchemeName = "Bearer";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
+builder.Services.AddApiCors(builder.Configuration);
+
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer((document, _, _) =>
@@ -58,6 +60,7 @@ builder.Services.AddApiAuthentication(builder.Configuration);
 builder.Services.AddApiAuthorization();
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddApplicationHandlers();
+builder.Services.AddPlatformAdminBootstrap(builder.Configuration);
 
 var app = builder.Build();
 
@@ -82,8 +85,9 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
-// Explicit placement keeps authentication after correlation ID and exception handling;
-// otherwise WebApplication inserts these ahead of all other middleware.
+
+app.UseCors(ServiceCollectionExtensions.FrontendCorsPolicyName);
+
 app.UseAuthentication();
 app.UseAuthorization();
 

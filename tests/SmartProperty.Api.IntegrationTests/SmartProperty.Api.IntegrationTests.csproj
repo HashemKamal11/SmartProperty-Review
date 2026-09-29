@@ -24,7 +24,12 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\SmartProperty.Application\SmartProperty.Application.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\SmartProperty.Migrator\SmartProperty.Migrator.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\SmartProperty.Persistence\SmartProperty.Persistence.csproj" />
     <ProjectReference Include="..\..\src\Presentation\SmartProperty.Api\SmartProperty.Api.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The JWT example regression test validates the repository's exact current placeholder. -->
+    <None Include="..\..\.env.example" Link=".env.example" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

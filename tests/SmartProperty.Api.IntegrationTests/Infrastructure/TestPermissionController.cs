@@ -6,8 +6,8 @@ using SmartProperty.Application.Authorization;
 namespace SmartProperty.Api.IntegrationTests.Infrastructure;
 
 /// <summary>
-/// A route that exists only inside the test host, so the permission bridge can be exercised end to end over
-/// real HTTP while no production endpoint applies a <see cref="PermissionRequirement"/> yet.
+/// A route that exists only inside the test host, so the permission bridge itself can be exercised end to end
+/// over real HTTP independently of any production endpoint's route, permission code, or workflow.
 /// </summary>
 /// <remarks>
 /// It lives in the test assembly and reaches the host only through <c>AddApplicationPart</c> in

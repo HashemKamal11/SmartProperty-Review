@@ -9,6 +9,8 @@ using Microsoft.Net.Http.Headers;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Infrastructure.Authentication;
 using SmartProperty.Api.Infrastructure.Authorization;
+using SmartProperty.Api.Infrastructure.Bootstrap;
+using SmartProperty.Api.Infrastructure.Cors;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Time;
 using SmartProperty.Application.Abstractions.Authentication;
@@ -20,13 +22,57 @@ using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
+using SmartProperty.Application.Identity.Bootstrap;
+using SmartProperty.Application.WorkspaceAccessRequests.Approve;
+using SmartProperty.Application.WorkspaceAccessRequests.List;
+using SmartProperty.Application.WorkspaceAccessRequests.Reject;
+using SmartProperty.Common.Pagination;
 
 namespace SmartProperty.Api.Infrastructure;
 
 internal static class ServiceCollectionExtensions
 {
+    internal const string FrontendCorsPolicyName = "Frontend";
+
     // Tolerance for clock drift between token issuer and validator.
     private static readonly TimeSpan AccessTokenClockSkew = TimeSpan.FromSeconds(30);
+
+    public static IServiceCollection AddApiCors(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddOptions<FrontendCorsOptions>()
+            .Bind(configuration.GetSection(FrontendCorsOptions.SectionName))
+            .Validate(
+                options => options.HasOnlyValidOrigins(),
+                $"{FrontendCorsOptions.SectionName}:AllowedOrigins must contain only exact http:// or https:// " +
+                "origins without wildcards, credentials, paths, queries, fragments, or a trailing slash.")
+            .ValidateOnStart();
+
+        services.AddCors();
+        services.AddOptions<Microsoft.AspNetCore.Cors.Infrastructure.CorsOptions>()
+            .Configure<IOptions<FrontendCorsOptions>>((corsOptions, configuredOptions) =>
+            {
+                var allowedOrigins = configuredOptions.Value.GetNormalizedAllowedOrigins();
+
+                corsOptions.AddPolicy(FrontendCorsPolicyName, policy =>
+                {
+                    if (allowedOrigins.Length > 0)
+                    {
+                        policy.WithOrigins(allowedOrigins);
+                    }
+
+                    policy
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                });
+            });
+
+        return services;
+    }
 
     public static IServiceCollection AddApiConventions(this IServiceCollection services)
     {
@@ -201,6 +247,53 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<RefreshCommand, RefreshResult>, RefreshCommandHandler>();
         services.AddScoped<ICommandHandler<LogoutCommand>, LogoutCommandHandler>();
         services.AddScoped<IQueryHandler<GetMeQuery, MeResult>, GetMeQueryHandler>();
+
+        services
+            .AddScoped<ICommandHandler<ApproveWorkspaceAccessRequestCommand, ApproveWorkspaceAccessRequestResult>,
+                ApproveWorkspaceAccessRequestCommandHandler>();
+        services
+            .AddScoped<ICommandHandler<RejectWorkspaceAccessRequestCommand, RejectWorkspaceAccessRequestResult>,
+                RejectWorkspaceAccessRequestCommandHandler>();
+        services
+            .AddScoped<IQueryHandler<GetWorkspaceAccessRequestsQuery, PagedList<WorkspaceAccessRequestListItem>>,
+                GetWorkspaceAccessRequestsQueryHandler>();
+
+        services
+            .AddScoped<ICommandHandler<BootstrapPlatformAdminCommand, BootstrapPlatformAdminResult>,
+                BootstrapPlatformAdminCommandHandler>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Binds the <c>Bootstrap</c> section and registers the one-time platform administrator provisioning that runs
+    /// at startup only when that section explicitly enables it.
+    /// </summary>
+    /// <remarks>
+    /// Registration is unconditional; the behaviour is not. With <c>Bootstrap:Enabled</c> false — the default in
+    /// code and in appsettings.json — the hosted service does nothing at all.
+    ///
+    /// The validation runs through <c>ValidateOnStart</c>, like the <c>Jwt</c> options, so an enabled bootstrap
+    /// missing its email stops the host before it serves a request rather than at the moment it would have run.
+    /// </remarks>
+    public static IServiceCollection AddPlatformAdminBootstrap(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddOptions<BootstrapOptions>()
+            .Bind(configuration.GetSection(BootstrapOptions.SectionName))
+            .Validate(
+                options => options.IsValid(),
+                $"{BootstrapOptions.SectionName} configuration is invalid. When "
+                + $"{BootstrapOptions.SectionName}__Enabled is true, "
+                + $"{BootstrapOptions.SectionName}__PlatformAdminEmail must name an existing registered user. "
+                + "Bootstrap never creates an account, a password, or any other credential.")
+            .ValidateOnStart();
+
+        services.AddHostedService<PlatformAdminBootstrapService>();
 
         return services;
     }

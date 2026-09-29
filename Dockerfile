@@ -14,9 +14,11 @@ COPY src/Core/SmartProperty.Common/SmartProperty.Common.csproj src/Core/SmartPro
 COPY src/Core/SmartProperty.Domain/SmartProperty.Domain.csproj src/Core/SmartProperty.Domain/
 COPY src/Core/SmartProperty.Application/SmartProperty.Application.csproj src/Core/SmartProperty.Application/
 COPY src/Infrastructure/SmartProperty.Persistence/SmartProperty.Persistence.csproj src/Infrastructure/SmartProperty.Persistence/
+COPY src/Infrastructure/SmartProperty.Migrator/SmartProperty.Migrator.csproj src/Infrastructure/SmartProperty.Migrator/
 COPY src/Presentation/SmartProperty.Api/SmartProperty.Api.csproj src/Presentation/SmartProperty.Api/
 
 RUN dotnet restore src/Presentation/SmartProperty.Api/SmartProperty.Api.csproj
+RUN dotnet restore src/Infrastructure/SmartProperty.Migrator/SmartProperty.Migrator.csproj
 
 # Only src/ is copied; tests/ and docs/ never enter the build context of the image.
 COPY src/ src/
@@ -24,12 +26,18 @@ COPY src/ src/
 RUN dotnet publish src/Presentation/SmartProperty.Api/SmartProperty.Api.csproj \
     --configuration Release \
     --no-restore \
-    --output /publish
+    --output /publish/api
+
+RUN dotnet publish src/Infrastructure/SmartProperty.Migrator/SmartProperty.Migrator.csproj \
+    --configuration Release \
+    --no-restore \
+    --output /publish/migrator
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
-WORKDIR /app
+WORKDIR /app/api
 
-COPY --from=build /publish ./
+COPY --from=build /publish/api /app/api
+COPY --from=build /publish/migrator /app/migrator
 
 # APP_UID is defined by the aspnet base image; running as that non-root user is the
 # documented default for .NET containers and works on the unprivileged port 8080.

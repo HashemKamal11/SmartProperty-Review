@@ -1,22 +1,22 @@
 # SmartProperty
 
-SmartProperty is the backend foundation for a multi-workspace property platform. It is an ASP.NET Core API on .NET 10 that follows Clean Architecture and stores data in PostgreSQL through EF Core.
+SmartProperty is the backend foundation for a multi-workspace property platform. It is a .NET 10 modular monolith built with ASP.NET Core, Clean Architecture, PostgreSQL, and EF Core.
 
-The backend currently provides shared API contracts, an identity foundation, the workspace and access model, authentication infrastructure, and five authentication workflows: user registration, login, refresh-token rotation, the current-user endpoint, and logout. Authorization resolves permissions from current persisted data and has a reusable ASP.NET authorization bridge, but no production business endpoint is permission-protected yet.
+The backend currently provides JWT authentication, persisted permission authorization, workspace access-request review, a configuration-gated Platform Admin bootstrap, migration-based database provisioning, configurable fail-closed CORS, health checks, and a Docker Compose deployment chain. The dedicated `SmartProperty.Migrator` applies schema changes and can provision the initial Workspace before the API starts.
 
 ## Current Status
 
 | Area | Status | Notes |
 | --- | --- | --- |
 | API error contract and correlation IDs | Implemented | Standard error body and `X-Correlation-ID` header |
-| Health checks | Implemented | `GET /health/live` and `GET /health/ready` |
+| Health checks | Implemented | `GET /health/live`; readiness requires PostgreSQL connectivity and no pending migrations |
 | User identity (`User`, `UserCredential`) | Implemented | New users start as `Pending` |
-| Workspaces and workspace access requests | Implemented | Workspaces are database records; access requests start as `Pending` |
-| Memberships, roles, and permissions | Data model and resolution | Domain entities, EF Core mappings, repositories, and permission resolution; no workflow assigns them yet |
+| Workspaces and workspace access requests | Implemented | Registration creates a `Pending` request; authorized reviewers can list, approve, or reject it |
+| Memberships, roles, and permissions | Implemented foundation | Approval ensures membership without assigning a workspace role; authorization resolves current persisted grants |
 | Password hashing | Implemented | ASP.NET Core Identity password hasher |
 | JWT access tokens | Implemented | Issued by Login and Refresh; required by `GET /api/auth/me` |
 | Refresh tokens | Implemented | Issued by Login, persisted as hashes, rotated single-use by `POST /api/auth/refresh`, and revoked by `POST /api/auth/logout` |
-| Current user (`ICurrentUser`) | Implemented | Reads the user id from a validated access token; used by `GET /api/auth/me` |
+| Current user (`ICurrentUser`) | Implemented | Reads the user id from a validated access token for Me and review decisions |
 | Commit boundary (`IUnitOfWork`) | Implemented | One save per use case |
 | `POST /api/auth/register` | Implemented | Creates `Pending` users |
 | `POST /api/auth/login` | Implemented | Active users only; returns access and refresh tokens |
@@ -27,16 +27,19 @@ The backend currently provides shared API contracts, an identity foundation, the
 | Logout-all-sessions and device management | Not implemented | |
 | Authorization model and contracts | Implemented | Scopes, permission-check contracts, and rules; see [Authorization Model](docs/authorization-model.md) |
 | Permission resolution (`IPermissionChecker`) | Implemented | Resolves platform and workspace permissions from current persisted data, one query per check |
-| ASP.NET permission authorization bridge | Implemented | `PermissionRequirement` and a resource-based handler over `AuthorizationTarget`; reusable, but unused by any endpoint |
-| Production permission enforcement | Not implemented | No endpoint requires a permission yet |
-| Platform endpoint enforcement | Not implemented | |
+| ASP.NET permission authorization bridge | Implemented | `RequirePermission` protects the production workspace access-request review controller |
+| Production permission enforcement | Implemented for review APIs | Platform permission `workspace.access_requests.review` protects list/approve/reject |
+| Platform endpoint enforcement | Implemented for review APIs | Uses current persisted permission data; JWTs remain identity-only |
 | Workspace endpoint enforcement | Not implemented | |
-| Route/workspace target resolution | Not implemented | A workspace id is never read from a route, query, header, or body |
-| Access request approval and role assignment workflows | Not implemented | |
+| Route/workspace authorization-target resolution | Not implemented | A `workspaceId` filter exists for review, but no request value is yet treated as proof of workspace authorization |
+| Access request review | Implemented | Approval activates a `Pending` user and ensures membership; rejection grants nothing; neither assigns a workspace role |
+| Platform Admin bootstrap | Implemented | Disabled by default; elevates one existing registered user during a deliberate startup run |
+| EF Core migrations and initial Workspace provisioning | Implemented | Dedicated `SmartProperty.Migrator`; see [First Boot](docs/deployment-first-boot.md) |
+| CORS | Implemented | Fail-closed base policy; exact origins supplied by development or deployment configuration |
+| OpenAPI and Scalar | Development/Staging | Mapped only when the host environment is `Development` or `Staging` |
 | Password policy, email verification, and rate limiting | Not implemented | |
 | MFA, password reset, and account lockout | Not implemented | |
-| EF Core migrations and seed data | Not implemented | See [Database Schema](#3-database-schema) |
-| Automated tests | Implemented foundation | Permanent unit, API integration, and PostgreSQL persistence/concurrency suites. See [Testing Strategy](docs/testing-strategy.md) |
+| Automated tests | Implemented | Unit, API integration, and PostgreSQL persistence/concurrency/deployment suites. See [Testing Strategy](docs/testing-strategy.md) |
 
 ## Architecture
 
@@ -48,6 +51,7 @@ The solution follows Clean Architecture. The inner layers do not depend on web, 
 | `SmartProperty.Common` | Shared `Result` and `Error` types and pagination primitives. No framework dependencies. |
 | `SmartProperty.Application` | Abstractions (repositories, `IUnitOfWork`, `IPasswordHasher`, `ITokenProvider`, `ICurrentUser`, `IDateTimeProvider`), command and query contracts, and use cases. No EF Core, ASP.NET Core, or JWT dependencies. |
 | `SmartProperty.Persistence` | EF Core with PostgreSQL (Npgsql): `ApplicationDbContext`, entity configurations, repositories, `UnitOfWork`, permission resolution (`IPermissionChecker`), the database health check, and translation of recognized PostgreSQL unique-constraint violations and refresh-token concurrency conflicts into provider-neutral exceptions. |
+| `SmartProperty.Migrator` | Short-lived deployment process that applies pending migrations, verifies the database is current, and optionally provisions the initial Workspace. |
 | `SmartProperty.Api` | ASP.NET Core host: controllers and HTTP DTOs, JWT Bearer authentication, the permission authorization requirement and handler, error mapping, correlation IDs, health endpoints, and the dependency injection composition root. |
 
 Project references:
@@ -57,10 +61,11 @@ Common       -> no project dependencies
 Domain       -> no project dependencies
 Application  -> Common, Domain
 Persistence  -> Application, Domain
+Migrator     -> Application, Domain, Persistence
 Api          -> Application, Persistence
 ```
 
-Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Registration, Login, Refresh, Logout, and Me are the only use cases so far; Me is the first query handler, and handlers are registered explicitly in the API.
+Commands and queries use the project's own messaging interfaces (`ICommand`, `ICommandHandler`, `IQuery`, `IQueryHandler`); MediatR is not used. Authentication, workspace access-request review, and Platform Admin bootstrap handlers are registered explicitly at the composition root.
 
 ```text
 SmartProperty/
@@ -71,7 +76,8 @@ SmartProperty/
 │   │   ├── SmartProperty.Domain/      Identity/, Workspaces/
 │   │   └── SmartProperty.Application/ Abstractions/, Authentication/Register/, Authentication/Login/, Authentication/Refresh/, Authentication/Logout/, Authentication/Me/, Authorization/
 │   ├── Infrastructure/
-│   │   └── SmartProperty.Persistence/ Authorization/, Configurations/, Context/, Health/, Repositories/
+│   │   ├── SmartProperty.Persistence/ Authorization/, Configurations/, Context/, Health/, Migrations/, Repositories/
+│   │   └── SmartProperty.Migrator/    Migration and initial-Workspace deployment process
 │   └── Presentation/
 │       └── SmartProperty.Api/         Contracts/, Controllers/, Infrastructure/ (Authentication/, Authorization/, Errors/, Http/, Time/)
 ├── tests/
@@ -80,7 +86,7 @@ SmartProperty/
 │   └── SmartProperty.Persistence.IntegrationTests/ Infrastructure/, Persistence/, Concurrency/, Authorization/
 ├── Directory.Build.props              Shared build settings
 ├── Directory.Packages.props           Central package versions
-├── docker-compose.yml                 Local PostgreSQL
+├── docker-compose.yml                 PostgreSQL -> Migrator -> API deployment chain
 ├── global.json                        .NET SDK version
 └── SmartProperty.sln
 ```
@@ -105,9 +111,9 @@ SmartProperty/
 | Microsoft.NET.Test.Sdk | `17.14.1` | `Directory.Packages.props` (test projects only) |
 | Microsoft.AspNetCore.Mvc.Testing | `10.0.11` | `Directory.Packages.props` (test projects only) |
 | Microsoft.Extensions.Configuration | `10.0.11` | `Directory.Packages.props` (test projects only) |
-| Testcontainers.PostgreSql | `4.15.0` | `Directory.Packages.props` (persistence integration tests only) |
+| Testcontainers.PostgreSql | `4.15.0` | `Directory.Packages.props` (API and persistence integration tests) |
 | PostgreSQL for local development | `postgres:17` image | `docker-compose.yml` |
-| PostgreSQL for persistence integration tests | `postgres:17` image, started and removed by Testcontainers | `tests/SmartProperty.Persistence.IntegrationTests` |
+| PostgreSQL for integration tests | `postgres:17` image, started and removed by Testcontainers | API and persistence integration-test projects |
 
 All projects enable nullable reference types and build with warnings treated as errors.
 
@@ -116,7 +122,7 @@ All projects enable nullable reference types and build with warnings treated as 
 ### Prerequisites
 
 - .NET SDK 10.0 (`10.0.100` or later, see `global.json`)
-- A PostgreSQL database. The repository's `docker-compose.yml` can run one locally with Docker.
+- Docker for the Compose deployment and PostgreSQL-backed integration suites, or another PostgreSQL instance for direct API development.
 
 ### 1. Configure Settings
 
@@ -158,26 +164,22 @@ $env:Jwt__SigningKey = "<strong-local-development-key>"
 $env:ConnectionStrings__Database = "Host=localhost;Port=5432;Database=smart_property;Username=smart_property;Password=<local-postgres-password>"
 ```
 
-### 2. Start PostgreSQL (Optional)
+### 2. Start PostgreSQL for IDE Development (Optional)
 
-`docker-compose.yml` defines a PostgreSQL 17 database named `smart_property`, owned by user `smart_property` and bound to `127.0.0.1` on port `5432` (set `POSTGRES_PORT` to change it). The compose file requires `POSTGRES_PASSWORD`:
+The base `docker-compose.yml` keeps PostgreSQL private to the Compose network. The local-only override publishes it on `127.0.0.1` (set `POSTGRES_PORT` to change the default `5432`). The compose file requires `POSTGRES_PASSWORD`:
 
 ```powershell
 $env:POSTGRES_PASSWORD = "<local-postgres-password>"
-docker compose up -d --wait
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --wait postgres
 ```
 
 Use the same password in `ConnectionStrings:Database`.
 
-### 3. Database Schema
+### 3. Database Schema and First Boot
 
-The EF Core model and entity configurations exist, but **no migrations are committed and no seed data exists**. The repository does not yet provide a command that creates the schema or adds workspaces.
+EF Core migrations are committed and owned by the dedicated `SmartProperty.Migrator`; normal API processes never apply them. In the Compose deployment, PostgreSQL becomes healthy first, the one-shot migrator applies and verifies migrations and optionally provisions the initial Workspace, and the API starts only after the migrator succeeds.
 
-As a result:
-
-- The API starts, and `/health/ready` reports `Healthy` as long as the database accepts connections. Readiness does not check tables.
-- Registration needs the tables defined by the EF Core model (in the `identity` and `platform` schemas) and at least one row in `platform.workspaces`. Against an empty database, `POST /api/auth/register` returns `500`, although validation (`422`) and malformed-request (`400`) errors still work. Login needs the same tables, and `POST /api/auth/login` also returns `500` against an empty database once validation passes.
-- Until migrations and seed data are added, the schema and workspace data must be prepared manually.
+Use one migrator per database and do not prepare the schema or bootstrap access with manual write SQL. The supported environment setup, initial Workspace provisioning, administrator registration, one-time Platform Admin bootstrap, and shutdown of bootstrap are documented in [Fresh Environment Deployment and First Boot](docs/deployment-first-boot.md).
 
 ### 4. Build and Run
 
@@ -194,9 +196,9 @@ dotnet run --project src/Presentation/SmartProperty.Api/SmartProperty.Api.csproj
 | Endpoint | What it checks | Response |
 | --- | --- | --- |
 | `GET /health/live` | Only that the API process responds | `200` `Healthy` |
-| `GET /health/ready` | That the database accepts a connection (5-second timeout) | `200` `Healthy`, or `503` `Unhealthy` when the database cannot be reached |
+| `GET /health/ready` | Database connectivity and absence of pending EF migrations | `200` `Healthy`, or `503` `Unhealthy` when either check fails |
 
-Both endpoints return plain text and require no authentication. Readiness does not verify the schema.
+Both endpoints return plain text and require no authentication. Readiness fails closed when the database cannot be checked or its migration state is not current.
 
 ## API Error Contract
 
@@ -222,7 +224,7 @@ See [docs/api-contract-standard.md](docs/api-contract-standard.md) for the full 
 
 ## Registration API
 
-`POST /api/auth/register` registers a new user. It is anonymous and is currently the only business endpoint.
+`POST /api/auth/register` registers a new user. It is anonymous.
 
 Request, sent with `Content-Type: application/json`:
 
@@ -459,7 +461,7 @@ Note that `403 authentication.account_unavailable` is a different thing: it mean
 
 ## Authentication Infrastructure
 
-Login issues access and refresh tokens (see [Login API](#login-api)), Refresh rotates them (see [Refresh API](#refresh-api)), and `GET /api/auth/me` (see [Me API](#me-api)) is the first endpoint that requires one. Role/permission modeling, persisted permission resolution, and the reusable ASP.NET authorization bridge are implemented; production endpoint permission enforcement remains pending.
+Login issues access and refresh tokens (see [Login API](#login-api)), Refresh rotates them (see [Refresh API](#refresh-api)), and `GET /api/auth/me` (see [Me API](#me-api)) requires an access token. Persisted permission resolution and the ASP.NET authorization bridge protect the workspace access-request review endpoints with `workspace.access_requests.review`.
 
 - **Password hashing:** ASP.NET Core Identity's `PasswordHasher<TUser>` (PBKDF2 with a per-password salt). Only the hasher is used, not Identity's stores, managers, or tables.
 - **JWT Bearer validation:** tokens must be signed with HS256 using `Jwt:SigningKey` and pass signature, issuer, audience, and lifetime validation, with 30 seconds of allowed clock skew.
@@ -475,8 +477,9 @@ See [docs/authentication-model.md](docs/authentication-model.md) for details.
 - Workspaces are data in `platform.workspaces`, not enum values.
 - A user can be a member of several workspaces and can hold several roles within a workspace.
 - Selecting a workspace during registration only creates a `Pending` access request; it grants no access.
-- Approving requests, creating memberships, and assigning roles are future workflows. The domain model can approve or reject a request, but no use case or endpoint does so yet.
-- Membership in a workspace named Admin Workspace grants no platform-wide admin rights. Platform Admin access will require an explicit platform role.
+- An authorized reviewer can list pending requests and approve or reject them. Approval activates a `Pending` user and ensures a `WorkspaceMembership`; rejection grants nothing.
+- Approval does not assign a workspace role. Membership and role assignment remain separate grants.
+- Membership in a workspace named Admin Workspace grants no platform-wide admin rights. Platform Admin access requires an explicit platform role and persisted permission assignment.
 
 See [docs/identity-access-model.md](docs/identity-access-model.md) for details.
 
@@ -487,60 +490,54 @@ Available now:
 | Endpoint | Notes |
 | --- | --- |
 | `GET /health/live` | Responds whenever the API is running. |
-| `GET /health/ready` | Returns `200` only when the database is reachable. |
+| `GET /health/ready` | Returns `200` only when the database is reachable and has no pending migrations. |
 | `POST /api/auth/register` | Needs the database schema and an existing workspace id. |
 | `POST /api/auth/login` | Needs the database schema and an `Active` user. Frontend and QA can test sign-in with it. |
 | `POST /api/auth/refresh` | Needs a refresh token from a login or an earlier refresh. Frontend and QA can test session renewal with it. |
 | `GET /api/auth/me` | Needs an access token from a login or refresh. Frontend and QA can test the protected-endpoint flow with it. |
 | `POST /api/auth/logout` | Needs a refresh token. Frontend and QA can test sign-out with it; remember that the access token stays valid until it expires. |
+| `GET /api/admin/workspace-access-requests` | Permission-protected, paginated review queue; defaults to `Pending`. |
+| `POST /api/admin/workspace-access-requests/{id}/approve` | Activates a `Pending` applicant and ensures membership; assigns no workspace role. |
+| `POST /api/admin/workspace-access-requests/{id}/reject` | Records rejection without activation, membership, or role assignment. |
 
-Not available yet: access request approval and any screen that depends on authorization. Routes for those features do not exist yet.
+Workspace-scoped endpoint authorization remains deferred; the implemented review APIs use a platform-scoped permission.
 
 Integration notes:
 
-- There is no endpoint for listing workspaces yet, so a workspace id must be taken from the database.
-- No CORS policy is configured, so browsers block calls from a frontend served on a different origin.
-- There is no Swagger or OpenAPI UI.
+- There is no general endpoint for listing workspaces yet. First-boot deployments use the configured stable initial Workspace id.
+- CORS is fail-closed when no origins are configured. Development supplies local frontend origins; deployments supply exact origins through configuration. The policy uses neither `AllowAnyOrigin` nor credentials, and empty origins do not affect server-to-server requests.
+- OpenAPI and Scalar are mapped in `Development` and `Staging`, and are absent in other environments under the current `Program.cs` check. This is an exposure fact, not a production-safety claim.
 - JSON property names are camelCase, and identifiers are GUID strings.
-- Registered users stay `Pending`; the API cannot activate them yet, so Login returns `403` for them. To test a successful login, set the user's `status` to `Active` in `identity.users` in a local or test database.
+- Registered users stay `Pending` until an authorized reviewer approves their access request or the deliberate one-time Platform Admin bootstrap activates the intended existing account. Do not activate users with manual write SQL.
 
 ## Testing
 
-Permanent automated tests are implemented as a foundation. Run them with:
+Run the permanent suite with:
 
 ```bash
 dotnet build SmartProperty.sln --configuration Release
 dotnet test SmartProperty.sln --configuration Release --no-build
 ```
 
-A working Docker daemon is required, and only by `tests/SmartProperty.Persistence.IntegrationTests`. The other
-two projects run entirely in process on a clean checkout, with no database, User Secret, or environment
-variable.
+A working Docker daemon is required by both integration-test projects. Each owns an isolated ephemeral
+PostgreSQL 17 container through Testcontainers; neither reads developer connection strings, User Secrets, or a
+local database. Unit tests remain entirely in process.
 
 | Project | Owns |
 | --- | --- |
-| `tests/SmartProperty.UnitTests` | Domain invariants, the Application authorization contracts, and the Login, Refresh, Logout, and Me handlers against hand-written test doubles. |
-| `tests/SmartProperty.Api.IntegrationTests` | The real ASP.NET Core host over `WebApplicationFactory<Program>`: JWT Bearer authentication, the permission authorization bridge, the standardized `401` and `403` bodies, and correlation IDs. |
-| `tests/SmartProperty.Persistence.IntegrationTests` | The real `ApplicationDbContext` over the real Npgsql provider against real PostgreSQL: schema creation, constraints, repository round trips, the unit of work, refresh-token optimistic concurrency, same-token refresh and refresh/logout races, and `PermissionChecker` resolution against persisted access state. |
+| `tests/SmartProperty.UnitTests` | Domain invariants and Application handlers for authentication, authorization contracts, pagination, workspace review, and Platform Admin bootstrap. |
+| `tests/SmartProperty.Api.IntegrationTests` | The production ASP.NET Core pipeline plus real PostgreSQL for authentication, authorization, review endpoints, CORS/configuration, readiness, migrations, fresh-environment deployment, and migrator composition. |
+| `tests/SmartProperty.Persistence.IntegrationTests` | The real EF/Npgsql persistence boundary: schema and migration checks, constraints, repositories, permission resolution, and refresh/review/bootstrap concurrency. |
 
-### The persistence suite and Docker
+### Integration suites and Docker
 
-`tests/SmartProperty.Persistence.IntegrationTests` runs against an **ephemeral PostgreSQL 17 container that
-Testcontainers starts and removes for the run** — a random host port, no named volume, no bind mount, no fixed
-`5432` mapping, and credentials generated on the spot.
+Both integration projects run **ephemeral PostgreSQL 17 containers that Testcontainers starts and removes**.
+They use random host ports, no named volumes or bind mounts, and generated test credentials. They do not reuse
+the Compose database or any developer database. If Docker is unavailable, the integration suites fail rather
+than falling back to EF Core InMemory, SQLite, or local state.
 
-It does **not** use the development database. It never reads a connection string from configuration, User
-Secrets, an environment variable, or `localhost`; it never reuses, reconfigures, or removes any container,
-volume, or network that already exists; and it issues no `docker` command of its own. Running it leaves the
-`docker-compose.yml` PostgreSQL untouched.
-
-Each test gets its own database on that one container, copied from a template built once with
-`Database.EnsureCreated()` against the current EF model. That verifies the model works on PostgreSQL. It
-verifies nothing about production migrations, upgrade paths, rollback, migration ordering, or the operational
-safety of a schema change — the repository has no migrations, and this suite adds none.
-
-If Docker is unavailable the persistence project fails. It never falls back to EF Core InMemory, to SQLite, or
-to a local database.
+The persistence suite covers both current-model behavior and the committed migration path. The API suite uses
+real migrations for endpoint, readiness, migrator, and fresh-environment deployment scenarios.
 
 Current permanent coverage:
 
@@ -562,28 +559,25 @@ Current permanent coverage:
 - `PermissionChecker` against persisted access state: platform and workspace grants, workspace isolation,
   platform/workspace scope isolation, non-active users, exact-case permission codes, one database command per
   check, and an infrastructure failure propagating instead of becoming a denial.
+- Workspace access-request listing and review, including concurrent reviewers and membership uniqueness
+  recovery.
+- Configuration and deployment coverage for CORS, JWT example validation, migrations, readiness, initial
+  Workspace provisioning, fresh environments, and migrator composition.
+- Platform Admin bootstrap behavior and database-wide concurrency serialization.
 
-Still deferred:
-
-- Migration-backed schema tests and the migration lifecycle. No migrations exist yet.
-- Full end-to-end business flows over HTTP against a real database.
-
-This is a foundation, not full coverage, and not a security-coverage or production-readiness claim. See
-[Testing Strategy](docs/testing-strategy.md).
+This is not a claim of exhaustive business or security coverage. See [Testing Strategy](docs/testing-strategy.md).
 
 ## Known Limitations
 
 These are planned work items, not defects in the implemented features.
 
-- EF Core migrations and seed data are pending, so the database must be prepared manually.
 - No password strength policy has been decided; passwords are only required and limited to 128 characters.
 - Email verification is pending.
 - Rate limiting is pending.
 - Logout revokes only the refresh token presented to it. A user's other sessions stay active, there is no logout-all or device management, and an access token issued before logout keeps working until it expires. Refresh likewise rotates one token at a time, and a replayed token does not revoke the tokens issued after it (refresh-token families are not implemented).
-- The standardized `403 authorization.forbidden` response exists and the permission bridge produces it correctly, but no production endpoint applies a `PermissionRequirement`, so nothing returns it in practice. A reusable bridge is not a protected API.
 - Login performs one password verification on every rejected attempt, including an unknown email and a missing credential, so response time no longer reveals whether an email is registered. This is timing hardening, not a constant-time guarantee: a corrupted stored hash can still fail faster, and registration still reveals a taken email through `409`. Rate limiting and account lockout are pending.
-- Authorization has a documented model, framework-neutral contracts, a persistence resolver that answers permission questions from current data — including the active-user rule and platform/workspace isolation — and a reusable ASP.NET requirement and handler that call it. What is missing is the last step: no production endpoint declares a permission, and no workspace id is extracted from a route. See [Authorization Model](docs/authorization-model.md).
-- Authentication is enforced on `GET /api/auth/me` only. Its JWT Bearer `401` challenge and `403` authorization responses already use the standard error body, and presented-token logout is implemented at `POST /api/auth/logout`; logout-all, device and session management, and the broader role, permission, and workspace authorization remain pending.
+- Platform permission enforcement is live on workspace access-request review. Workspace-scoped route-to-target authorization is still deferred. See [Authorization Model](docs/authorization-model.md).
+- Authentication protects `GET /api/auth/me` and all workspace access-request review routes. Presented-token logout is implemented; logout-all, device, and session management remain pending.
 - `405 Method Not Allowed` responses (empty body) and `415 Unsupported Media Type` responses (framework `ProblemDetails` body) do not use the standard error contract yet.
 - Validation errors do not return structured `fieldErrors` yet.
 
@@ -598,7 +592,7 @@ These are planned work items, not defects in the implemented features.
 - Login returns the same `401` response for an unknown email, a wrong password, or an unusable stored credential, and checks the account status only after the password is verified.
 - API error responses do not include stack traces, SQL, or database constraint names. Those details go only to server logs.
 - PostgreSQL-specific details, such as error codes and constraint names, stay inside `SmartProperty.Persistence`.
-- The backend is not yet production-ready from a security standpoint: authorization, rate limiting, email verification, and a password policy are still pending.
+- Platform permission authorization is implemented for workspace access-request review. Broader workspace authorization, rate limiting, email verification, and a password policy remain pending.
 
 ## Documentation
 
@@ -607,5 +601,6 @@ These are planned work items, not defects in the implemented features.
 | [API Contract Standard](docs/api-contract-standard.md) | Shared HTTP conventions: identifiers, dates, pagination, errors, status codes, and correlation IDs. |
 | [Identity Access Model](docs/identity-access-model.md) | Workspaces, memberships, roles, permissions, and the access request flow. |
 | [Authentication Model](docs/authentication-model.md) | Credentials, password hashing, tokens, configuration, the commit boundary, registration, and login. |
-| [Authorization Model](docs/authorization-model.md) | Authorization scopes, permission contracts, role-to-permission paths, fail-closed rules, how permission resolution queries them, and the ASP.NET authorization bridge. No endpoint enforcement yet. |
-| [Testing Strategy](docs/testing-strategy.md) | What each test project owns, which one needs Docker and what it is not allowed to touch, what `EnsureCreated` does and does not prove, and which coverage is still deferred. |
+| [Authorization Model](docs/authorization-model.md) | Authorization scopes, persisted permission resolution, protected review routes, Platform Admin bootstrap, and concurrent-review behavior. |
+| [Testing Strategy](docs/testing-strategy.md) | What each test project owns, Docker/Testcontainers isolation, and current coverage. |
+| [Fresh Environment Deployment and First Boot](docs/deployment-first-boot.md) | Supported migrations, initial Workspace provisioning, one-time Platform Admin bootstrap, and post-bootstrap shutdown procedure. |

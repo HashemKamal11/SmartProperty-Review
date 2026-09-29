@@ -13,7 +13,7 @@ public sealed class PagedList<T>
     public long TotalCount { get; }
     public int TotalPages { get; }
     public bool HasPreviousPage => PageNumber > 1;
-    public bool HasNextPage => PageNumber < TotalPages;
+    public bool HasNextPage => PageNumber < TotalPages && PageNumber < PageParameters.MaxPageNumber;
 
     private PagedList(IReadOnlyList<T> items, int pageNumber, int pageSize, long totalCount)
     {
@@ -30,6 +30,7 @@ public sealed class PagedList<T>
         if (totalCount < 0) throw new ArgumentOutOfRangeException(nameof(totalCount), "totalCount must be >= 0");
 
         if (pageNumber < 1) pageNumber = 1;
+        if (pageNumber > PageParameters.MaxPageNumber) pageNumber = PageParameters.MaxPageNumber;
         if (pageSize < 1) pageSize = 1;
         if (pageSize > PageParameters.MaxPageSize) pageSize = PageParameters.MaxPageSize;
 

@@ -10,5 +10,10 @@ public enum PersistenceResource
     /// <summary>
     /// A refresh token row whose revocation state changed between loading it and saving the rotation.
     /// </summary>
-    RefreshToken = 1
+    RefreshToken = 1,
+
+    /// <summary>
+    /// A workspace access request whose review status changed between loading it and saving a terminal decision.
+    /// </summary>
+    WorkspaceAccessRequest = 2
 }

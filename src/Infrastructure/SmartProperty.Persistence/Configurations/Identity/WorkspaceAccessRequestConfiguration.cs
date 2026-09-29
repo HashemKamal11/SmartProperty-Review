@@ -38,7 +38,8 @@ internal sealed class WorkspaceAccessRequestConfiguration : IEntityTypeConfigura
             .HasColumnName("status")
             .HasConversion<string>()
             .HasMaxLength(32)
-            .IsRequired();
+            .IsRequired()
+            .IsConcurrencyToken();
 
         builder.Property(accessRequest => accessRequest.RequestedAt)
             .HasColumnName("requested_at")

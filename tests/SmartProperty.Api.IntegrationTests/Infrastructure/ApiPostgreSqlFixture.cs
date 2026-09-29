@@ -38,6 +38,40 @@ public sealed class ApiPostgreSqlFixture : IAsyncLifetime
         return ConnectionString;
     }
 
+    /// <summary>Creates a connectable database with no schema or migration history.</summary>
+    public async Task<string> CreateBlankDatabaseAsync()
+    {
+        await EnsureInitializedAsync();
+
+        var databaseName = $"sp_api_blank_{Guid.NewGuid():n}";
+
+        await using var connection = new NpgsqlConnection(container.GetConnectionString());
+        await connection.OpenAsync();
+
+        await using var command = new NpgsqlCommand($"""CREATE DATABASE "{databaseName}";""", connection);
+        await command.ExecuteNonQueryAsync();
+
+        return new NpgsqlConnectionStringBuilder(container.GetConnectionString())
+        {
+            Database = databaseName,
+            MaxPoolSize = 16
+        }.ConnectionString;
+    }
+
+    /// <summary>A valid server endpoint naming a database that does not exist.</summary>
+    public string BuildMissingDatabaseConnectionString()
+    {
+        EnsureInitializedAsync().GetAwaiter().GetResult();
+
+        return new NpgsqlConnectionStringBuilder(container.GetConnectionString())
+        {
+            Database = $"sp_api_absent_{Guid.NewGuid():n}",
+            MaxPoolSize = 4,
+            Timeout = 2,
+            CommandTimeout = 2
+        }.ConnectionString;
+    }
+
     private async Task EnsureInitializedAsync()
     {
         if (initialized)
@@ -110,8 +144,14 @@ public sealed class ApiPostgreSqlFixture : IAsyncLifetime
     /// </summary>
     public ApplicationDbContext CreateContext()
     {
+        return CreateContext(ConnectionString);
+    }
+
+    /// <summary>A standalone context for another test-owned database on the same disposable server.</summary>
+    public static ApplicationDbContext CreateContext(string connectionString)
+    {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseNpgsql(ConnectionString)
+            .UseNpgsql(connectionString)
             .Options;
 
         return new ApplicationDbContext(options);

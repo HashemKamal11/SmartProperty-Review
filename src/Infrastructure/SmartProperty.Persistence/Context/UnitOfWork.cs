@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.Workspaces;
 using SmartProperty.Persistence.Configurations.Identity;
 
 namespace SmartProperty.Persistence.Context;
@@ -14,9 +15,9 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
         {
             return await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateConcurrencyException exception) when (IsRefreshTokenConflict(exception))
+        catch (DbUpdateConcurrencyException exception) when (GetConcurrencyResource(exception) is { } resource)
         {
-            throw new ConcurrencyConflictException(PersistenceResource.RefreshToken, exception);
+            throw new ConcurrencyConflictException(resource, exception);
         }
         catch (DbUpdateException exception) when (GetRecognizedUniqueConstraint(exception) is { } constraint)
         {
@@ -24,25 +25,55 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
         }
     }
 
-    // Recognizes the conflict from EF's own metadata for the rows that failed, never from message text. Only a
-    // conflict whose failed entries are all refresh tokens is translated; a conflict involving any other entity
-    // type does not match the catch filter and propagates unchanged as an unexpected failure.
-    private static bool IsRefreshTokenConflict(DbUpdateConcurrencyException exception)
+    public void DiscardTrackedChanges()
     {
-        return exception.Entries.Count > 0
-            && exception.Entries.All(entry => entry.Metadata.ClrType == typeof(RefreshToken));
+        dbContext.ChangeTracker.Clear();
+    }
+
+    // Recognizes conflicts from EF's entry metadata, never from message text. A mixed or unknown set of failed
+    // entries remains unexpected and propagates unchanged.
+    private static PersistenceResource? GetConcurrencyResource(DbUpdateConcurrencyException exception)
+    {
+        if (exception.Entries.Count == 0)
+        {
+            return null;
+        }
+
+        var entityType = exception.Entries[0].Metadata.ClrType;
+
+        if (exception.Entries.Any(entry => entry.Metadata.ClrType != entityType))
+        {
+            return null;
+        }
+
+        if (entityType == typeof(RefreshToken))
+        {
+            return PersistenceResource.RefreshToken;
+        }
+
+        return entityType == typeof(WorkspaceAccessRequest)
+            ? PersistenceResource.WorkspaceAccessRequest
+            : null;
     }
 
     // Recognizes a violation from the provider's SQLSTATE and constraint name, never from message text.
     // Unrecognized failures do not match the catch filter, so they propagate unchanged.
     private static PersistenceConstraint? GetRecognizedUniqueConstraint(DbUpdateException exception)
     {
-        var isUserEmailViolation = exception.InnerException is PostgresException
+        if (exception.InnerException is not PostgresException
         {
-            SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: UserConfiguration.EmailUniqueIndexName
-        };
+            SqlState: PostgresErrorCodes.UniqueViolation
+        } postgresException)
+        {
+            return null;
+        }
 
-        return isUserEmailViolation ? PersistenceConstraint.UserEmail : null;
+        return postgresException.ConstraintName switch
+        {
+            UserConfiguration.EmailUniqueIndexName => PersistenceConstraint.UserEmail,
+            WorkspaceMembershipConfiguration.UserWorkspaceUniqueIndexName =>
+                PersistenceConstraint.WorkspaceMembershipUserWorkspace,
+            _ => null
+        };
     }
 }

@@ -1,6 +1,6 @@
 # Authentication Model
 
-This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, the Step 05.5E refresh-token rotation use case, the Step 05.5F Me use case with standardized protected-endpoint responses, and the Step 05.5G logout use case. Authorization has its own infrastructure and its own document; no production endpoint is permission-protected yet. See [authorization-model.md](authorization-model.md).
+This document records the Step 05.4 authentication infrastructure foundation, the Step 05.5B registration use case, the Step 05.5D login use case, the Step 05.5E refresh-token rotation use case, the Step 05.5F Me use case with standardized protected-endpoint responses, and the Step 05.5G logout use case. Authorization has its own infrastructure and its own document, and the workspace access request review endpoints are now permission-protected. See [authorization-model.md](authorization-model.md).
 
 ## Architecture
 
@@ -10,7 +10,7 @@ SmartProperty uses custom authentication built on its own identity model:
 - Opaque refresh tokens, persisted only as hashes.
 - The existing custom `User` model. ASP.NET Core Identity users, stores, managers, and schema are not used.
 
-Authentication identifies the caller. Authorization (roles, permissions, workspace access) is a separate concern with its own contracts, persisted permission resolution, and ASP.NET requirement and handler — none of which this document covers, and none of which any production endpoint applies yet. See [authorization-model.md](authorization-model.md).
+Authentication identifies the caller. Authorization (roles, permissions, workspace access) is a separate concern with its own contracts, persisted permission resolution, and ASP.NET requirement and handler. The production workspace access-request review endpoints apply that authorization path; see [authorization-model.md](authorization-model.md).
 
 ```text
 Application (framework-independent)
@@ -33,7 +33,7 @@ Persistence
 
 - `ICurrentUser` is implemented at the API boundary by `CurrentUser`. No other current-user abstraction exists.
 - `IDateTimeProvider` is implemented by `DateTimeProvider` and returns `DateTimeOffset.UtcNow`. The token provider uses it for issued-at and expiration times.
-- `Result`, `Error`, and the CQRS interfaces are unchanged and will be used by the future authentication use cases.
+- `Result`, `Error`, and the CQRS interfaces are shared by the implemented authentication use cases.
 
 ## Current User
 
@@ -79,7 +79,7 @@ The hasher enforces no password policy.
 
 - Format: JWT signed with HMAC-SHA256 (`HS256`), issued with `JsonWebTokenHandler`. JWT signing is not implemented manually.
 - Claims: `sub` (User Id), `jti` (unique token id), and the standard `iss`, `aud`, `iat`, `nbf`, `exp`.
-- No role, permission, platform role, or workspace membership claims are emitted. The claims strategy will be designed with authorization.
+- No role, permission, platform role, or workspace membership claims are emitted. Authorization deliberately resolves current persisted grants instead.
 - The token provider makes no authorization decisions and performs no repository lookups.
 
 Validation (JWT Bearer) requires:
@@ -140,19 +140,23 @@ or the environment variable:
 Jwt__SigningKey=<random value>
 ```
 
-Production values come from secure deployment configuration.
+Production values come from secure deployment configuration. The committed `.env.example` value is deliberately
+too short to satisfy startup validation and must be replaced. Compose checks that the variable is present; the
+application validates its quality. The supported sequence is documented in
+[deployment-first-boot.md](deployment-first-boot.md).
 
 ## Pipeline
 
 ```text
 CorrelationIdMiddleware
 UseExceptionHandler
+UseCors (named fail-closed frontend policy)
 UseAuthentication
 UseAuthorization
 MapControllers / health endpoints
 ```
 
-`UseAuthentication` and `UseAuthorization` are called explicitly. Otherwise `WebApplication` automatically inserts them ahead of all application middleware, before the correlation ID and exception handling. The permission authorization handler is registered (see [authorization-model.md](authorization-model.md)), but no production endpoint declares a permission requirement, so `UseAuthorization` currently enforces only `[Authorize]`. Health endpoints remain anonymous.
+`UseAuthentication` and `UseAuthorization` are called explicitly. Otherwise `WebApplication` automatically inserts them ahead of all application middleware, before the correlation ID and exception handling. `UseAuthorization` enforces `[Authorize]` and, through `RequirePermission`, the authentication half of a permission-protected route; the permission itself is checked by an MVC authorization filter that runs afterwards (see [authorization-model.md](authorization-model.md)). Health endpoints remain anonymous.
 
 ## User Status Rule
 
@@ -188,9 +192,9 @@ A successful registration tracks three entities and commits them with one `IUnit
 - its `UserCredential`, holding only the hash returned by `IPasswordHasher`. The password is hashed exactly as sent and is never persisted or returned.
 - one `WorkspaceAccessRequest` with status `Pending` for the selected existing workspace.
 
-All three use the same `IDateTimeProvider.UtcNow` timestamp. Registration does not activate the user, create a `WorkspaceMembership`, assign roles or permissions, approve the request, or issue access or refresh tokens. Workspace access is granted only by the later Platform Admin approval workflow.
+All three use the same `IDateTimeProvider.UtcNow` timestamp. Registration does not activate the user, create a `WorkspaceMembership`, assign roles or permissions, approve the request, or issue access or refresh tokens. Workspace access is granted only by the permission-protected approval workflow, which now exists: `POST /api/admin/workspace-access-requests/{id}/approve` activates a `Pending` applicant and creates the membership. See [authorization-model.md](authorization-model.md).
 
-Success returns `201 Created` without a `Location` header, because no endpoint can read a registration back yet:
+Success returns `201 Created` without a `Location` header. No endpoint reads a registration back; the closest thing, `GET /api/admin/workspace-access-requests`, is an authorized review queue rather than this registration's own resource:
 
 ```json
 {
@@ -525,14 +529,12 @@ They share the `ApiErrorResponse` contract but keep distinct codes and messages,
 - Session policy (single session, device sessions, session lists, revoke-all-sessions). Each login adds a session and each refresh replaces one; neither revokes the others.
 - Whether a status change to Pending, Suspended, or Deactivated should revoke that user's existing refresh tokens. A non-active user cannot refresh, but their tokens are left untouched.
 - A formal constant-time login. Unknown emails and missing credentials now perform the same password verification work as a wrong password (see Login Timing), but the paths are not provably indistinguishable, and a corrupted stored hash still fails faster.
-- Applying authorization to endpoints. The contracts, persisted permission resolution, and the ASP.NET requirement and handler are implemented, and they produce the standardized `authorization.forbidden` response correctly (see Protected Endpoint Responses). What remains is production enforcement: no endpoint declares a permission, no workspace id is taken from a route, and the permission catalog, `RequirePermission` attribute, dynamic policies, Platform Admin semantics, and caching are all still open. See [authorization-model.md](authorization-model.md).
+- Workspace-scoped authorization on an endpoint. Platform enforcement is live — `RequirePermission` declares one permission code on the workspace access request review endpoints, producing the standardized `authorization.forbidden` response (see Protected Endpoint Responses). What remains is taking a workspace id from a route and turning it into a workspace target, plus Platform Admin semantics and caching. See [authorization-model.md](authorization-model.md).
 - `415 Unsupported Media Type` and `405 Method Not Allowed` response bodies. Controllers currently return the framework `ProblemDetails` body for 415 and an empty body for 405, not `ApiErrorResponse`.
 - Structured `fieldErrors` for Application validation failures.
-- Claims and authorization strategy.
 - Email verification.
 - MFA.
 - Password reset.
 - Account lockout and failed login tracking.
 - Expired or revoked refresh token cleanup.
-- Migration for `identity.user_credentials` and `identity.refresh_tokens`.
-- Seed strategy.
+- Additional role/permission catalog provisioning beyond the narrow Platform Admin bootstrap.

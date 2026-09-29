@@ -36,7 +36,15 @@ Collection endpoints use query parameters:
 ?page=1&pageSize=20
 ```
 
-`page` is one-based. `pageSize` follows the existing `PageParameters.MaxPageSize` rule.
+`page` is one-based and normalized to the supported range. The current bounds are:
+
+- `PageParameters.MaxPageNumber = 10,000`
+- `PageParameters.MaxPageSize = 100`
+- `PageParameters.MaxOffset = 999,900`
+
+The offset ceiling is the maximum supported `(page - 1) * pageSize` combination. `hasNext` is false once the
+current page reaches the 10,000-page reachable ceiling, even when `totalCount` would mathematically imply a
+later page; deeper traversal requires a future cursor-based contract.
 
 Paginated responses use this shape:
 

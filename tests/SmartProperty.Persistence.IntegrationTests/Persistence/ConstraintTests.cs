@@ -167,6 +167,45 @@ public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fi
     }
 
     [Fact]
+    public async Task ASecondPlatformRoleWithTheSameNameIsRejectedByTheDatabase()
+    {
+        const string RoleName = "Platform Admin";
+
+        await using (var seeding = Host.CreateVerificationContext())
+        {
+            seeding.Roles.Add(AccessGraph.NewPlatformRole(RoleName));
+            await seeding.SaveChangesAsync();
+        }
+
+        await using var writing = Host.CreateVerificationContext();
+        writing.Roles.Add(AccessGraph.NewPlatformRole(RoleName));
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => writing.SaveChangesAsync());
+        var postgres = Assert.IsType<PostgresException>(exception.InnerException);
+
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
+        Assert.Equal("ux_identity_roles_platform_name", postgres.ConstraintName);
+    }
+
+    [Fact]
+    public async Task WorkspaceRolesAreExcludedFromPlatformNameUniqueness()
+    {
+        var workspace = AccessGraph.NewWorkspace();
+
+        await using var context = Host.CreateVerificationContext();
+        context.Workspaces.Add(workspace);
+        context.Roles.Add(AccessGraph.NewWorkspaceRole(workspace.Id, "Platform Admin"));
+        context.Roles.Add(AccessGraph.NewWorkspaceRole(workspace.Id, "Platform Admin"));
+
+        await context.SaveChangesAsync();
+
+        Assert.Equal(2, await context.Roles.CountAsync(role =>
+            role.Scope == RoleScope.Workspace
+            && role.WorkspaceId == workspace.Id
+            && role.Name == "Platform Admin"));
+    }
+
+    [Fact]
     public async Task ASecondMembershipForTheSameUserAndWorkspaceIsRejectedByTheDatabase()
     {
         Guid userId;
@@ -193,6 +232,31 @@ public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fi
 
         Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
         Assert.Equal("ux_identity_workspace_memberships_user_workspace", postgres.ConstraintName);
+    }
+
+    [Fact]
+    public async Task ASecondMembershipReachesApplicationAsTheRecognizedMembershipConstraint()
+    {
+        var user = AccessGraph.ActiveUser($"member-{Guid.NewGuid():n}@example.test");
+        var workspace = AccessGraph.NewWorkspace($"Workspace {Guid.NewGuid():n}");
+
+        await using (var seeding = Host.CreateVerificationContext())
+        {
+            seeding.Users.Add(user);
+            seeding.Workspaces.Add(workspace);
+            seeding.WorkspaceMemberships.Add(AccessGraph.NewMembership(user.Id, workspace.Id));
+            await seeding.SaveChangesAsync();
+        }
+
+        using var writing = Host.CreateScope();
+        await writing.ServiceProvider.GetRequiredService<IWorkspaceMembershipRepository>()
+            .AddAsync(AccessGraph.NewMembership(user.Id, workspace.Id));
+
+        var exception = await Assert.ThrowsAsync<UniqueConstraintViolationException>(
+            () => writing.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync());
+
+        Assert.Equal(PersistenceConstraint.WorkspaceMembershipUserWorkspace, exception.Constraint);
+        Assert.IsType<DbUpdateException>(exception.InnerException);
     }
 
     [Fact]

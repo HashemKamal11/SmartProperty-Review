@@ -25,3 +25,7 @@ Thumbs.db
 .env.*
 !.env.example
 appsettings.Local.json
+
+# Local Claude / MCP tool configuration
+.claude/
+.mcp.json

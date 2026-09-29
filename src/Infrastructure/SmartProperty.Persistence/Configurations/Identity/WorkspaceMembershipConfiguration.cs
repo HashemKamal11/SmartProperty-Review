@@ -7,6 +7,8 @@ namespace SmartProperty.Persistence.Configurations.Identity;
 
 internal sealed class WorkspaceMembershipConfiguration : IEntityTypeConfiguration<WorkspaceMembership>
 {
+    public const string UserWorkspaceUniqueIndexName = "ux_identity_workspace_memberships_user_workspace";
+
     public void Configure(EntityTypeBuilder<WorkspaceMembership> builder)
     {
         builder.ToTable("workspace_memberships", "identity");
@@ -40,6 +42,6 @@ internal sealed class WorkspaceMembershipConfiguration : IEntityTypeConfiguratio
 
         builder.HasIndex(membership => new { membership.UserId, membership.WorkspaceId })
             .IsUnique()
-            .HasDatabaseName("ux_identity_workspace_memberships_user_workspace");
+            .HasDatabaseName(UserWorkspaceUniqueIndexName);
     }
 }

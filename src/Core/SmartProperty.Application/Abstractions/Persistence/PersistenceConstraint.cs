@@ -8,5 +8,10 @@ public enum PersistenceConstraint
     /// <summary>
     /// A user's normalized email must be unique.
     /// </summary>
-    UserEmail = 1
+    UserEmail = 1,
+
+    /// <summary>
+    /// A user can have at most one membership in a workspace.
+    /// </summary>
+    WorkspaceMembershipUserWorkspace = 2
 }

@@ -129,6 +129,11 @@ namespace SmartProperty.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_identity_roles_platform_name")
+                        .HasFilter("scope = 'Platform'");
+
                     b.HasIndex("WorkspaceId")
                         .HasDatabaseName("ix_identity_roles_workspace_id");
 
@@ -294,6 +299,7 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnName("reviewed_by_user_id");
 
                     b.Property<string>("Status")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")

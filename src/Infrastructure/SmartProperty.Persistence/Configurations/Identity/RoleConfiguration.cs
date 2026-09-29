@@ -7,6 +7,8 @@ namespace SmartProperty.Persistence.Configurations.Identity;
 
 internal sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
 {
+    public const string PlatformNameUniqueIndexName = "ux_identity_roles_platform_name";
+
     public void Configure(EntityTypeBuilder<Role> builder)
     {
         builder.ToTable("roles", "identity", tableBuilder => tableBuilder.HasCheckConstraint(
@@ -47,5 +49,12 @@ internal sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.HasIndex(role => role.WorkspaceId)
             .HasDatabaseName("ix_identity_roles_workspace_id");
+
+        // PostgreSQL's ordinary nullable composite uniqueness would not make null workspace ids equal. A partial
+        // index expresses the actual identity used by platform-role lookup while leaving all workspace roles out.
+        builder.HasIndex(role => role.Name)
+            .HasFilter("scope = 'Platform'")
+            .IsUnique()
+            .HasDatabaseName(PlatformNameUniqueIndexName);
     }
 }

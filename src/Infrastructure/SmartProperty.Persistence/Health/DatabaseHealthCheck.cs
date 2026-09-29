@@ -10,8 +10,26 @@ internal sealed class DatabaseHealthCheck(ApplicationDbContext dbContext) : IHea
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
-        return await dbContext.Database.CanConnectAsync(cancellationToken)
-            ? HealthCheckResult.Healthy()
-            : HealthCheckResult.Unhealthy("Database is unavailable.");
+        try
+        {
+            if (!await dbContext.Database.CanConnectAsync(cancellationToken))
+            {
+                return HealthCheckResult.Unhealthy("Database is unavailable.");
+            }
+
+            var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync(cancellationToken);
+
+            return pendingMigrations.Any()
+                ? HealthCheckResult.Unhealthy("Database schema has pending migrations.")
+                : HealthCheckResult.Healthy();
+        }
+        catch (Exception exception)
+        {
+            // Readiness fails closed. The exception is retained for health-check diagnostics, while ASP.NET's
+            // default response writer exposes only the aggregate status and no connection details.
+            return HealthCheckResult.Unhealthy(
+                "Database readiness verification failed.",
+                exception);
+        }
     }
 }

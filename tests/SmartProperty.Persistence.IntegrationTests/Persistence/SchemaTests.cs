@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using SmartProperty.Domain.Workspaces;
 using SmartProperty.Persistence.IntegrationTests.Infrastructure;
 using Xunit;
 
@@ -68,6 +69,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
         [
             "ux_identity_permissions_code",
             "ux_identity_refresh_tokens_token_hash",
+            "ux_identity_roles_platform_name",
             "ux_identity_users_email",
             "ux_identity_workspace_memberships_user_workspace"
         ];
@@ -129,6 +131,16 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
 
         Assert.True(await context.Database.CanConnectAsync());
         Assert.Empty(await context.Users.ToListAsync());
+    }
+
+    [Fact]
+    public void WorkspaceAccessRequestStatusIsAnOptimisticConcurrencyToken()
+    {
+        using var context = Host.CreateVerificationContext();
+        var entityType = context.Model.FindEntityType(typeof(WorkspaceAccessRequest));
+        var status = entityType!.FindProperty(nameof(WorkspaceAccessRequest.Status));
+
+        Assert.True(status!.IsConcurrencyToken);
     }
 
     private async Task<IReadOnlyList<string>> QueryStringsAsync(string sql)

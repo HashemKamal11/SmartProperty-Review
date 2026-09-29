@@ -11,6 +11,10 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
     /// <summary>Thrown instead of committing, to exercise a handler's catch. Null commits normally.</summary>
     public Exception? ExceptionToThrow { get; set; }
 
+    public Action? DiscardTrackedChangesAction { get; set; }
+
+    public int DiscardTrackedChangesCallCount { get; private set; }
+
     public int SaveChangesCallCount { get; private set; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -25,6 +29,12 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
         return Task.FromResult(1);
     }
 
+    public void DiscardTrackedChanges()
+    {
+        DiscardTrackedChangesCallCount++;
+        DiscardTrackedChangesAction?.Invoke();
+    }
+
     /// <summary>
     /// The exception <c>UnitOfWork</c> raises when PostgreSQL rejects a refresh-token save because another
     /// writer changed the row first.
@@ -34,5 +44,19 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
         return new ConcurrencyConflictException(
             PersistenceResource.RefreshToken,
             new InvalidOperationException("Simulated concurrent refresh token update."));
+    }
+
+    public static ConcurrencyConflictException WorkspaceAccessRequestConcurrencyConflict()
+    {
+        return new ConcurrencyConflictException(
+            PersistenceResource.WorkspaceAccessRequest,
+            new InvalidOperationException("Simulated concurrent workspace access request review."));
+    }
+
+    public static UniqueConstraintViolationException WorkspaceMembershipUniqueConstraintViolation()
+    {
+        return new UniqueConstraintViolationException(
+            PersistenceConstraint.WorkspaceMembershipUserWorkspace,
+            new InvalidOperationException("Simulated concurrent workspace membership insert."));
     }
 }

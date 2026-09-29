@@ -1,8 +1,10 @@
 # Authorization Model
 
-This document records the authorization scope semantics, contracts, and rules, how permission resolution implements them, and how ASP.NET Core authorization reaches them. Step 05.6A established the model and contracts; Step 05.6B supplied the resolver that answers a permission question from the database; Step 05.6C added the reusable ASP.NET bridge.
+This document records the authorization scope semantics, contracts, and rules, how permission resolution implements them, and how ASP.NET Core authorization reaches them. Step 05.6A established the model and contracts; Step 05.6B supplied the resolver that answers a permission question from the database; Step 05.6C added the reusable ASP.NET bridge; Step 05.7 put the first permission on real endpoints, added the code that names it, and added the bootstrap that provisions the first account able to hold it.
 
-The permission catalog, seeds, route workspace-id extraction, a `RequirePermission` attribute, a dynamic policy provider, and caching remain deferred. **No production endpoint requires a permission yet**: the bridge is reusable and tested, but nothing in `AuthController` or any other tracked controller uses it.
+**Platform enforcement is now live.** One permission code exists, `workspace.access_requests.review`, declared once in `PermissionCodes`; `RequirePermissionAttribute` attaches it to the workspace access request review endpoints; and `PlatformAdminBootstrapService` is the configuration-gated, default-off way the first administrator comes to hold it.
+
+Route workspace-id extraction, workspace enforcement on an endpoint, a named-policy catalog, and caching remain deferred.
 
 ## Authentication Versus Authorization
 
@@ -55,7 +57,7 @@ Validity is therefore established once, at construction, instead of being re-che
 
 `AuthorizationRequest.For(userId, permissionCode, target)` is one question: *may this user exercise this permission against this target?*
 
-It validates on construction — non-empty user id, non-blank permission code, non-null target — and trims the permission code to match how `Permission` stores it. The user is identified by `Guid`, never by a `ClaimsPrincipal` or an HTTP context, which keeps the contract framework-neutral and unit-testable. Building a request from the current request's user is the API's job, using `ICurrentUser.UserId`; that integration is not part of this step, and `ICurrentUser` stays where it is.
+It validates on construction — non-empty user id, non-blank permission code, non-null target — and trims the permission code to match how `Permission` stores it. The user is identified by `Guid`, never by a `ClaimsPrincipal` or an HTTP context, which keeps the contract framework-neutral and unit-testable. The API builds the request from `ICurrentUser.UserId`; `ICurrentUser` remains the single boundary between the authenticated principal and Application.
 
 ## Authorization Decision
 
@@ -152,6 +154,83 @@ If Platform Admin is meant to hold every permission, that must be expressed as e
 
 Whether Platform Admin implies workspace-level access is **an open decision**, deferred. Until it is decided, no implicit platform-to-workspace bypass exists.
 
+A `"Platform Admin"` role does now exist, created by the bootstrap described below, and it holds exactly one permission. The name is a provisioning key — the string the bootstrap looks a role up by so that a second run finds the same row — and nothing else. No code branches on it, and holding it grants nothing beyond the permissions explicitly attached to it.
+
+## Permission Catalog
+
+`PermissionCodes` (Application/Authorization) is the one place a permission code is spelled:
+
+```csharp
+public const string WorkspaceAccessRequestsReview = "workspace.access_requests.review";
+```
+
+Endpoints, the bootstrap, and the tests all reference the constant, so the string that is *granted* and the string that is *demanded* cannot drift apart. It is not a speculative catalog: a code is added when an endpoint actually requires one, and there is exactly one so far.
+
+A companion `…Description` constant supplies `Permission.Description` when the row is provisioned. It is human-readable text; nothing authorizes on it.
+
+## Declaring a Permission on an Endpoint
+
+`RequirePermissionAttribute` (Api/Infrastructure/Authorization) is how an endpoint states its requirement:
+
+```csharp
+[ApiController]
+[Route("api/admin/workspace-access-requests")]
+[RequirePermission(PermissionCodes.WorkspaceAccessRequestsReview)]
+public sealed class AdminWorkspaceAccessRequestsController : ControllerBase
+```
+
+One attribute covers both answers, because it is two things at once:
+
+| It is | Which gives |
+| --- | --- |
+| an `AuthorizeAttribute` | the authorization middleware applies the default policy, so an unauthenticated caller gets the existing `401` before anything else runs |
+| an `IAsyncAuthorizationFilter` | the permission check runs for authenticated callers and produces the existing `403` |
+
+Being an `AuthorizeAttribute` also places `IAuthorizeData` in the endpoint metadata, which is exactly what the OpenAPI operation transformer already reads to emit the Bearer security requirement. The transformer needed no change, and an integration test asserts the generated document rather than assuming it.
+
+The filter is a translation and nothing more. It hands the real `IAuthorizationService` a `PermissionRequirement` together with an `AuthorizationTarget` resource — the pairing `PermissionAuthorizationHandler` is typed for — and only that handler reaches `IPermissionChecker`. No controller queries a permission, and the attribute touches no database, role, claim, or token.
+
+It fails closed: only `Succeeded` lets the action run, and a denial, an unusable identity, and an unrecognized resource all end as `ForbidResult`. A checker exception is deliberately not caught, so a database outage still surfaces as `500` rather than as a permission denial.
+
+**The attribute is platform-scoped, fixed at construction.** Workspace targets need a workspace id taken from the request, which is still deferred, so a workspace-scoped permission must not be declared with this attribute until that exists.
+
+Why an MVC authorization filter rather than a dynamic policy provider: the existing handler is typed `AuthorizationHandler<PermissionRequirement, AuthorizationTarget>`, and the authorization middleware passes the `Endpoint` as the resource, so a policy evaluated there would never reach that handler. A policy provider would therefore have required a second handler duplicating the first. The filter supplies the real resource instead, and the one handler stays the only path to the checker.
+
+## Platform Administrator Bootstrap
+
+Platform authorization has a cold-start problem: only a holder of `workspace.access_requests.review` may review a request, and no endpoint can grant that permission to the first administrator. The bootstrap is the deliberate, narrow answer.
+
+Configuration, disabled by default in code *and* in `appsettings.json`:
+
+```text
+Bootstrap:Enabled              / Bootstrap__Enabled             (false)
+Bootstrap:PlatformAdminEmail   / Bootstrap__PlatformAdminEmail  ("")
+```
+
+With `Enabled` false — including a deployment that omits the section entirely — nothing runs and startup is unchanged.
+
+With `Enabled` true, `PlatformAdminBootstrapService` (an `IHostedService`) runs `BootstrapPlatformAdminCommandHandler` once, which:
+
+1. normalizes the configured email the same way `User` normalizes a stored one, and finds the **existing** account
+2. activates it only if it is `Pending`; leaves an `Active` one untouched, including its `UpdatedAt`
+3. ensures the permission row, the platform-scoped `"Platform Admin"` role, the role/permission row, and the user/role row exist
+4. commits all of it through one `IUnitOfWork.SaveChangesAsync`
+
+What it cannot do is the point:
+
+- it never creates a `User`, a `UserCredential`, or a password — it elevates an account that registered normally
+- no account is named in code; the email is deployment configuration
+- it refuses a `Suspended` or `Deactivated` account rather than reviving one, because reviving a disabled account and handing it platform authority is exactly the escalation a bootstrap must not offer
+- it grants one permission, not every permission
+
+Every write is guarded by a lookup, so a second run creates no duplicate permission, role, role-permission, or platform-role row and reports `MadeNoChange`.
+
+An enabled run that fails logs the actionable reason at `Critical` and then **aborts startup**, matching how this application already treats broken startup configuration (a missing `ConnectionStrings:Database` throws from `AddPersistence`; invalid `Jwt` options fail `ValidateOnStart`). An operator who deliberately enabled bootstrap must not be left with an un-administrable platform and no signal. An enabled configuration with no email fails `ValidateOnStart` before the host serves a request.
+
+Nothing sensitive is logged: no password, signing key, database credential, or token — the use case has none to give. The configured email is logged because it is the one fact that makes a failure actionable, and it is operator-supplied configuration rather than a secret.
+
+The application never rewrites its own configuration. Operations disables `Bootstrap__Enabled` externally once provisioning has succeeded, and the success log says so.
+
 ## Permission Code
 
 `Permission.Code` is the canonical identifier. It is:
@@ -172,9 +251,10 @@ Permission codes follow lowercase dot-separated segments:
 <area>.<resource>.<action>
 ```
 
-Illustrative only — these are examples of the shape, not a catalog to implement:
+The one code that exists, plus further examples of the shape:
 
 ```text
+workspace.access_requests.review   <- implemented, see Permission Catalog
 property.read
 property.create
 workspace.members.read
@@ -188,9 +268,9 @@ Rules:
 - machine-readable and independent of any UI label, which belongs in `Description`
 - compared exactly, so codes must be stored in the canonical lowercase form
 
-No permission catalog is defined or seeded in this step.
+> Earlier examples in identity-access-model.md used a PascalCase form such as `Admin.Users.View`. Nothing persisted uses that spelling; the lowercase convention above is the one to follow, and `workspace.access_requests.review` follows it.
 
-> Earlier examples in identity-access-model.md used a PascalCase form such as `Admin.Users.View`. No permissions are seeded yet, so nothing persisted depends on that spelling; the lowercase convention above is the one to follow.
+There is still no migration that seeds permissions. The one permission row is created by the bootstrap described above, on demand and idempotently, rather than by migration data — so a fresh database contains no authorization rows at all until an operator provisions them.
 
 ## Platform Authorization Path
 
@@ -313,14 +393,68 @@ Note that the workspace query constrains the target workspace **twice**, on the 
 
 Cancellation flows into `AnyAsync`, so a cancelled request surfaces as `OperationCanceledException` and never as a decision.
 
-Repositories were deliberately not extended for this. `IUserRepository`, `IRoleRepository`, `IPermissionRepository`, and `IWorkspaceMembershipRepository` return single entities and could only have answered these questions across several round trips, and no repository exists — or was added — for `UserPlatformRole`, `WorkspaceMembershipRole`, or `RolePermission`. No `IRepository<T>`, `GetAll()`, or `FindAll()` exists for authorization.
+Repositories were deliberately not extended for *resolution*. `IUserRepository`, `IRoleRepository`, `IPermissionRepository`, and `IWorkspaceMembershipRepository` return single entities and could only have answered these questions across several round trips. No `IRepository<T>`, `GetAll()`, or `FindAll()` exists for authorization.
+
+`IRoleRepository` did gain the assignment members the bootstrap needs — `GetPlatformRoleByNameAsync`, `HasPermissionAsync`, `AddPermissionAsync`, `IsAssignedToUserAsync`, `AddUserAssignmentAsync` — and they are for **provisioning**, not for deciding. Nothing authorizes through them; the checker's single query remains the only resolution path, and no repository was introduced for `UserPlatformRole`, `RolePermission`, or `WorkspaceMembershipRole` as a type of its own.
 
 ## Deferred
 
-- **Platform enforcement** and **workspace enforcement** on real endpoints. The requirement, the handler, and resolution all work; no production endpoint applies them.
-- **Permission policy plumbing** — a `RequirePermission` attribute, a dynamic policy provider, endpoint filters, and a named-policy catalog. The reusable requirement and handler exist; how endpoints declare a permission is a later decision.
-- **Permission catalog** and role/permission **seed data**; no migrations.
+- **Workspace enforcement** on a real endpoint, and **workspace route resolution** — how a workspace id is taken from a request and turned into a target. Platform enforcement is live; `RequirePermissionAttribute` is platform-only until this exists.
+- **A named-policy catalog** and endpoint filters for minimal APIs. The attribute covers MVC controllers, which is all the API has.
+- **Role and permission seed data in a migration.** The single permission row is provisioned by the bootstrap instead.
 - **Caching** of authorization results, in memory or Redis.
-- **Platform Admin semantics** — whether it implies all permissions, and whether it reaches into workspaces.
-- **Workspace route resolution** — how a workspace id is taken from a request and turned into a target.
+- **Platform Admin semantics** — whether it should imply all permissions, and whether it reaches into workspaces. It currently implies neither: it holds one explicitly attached permission.
+- **Administration of permissions after bootstrap** — no endpoint creates a role, attaches a permission, or assigns a platform role. Bootstrap is the only way any of that happens, and it provisions exactly one fixed grant.
 - **Claims strategy** — if permissions are ever put in a token, the staleness trade-off above must be addressed explicitly.
+
+## The Protected Routes
+
+The first permission-protected production endpoints, all three requiring `workspace.access_requests.review` against the platform target:
+
+| Route | Does |
+| --- | --- |
+| `GET /api/admin/workspace-access-requests` | The review queue. `workspaceId` and `status` are optional; `status` defaults to `Pending`. Standard `page`/`pageSize` paging, standard `PagedResponse` shape. |
+| `POST /api/admin/workspace-access-requests/{id}/approve` | Approves a pending request. |
+| `POST /api/admin/workspace-access-requests/{id}/reject` | Rejects a pending request. |
+
+The queue exists because the other two need a request id and nothing else revealed one.
+
+**The reviewer is never an input.** Neither route accepts a reviewed-by user id in a route, query, header, or body; the id is read from the authenticated principal through `ICurrentUser` inside the use case, and `WorkspaceAccessRequest.ReviewedByUserId` is asserted to equal the token's subject in an integration test.
+
+Approval, in one unit of work:
+
+- approves the request
+- activates the account **only** if it is `Pending`; an `Active` one is left untouched
+- creates a `WorkspaceMembership` for the target workspace if none exists, and reuses one that does
+- **assigns no role.** Membership answers whether an account may be in a workspace; what it may do there is a separate grant, and approval does not smuggle one in. No `WorkspaceMembershipRole` row is written, which an integration test asserts against the table.
+- refuses a `Suspended` or `Deactivated` applicant with `409 workspace_access_requests.target_account_unavailable` rather than reactivating one
+
+Rejection records the decision and nothing else: no activation, suspension, deactivation, membership, or role. A rejected applicant that registered as `Pending` stays `Pending` and still cannot sign in — an integration test proves it by calling the real login endpoint and asserting `403 authentication.account_unavailable`.
+
+Both return `200` with the resulting state rather than `204`: the membership id and the two resulting statuses are the useful outcome, and a caller should not have to go looking for them.
+
+Errors follow the existing `Result`/`Error` mapping. A domain invalid-state failure is never surfaced as an exception — the non-`Pending` case is translated to a stable business error before the domain method is called:
+
+| Situation | Response |
+| --- | --- |
+| unknown request id | `404 workspace_access_requests.not_found` |
+| request already reviewed | `409 workspace_access_requests.already_reviewed` |
+| applicant suspended, deactivated, or missing | `409 workspace_access_requests.target_account_unavailable` |
+| unparseable `status` or `workspaceId` | existing `400 request.malformed` |
+
+## Simultaneous Review
+
+`WorkspaceAccessRequest.Status` is an EF concurrency token. A terminal update therefore carries the status the reviewer originally loaded in its predicate; both reviewers may read `Pending`, but after one commits, the other's update with original status `Pending` affects zero rows. EF reports that as `DbUpdateConcurrencyException`, `UnitOfWork` translates it to `ConcurrencyConflictException(PersistenceResource.WorkspaceAccessRequest)`, and both review handlers return the existing `409 workspace_access_requests.already_reviewed` response.
+
+Approval's request decision, user activation, and membership insertion remain one `SaveChangesAsync` transaction. A stale approval therefore commits none of those writes.
+
+A collision on the named unique `(user_id, workspace_id)` membership constraint is not automatically treated as a review conflict: an unrelated concurrent writer may have created the membership while the request itself is still `Pending`. The approval handler performs one bounded recovery attempt:
+
+1. Discard the failed tracked graph so the rolled-back approval, activation, and `Added` membership cannot leak into the retry.
+2. Reload the request, applicant, and membership from authoritative persisted state.
+3. Revalidate the request and account. A terminal request becomes `workspace_access_requests.already_reviewed` (`409`); a missing request or unusable account keeps its existing provider-neutral business result.
+4. Reuse the now-existing membership, reapply approval and any required `Pending`-to-`Active` transition, and save once more.
+
+If the bounded retry loses the request concurrency race, it also becomes `already_reviewed`. If the reported membership collision is not confirmed by a reloaded membership, the original provider-neutral persistence failure is rethrown rather than invented into a business result. Other unique violations remain unexpected.
+
+No migration is required: `status` already exists with the same PostgreSQL type and constraints. `IsConcurrencyToken()` changes EF's update predicate and affected-row validation, not the physical schema. Real PostgreSQL tests load `Pending` through two independent contexts before either saves and cover approve/reject in both winner orders, approve/approve, and reject/reject.

@@ -1,3 +1,6 @@
+x-smartproperty-image: &smartproperty-image
+  image: smartproperty:${SMARTPROPERTY_IMAGE_TAG:-local}
+
 services:
   postgres:
     image: postgres:17
@@ -18,10 +21,26 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  api:
+  migrator:
+    <<: *smartproperty-image
     build:
       context: .
       dockerfile: Dockerfile
+    working_dir: /app/migrator
+    entrypoint: ["dotnet", "SmartProperty.Migrator.dll"]
+    environment:
+      DOTNET_ENVIRONMENT: Staging
+      ConnectionStrings__Database: Host=postgres;Port=5432;Database=smart_property;Username=smart_property;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your shell before running Docker Compose}
+      Provisioning__InitialWorkspace__Enabled: ${INITIAL_WORKSPACE_ENABLED:-false}
+      Provisioning__InitialWorkspace__Id: ${INITIAL_WORKSPACE_ID:-}
+      Provisioning__InitialWorkspace__Name: ${INITIAL_WORKSPACE_NAME:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *smartproperty-image
     environment:
       ASPNETCORE_ENVIRONMENT: Staging
       ASPNETCORE_URLS: http://+:8080
@@ -30,11 +49,17 @@ services:
       Jwt__Issuer: SmartProperty
       Jwt__Audience: SmartProperty.Api
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in your shell before running Docker Compose}
+      Bootstrap__Enabled: ${BOOTSTRAP_ENABLED:-false}
+      Bootstrap__PlatformAdminEmail: ${BOOTSTRAP_PLATFORM_ADMIN_EMAIL:-}
+      Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN_0:-}
+      Cors__AllowedOrigins__1: ${CORS_ALLOWED_ORIGIN_1:-}
     ports:
       - "${API_PORT:-5000}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
