@@ -8,5 +8,17 @@ namespace SmartProperty.UnitTests.TestDoubles;
 /// </summary>
 internal sealed class FakeDateTimeProvider(DateTimeOffset utcNow) : IDateTimeProvider
 {
-    public DateTimeOffset UtcNow { get; set; } = utcNow;
+    private DateTimeOffset utcNow = utcNow;
+
+    public int UtcNowCallCount { get; private set; }
+
+    public DateTimeOffset UtcNow
+    {
+        get
+        {
+            UtcNowCallCount++;
+            return utcNow;
+        }
+        set => utcNow = value;
+    }
 }

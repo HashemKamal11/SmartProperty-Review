@@ -14,6 +14,11 @@ namespace SmartProperty.Application.Authorization;
 /// </remarks>
 public static class PermissionCodes
 {
+    /// <summary>Create a canonical platform-global property.</summary>
+    public const string PropertyCreate = "property.create";
+
+    public const string PropertyCreateDescription = "Create canonical properties.";
+
     /// <summary>
     /// Review — approve or reject — a workspace access request. Platform-scoped: reviewing who may enter a
     /// workspace is a platform administration act, so it is never satisfied by anything held inside a workspace.

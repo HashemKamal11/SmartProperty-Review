@@ -9,8 +9,8 @@ using SmartProperty.Domain.Identity;
 namespace SmartProperty.Application.Identity.Bootstrap;
 
 /// <summary>
-/// Makes one existing account a Platform Administrator, creating the platform role and the permission it carries
-/// if they are not there yet.
+/// Makes one existing account a Platform Administrator, creating the platform role and its currently declared
+/// platform permissions if they are not there yet.
 /// </summary>
 /// <remarks>
 /// This exists because platform authorization has a cold-start problem: only a user holding
@@ -23,7 +23,7 @@ namespace SmartProperty.Application.Identity.Bootstrap;
 /// <item>it never creates a <see cref="User"/>, a <see cref="UserCredential"/>, or a password</item>
 /// <item>it never names an account in code — the email is configuration, supplied at deployment time</item>
 /// <item>it never revives a Suspended or Deactivated account</item>
-/// <item>it grants exactly one permission, not every permission</item>
+/// <item>it grants only permissions explicitly declared for implemented endpoints</item>
 /// </list>
 ///
 /// Every write is guarded by a lookup, so running it a second time changes nothing: no duplicate permission,
@@ -116,6 +116,22 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             await permissionRepository.AddAsync(permission, cancellationToken);
         }
 
+        var propertyCreatePermission = await permissionRepository.GetByCodeAsync(
+            PermissionCodes.PropertyCreate,
+            cancellationToken);
+
+        var propertyCreatePermissionCreated = propertyCreatePermission is null;
+
+        if (propertyCreatePermission is null)
+        {
+            propertyCreatePermission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.PropertyCreate,
+                PermissionCodes.PropertyCreateDescription);
+
+            await permissionRepository.AddAsync(propertyCreatePermission, cancellationToken);
+        }
+
         var role = await roleRepository.GetPlatformRoleByNameAsync(PlatformAdminRoleName, cancellationToken);
 
         var roleCreated = role is null;
@@ -145,6 +161,18 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             await roleRepository.AddPermissionAsync(new RolePermission(role.Id, permission.Id), cancellationToken);
         }
 
+        var propertyCreateRolePermissionCreated = !await roleRepository.HasPermissionAsync(
+            role.Id,
+            propertyCreatePermission.Id,
+            cancellationToken);
+
+        if (propertyCreateRolePermissionCreated)
+        {
+            await roleRepository.AddPermissionAsync(
+                new RolePermission(role.Id, propertyCreatePermission.Id),
+                cancellationToken);
+        }
+
         var platformRoleAssigned = !await roleRepository.IsAssignedToUserAsync(
             user.Id,
             role.Id,
@@ -165,9 +193,12 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             userActivated,
             permission.Id,
             permissionCreated,
+            propertyCreatePermission.Id,
+            propertyCreatePermissionCreated,
             role.Id,
             roleCreated,
             rolePermissionCreated,
+            propertyCreateRolePermissionCreated,
             platformRoleAssigned));
     }
 }

@@ -110,11 +110,33 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
 
         var result = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
 
-        var permission = Assert.Single(_permissions.Added);
+        var permission = Assert.Single(
+            _permissions.Added,
+            candidate => candidate.Code == PermissionCodes.WorkspaceAccessRequestsReview);
         Assert.Equal(PermissionCodes.WorkspaceAccessRequestsReview, permission.Code);
         Assert.Equal(PermissionCodes.WorkspaceAccessRequestsReviewDescription, permission.Description);
         Assert.True(result.Value.PermissionCreated);
         Assert.Equal(permission.Id, result.Value.PermissionId);
+    }
+
+    [Fact]
+    public async Task AFirstRun_CreatesAndAttachesThePropertyCreatePermission()
+    {
+        SeedUser(UserStatus.Pending);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
+
+        var permission = Assert.Single(
+            _permissions.Added,
+            candidate => candidate.Code == PermissionCodes.PropertyCreate);
+        Assert.Equal(PermissionCodes.PropertyCreateDescription, permission.Description);
+        Assert.True(result.Value.PropertyCreatePermissionCreated);
+        Assert.Equal(permission.Id, result.Value.PropertyCreatePermissionId);
+        Assert.True(result.Value.PropertyCreateRolePermissionCreated);
+        Assert.Contains(
+            _roles.AddedRolePermissions,
+            candidate => candidate.RoleId == result.Value.RoleId && candidate.PermissionId == permission.Id);
     }
 
     [Fact]
@@ -141,7 +163,9 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
 
         var result = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
 
-        var rolePermission = Assert.Single(_roles.AddedRolePermissions);
+        var rolePermission = Assert.Single(
+            _roles.AddedRolePermissions,
+            candidate => candidate.PermissionId == result.Value.PermissionId);
         Assert.Equal(result.Value.RoleId, rolePermission.RoleId);
         Assert.Equal(result.Value.PermissionId, rolePermission.PermissionId);
         Assert.True(result.Value.RolePermissionCreated);
@@ -186,8 +210,10 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         Assert.True(second.Value.MadeNoChange);
         Assert.False(second.Value.UserActivated);
         Assert.False(second.Value.PermissionCreated);
+        Assert.False(second.Value.PropertyCreatePermissionCreated);
         Assert.False(second.Value.RoleCreated);
         Assert.False(second.Value.RolePermissionCreated);
+        Assert.False(second.Value.PropertyCreateRolePermissionCreated);
         Assert.False(second.Value.PlatformRoleAssigned);
     }
 
@@ -200,11 +226,11 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         var first = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
         var second = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
 
-        Assert.Single(_permissions.Added);
+        Assert.Equal(2, _permissions.Added.Count);
         Assert.Single(_roles.AddedRoles);
-        Assert.Single(_roles.AddedRolePermissions);
+        Assert.Equal(2, _roles.AddedRolePermissions.Count);
         Assert.Single(_roles.AddedUserAssignments);
-        Assert.Single(_roles.RolePermissions);
+        Assert.Equal(2, _roles.RolePermissions.Count);
         Assert.Single(_roles.UserAssignments);
 
         // And it resolves to the same rows, rather than quietly provisioning a parallel set.
@@ -220,6 +246,10 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
             Guid.NewGuid(),
             PermissionCodes.WorkspaceAccessRequestsReview,
             "Seeded by an earlier deployment.");
+        var propertyCreatePermission = new Permission(
+            Guid.NewGuid(),
+            PermissionCodes.PropertyCreate,
+            "Seeded by an earlier deployment.");
         var role = new Role(
             Guid.NewGuid(),
             BootstrapPlatformAdminCommandHandler.PlatformAdminRoleName,
@@ -228,6 +258,7 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
             CreatedAt);
 
         _permissions.Seed(permission);
+        _permissions.Seed(propertyCreatePermission);
         _roles.Seed(role);
 
         var handler = CreateHandler();
@@ -243,7 +274,7 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         // The wiring was still missing, so only that is added.
         Assert.Empty(_permissions.Added);
         Assert.Empty(_roles.AddedRoles);
-        Assert.Single(_roles.AddedRolePermissions);
+        Assert.Equal(2, _roles.AddedRolePermissions.Count);
         var assignment = Assert.Single(_roles.AddedUserAssignments);
         Assert.Equal(user.Id, assignment.UserId);
     }
