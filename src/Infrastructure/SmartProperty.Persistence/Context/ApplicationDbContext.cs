@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.Domain.Workspaces;
 
 namespace SmartProperty.Persistence.Context;
@@ -18,6 +19,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<UserPlatformRole> UserPlatformRoles => Set<UserPlatformRole>();
     public DbSet<WorkspaceMembershipRole> WorkspaceMembershipRoles => Set<WorkspaceMembershipRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+    public DbSet<Property> Properties => Set<Property>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

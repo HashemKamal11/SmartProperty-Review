@@ -93,7 +93,12 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ck_identity_refresh_tokens_expires_after_created",
             "ck_identity_refresh_tokens_revoked_after_created",
             "ck_identity_roles_scope_workspace",
-            "ck_identity_user_credentials_updated_after_created"
+            "ck_identity_user_credentials_updated_after_created",
+            "ck_registry_properties_address_country_code",
+            "ck_registry_properties_latitude_range",
+            "ck_registry_properties_longitude_range",
+            "ck_registry_properties_status",
+            "ck_registry_properties_type"
         ];
 
         var actual = await QueryStringsAsync(
