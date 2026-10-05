@@ -20,6 +20,7 @@ using SmartProperty.Application.Abstractions.Time;
 using SmartProperty.Application.Authentication.Login;
 using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
+using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
 using SmartProperty.Application.Identity.Bootstrap;
@@ -249,6 +250,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<RefreshCommand, RefreshResult>, RefreshCommandHandler>();
         services.AddScoped<ICommandHandler<LogoutCommand>, LogoutCommandHandler>();
         services.AddScoped<IQueryHandler<GetMeQuery, MeResult>, GetMeQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAuthContextQuery, AuthContextResult>, GetAuthContextQueryHandler>();
         services.AddScoped<ICommandHandler<CreatePropertyCommand, CreatePropertyResult>, CreatePropertyCommandHandler>();
 
         services

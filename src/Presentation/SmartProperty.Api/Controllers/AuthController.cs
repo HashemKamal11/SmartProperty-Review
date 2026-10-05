@@ -1,12 +1,14 @@
 #nullable enable
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.Authentication;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Authentication.Login;
 using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
+using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
 
@@ -160,6 +162,44 @@ public sealed class AuthController : ControllerBase
             me.FirstName,
             me.LastName);
 
+        return Ok(response);
+    }
+
+    [Authorize]
+    [HttpGet("context")]
+    [ProducesResponseType<AuthContextResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Context(
+        [FromServices] IQueryHandler<GetAuthContextQuery, AuthContextResult> handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(new GetAuthContextQuery(), cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        var context = result.Value;
+        var response = new AuthContextResponse(
+            new AuthContextUserResponse(
+                context.User.Id,
+                context.User.Email,
+                context.User.FirstName,
+                context.User.LastName),
+            context.PlatformRoles,
+            context.PlatformPermissions,
+            context.Workspaces
+                .Select(workspace => new AuthContextWorkspaceResponse(
+                    workspace.Id,
+                    workspace.Name,
+                    workspace.Roles,
+                    workspace.Permissions))
+                .ToArray());
+
+        Response.Headers.CacheControl = "no-store";
         return Ok(response);
     }
 }
