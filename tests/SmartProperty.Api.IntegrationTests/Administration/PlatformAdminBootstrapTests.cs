@@ -112,6 +112,46 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task RepeatedRunsAttachExactlyTheFourDeclaredPlatformAdminPermissionsWithoutDuplicates()
+    {
+        var candidate = await RegisterCandidateAsync();
+
+        for (var run = 0; run < 2; run++)
+        {
+            using var factory = BootstrapFactory(candidate.Email);
+            using var client = factory.CreateClient();
+            using var probe = await client.GetAsync("/health/live");
+            probe.EnsureSuccessStatusCode();
+        }
+
+        await using var context = _fixture.CreateContext();
+
+        var role = await context.Roles.SingleAsync(row =>
+            row.Name == BootstrapPlatformAdminCommandHandler.PlatformAdminRoleName
+            && row.Scope == RoleScope.Platform);
+
+        var attachedCodes = await (
+                from rolePermission in context.RolePermissions
+                join permission in context.Permissions on rolePermission.PermissionId equals permission.Id
+                where rolePermission.RoleId == role.Id
+                select permission.Code)
+            .ToListAsync();
+
+        Assert.Equal(
+            [
+                PermissionCodes.PropertyCreate,
+                PermissionCodes.PropertyRead,
+                PermissionCodes.PropertyUpdate,
+                PermissionCodes.WorkspaceAccessRequestsReview
+            ],
+            attachedCodes.Order(StringComparer.Ordinal).ToArray());
+
+        // The collection shares one database, so another test may have created the row first; bootstrap must reuse
+        // it rather than add a second.
+        Assert.Equal(1, await context.Permissions.CountAsync(row => row.Code == PermissionCodes.PropertyUpdate));
+    }
+
+    [Fact]
     public async Task TheBootstrappedAdministratorCanReviewARequest()
     {
         var candidate = await RegisterCandidateAsync();

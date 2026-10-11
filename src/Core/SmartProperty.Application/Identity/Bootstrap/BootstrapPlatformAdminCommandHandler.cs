@@ -148,6 +148,22 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             await permissionRepository.AddAsync(propertyReadPermission, cancellationToken);
         }
 
+        var propertyUpdatePermission = await permissionRepository.GetByCodeAsync(
+            PermissionCodes.PropertyUpdate,
+            cancellationToken);
+
+        var propertyUpdatePermissionCreated = propertyUpdatePermission is null;
+
+        if (propertyUpdatePermission is null)
+        {
+            propertyUpdatePermission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.PropertyUpdate,
+                PermissionCodes.PropertyUpdateDescription);
+
+            await permissionRepository.AddAsync(propertyUpdatePermission, cancellationToken);
+        }
+
         var role = await roleRepository.GetPlatformRoleByNameAsync(PlatformAdminRoleName, cancellationToken);
 
         var roleCreated = role is null;
@@ -201,6 +217,18 @@ public sealed class BootstrapPlatformAdminCommandHandler(
                 cancellationToken);
         }
 
+        var propertyUpdateRolePermissionCreated = !await roleRepository.HasPermissionAsync(
+            role.Id,
+            propertyUpdatePermission.Id,
+            cancellationToken);
+
+        if (propertyUpdateRolePermissionCreated)
+        {
+            await roleRepository.AddPermissionAsync(
+                new RolePermission(role.Id, propertyUpdatePermission.Id),
+                cancellationToken);
+        }
+
         var platformRoleAssigned = !await roleRepository.IsAssignedToUserAsync(
             user.Id,
             role.Id,
@@ -225,11 +253,14 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             propertyCreatePermissionCreated,
             propertyReadPermission.Id,
             propertyReadPermissionCreated,
+            propertyUpdatePermission.Id,
+            propertyUpdatePermissionCreated,
             role.Id,
             roleCreated,
             rolePermissionCreated,
             propertyCreateRolePermissionCreated,
             propertyReadRolePermissionCreated,
+            propertyUpdateRolePermissionCreated,
             platformRoleAssigned));
     }
 }

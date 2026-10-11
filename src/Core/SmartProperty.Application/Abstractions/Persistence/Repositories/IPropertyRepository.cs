@@ -8,6 +8,12 @@ public interface IPropertyRepository
 {
     Task AddAsync(Property property, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The tracked aggregate, for a command that mutates it and commits through the unit of work, or null when no
+    /// property has the id. Not a read model: reads use <see cref="GetDetailsByIdAsync"/>.
+    /// </summary>
+    Task<Property?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
     /// <summary>The read model of one property, whatever its status, or null when no property has the id.</summary>
     Task<PropertyDetails?> GetDetailsByIdAsync(Guid id, CancellationToken cancellationToken = default);
 

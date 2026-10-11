@@ -93,6 +93,7 @@ public sealed class AuthContextEndpointTests
             [
                 PermissionCodes.PropertyCreate,
                 PermissionCodes.PropertyRead,
+                PermissionCodes.PropertyUpdate,
                 PermissionCodes.WorkspaceAccessRequestsReview
             ],
             body.PlatformPermissions);

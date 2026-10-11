@@ -20,6 +20,22 @@ internal sealed class FakePropertyRepository : IPropertyRepository
 
     public Guid? LastRequestedId { get; private set; }
 
+    /// <summary>
+    /// The aggregates <see cref="GetByIdAsync"/> hands out, keyed by id. Returned by reference, as a tracking
+    /// context would, so a test observes exactly what the handler mutated.
+    /// </summary>
+    public Dictionary<Guid, Property> Tracked { get; } = [];
+
+    public int GetByIdCallCount { get; private set; }
+
+    public Task<Property?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        GetByIdCallCount++;
+        LastRequestedId = id;
+        CancellationToken = cancellationToken;
+        return Task.FromResult(Tracked.GetValueOrDefault(id));
+    }
+
     /// <summary>What <see cref="ListAsync"/> answers, returned as-is so a test can prove ordering is preserved.</summary>
     public PropertyPage Page { get; set; } = new([], 0);
 

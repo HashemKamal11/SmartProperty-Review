@@ -28,6 +28,14 @@ public static class PermissionCodes
     public const string PropertyReadDescription = "Read canonical properties.";
 
     /// <summary>
+    /// Correct the details of a canonical platform-global property. Platform-scoped for the same reason as
+    /// <see cref="PropertyRead"/>: nothing held inside a workspace satisfies it.
+    /// </summary>
+    public const string PropertyUpdate = "property.update";
+
+    public const string PropertyUpdateDescription = "Update canonical properties.";
+
+    /// <summary>
     /// Review — approve or reject — a workspace access request. Platform-scoped: reviewing who may enter a
     /// workspace is a platform administration act, so it is never satisfied by anything held inside a workspace.
     /// </summary>

@@ -10,6 +10,7 @@ using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Application.PropertyRegistry.GetById;
 using SmartProperty.Application.PropertyRegistry.List;
+using SmartProperty.Application.PropertyRegistry.Update;
 using SmartProperty.Common.Pagination;
 using SmartProperty.Domain.PropertyRegistry;
 
@@ -21,7 +22,8 @@ namespace SmartProperty.Api.Controllers;
 /// <remarks>
 /// Each action declares its own permission rather than the controller declaring one for all: the attribute allows
 /// multiples and every one must pass, so a controller-level requirement would silently be added to every action.
-/// Reading must not require <c>property.create</c>, and creating must not require <c>property.read</c>.
+/// Reading must not require <c>property.create</c>, and creating must not require <c>property.read</c>. Updating
+/// requires <c>property.update</c> alone.
 /// </remarks>
 [ApiController]
 [Route("api/properties")]
@@ -136,6 +138,51 @@ public sealed class PropertiesController : ControllerBase
         CancellationToken cancellationToken)
     {
         var result = await handler.Handle(new GetPropertyByIdQuery(id), cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(ToResponse(result.Value));
+    }
+
+    /// <summary>
+    /// Corrects the details of one active property by full replacement: an omitted optional field is cleared.
+    /// Values identical to the current ones change nothing, including <c>updatedAt</c>.
+    /// </summary>
+    /// <remarks>
+    /// An archived property is refused with <c>409 properties.archived</c>. Status is never changed here.
+    /// </remarks>
+    [HttpPut("{id:guid}")]
+    [RequirePermission(PermissionCodes.PropertyUpdate)]
+    [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> Update(
+        Guid id,
+        UpdatePropertyRequest request,
+        [FromServices] ICommandHandler<UpdatePropertyCommand, PropertyDetails> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new UpdatePropertyCommand(
+            id,
+            request.Type,
+            request.CountryCode,
+            request.City,
+            request.Region,
+            request.District,
+            request.AddressLine,
+            request.PostalCode,
+            request.Latitude,
+            request.Longitude);
+
+        var result = await handler.Handle(command, cancellationToken);
 
         if (result.IsFailure)
         {

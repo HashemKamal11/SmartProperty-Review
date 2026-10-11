@@ -17,6 +17,15 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
     }
 
     /// <remarks>
+    /// One command, tracked. The caller mutates the returned aggregate and change tracking writes only what
+    /// changed; nothing here calls <c>Update</c> or <c>Attach</c>.
+    /// </remarks>
+    public Task<Property?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return dbContext.Properties.FirstOrDefaultAsync(property => property.Id == id, cancellationToken);
+    }
+
+    /// <remarks>
     /// One command. The read model is projected in the database, so no aggregate is materialized or tracked.
     /// </remarks>
     public Task<PropertyDetails?> GetDetailsByIdAsync(Guid id, CancellationToken cancellationToken = default)
