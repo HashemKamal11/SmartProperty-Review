@@ -140,6 +140,55 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
     }
 
     [Fact]
+    public async Task AFirstRun_CreatesAndAttachesThePropertyReadPermission()
+    {
+        SeedUser(UserStatus.Pending);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
+
+        var permission = Assert.Single(
+            _permissions.Added,
+            candidate => candidate.Code == PermissionCodes.PropertyRead);
+        Assert.Equal(PermissionCodes.PropertyReadDescription, permission.Description);
+        Assert.True(result.Value.PropertyReadPermissionCreated);
+        Assert.Equal(permission.Id, result.Value.PropertyReadPermissionId);
+        Assert.True(result.Value.PropertyReadRolePermissionCreated);
+        Assert.Contains(
+            _roles.AddedRolePermissions,
+            candidate => candidate.RoleId == result.Value.RoleId && candidate.PermissionId == permission.Id);
+    }
+
+    [Fact]
+    public async Task AFirstRun_ProvisionsEveryDeclaredPlatformAdminPermissionAndNothingElse()
+    {
+        SeedUser(UserStatus.Pending);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
+
+        var expectedCodes = new[]
+        {
+            PermissionCodes.PropertyCreate,
+            PermissionCodes.PropertyRead,
+            PermissionCodes.WorkspaceAccessRequestsReview
+        };
+        var actualCodes = _permissions.Added
+            .Select(permission => permission.Code)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(expectedCodes, actualCodes);
+        Assert.Equal(3, _roles.AddedRolePermissions.Count);
+        Assert.All(
+            _roles.AddedRolePermissions,
+            rolePermission => Assert.Equal(result.Value.RoleId, rolePermission.RoleId));
+        Assert.Equal(
+            _permissions.Added.Select(permission => permission.Id).Order().ToArray(),
+            _roles.AddedRolePermissions.Select(rolePermission => rolePermission.PermissionId).Order().ToArray());
+    }
+
+    [Fact]
     public async Task AFirstRun_CreatesThePlatformAdminRoleAtPlatformScope()
     {
         SeedUser(UserStatus.Pending);
@@ -211,9 +260,11 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         Assert.False(second.Value.UserActivated);
         Assert.False(second.Value.PermissionCreated);
         Assert.False(second.Value.PropertyCreatePermissionCreated);
+        Assert.False(second.Value.PropertyReadPermissionCreated);
         Assert.False(second.Value.RoleCreated);
         Assert.False(second.Value.RolePermissionCreated);
         Assert.False(second.Value.PropertyCreateRolePermissionCreated);
+        Assert.False(second.Value.PropertyReadRolePermissionCreated);
         Assert.False(second.Value.PlatformRoleAssigned);
     }
 
@@ -226,11 +277,11 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         var first = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
         var second = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
 
-        Assert.Equal(2, _permissions.Added.Count);
+        Assert.Equal(3, _permissions.Added.Count);
         Assert.Single(_roles.AddedRoles);
-        Assert.Equal(2, _roles.AddedRolePermissions.Count);
+        Assert.Equal(3, _roles.AddedRolePermissions.Count);
         Assert.Single(_roles.AddedUserAssignments);
-        Assert.Equal(2, _roles.RolePermissions.Count);
+        Assert.Equal(3, _roles.RolePermissions.Count);
         Assert.Single(_roles.UserAssignments);
 
         // And it resolves to the same rows, rather than quietly provisioning a parallel set.
@@ -250,6 +301,10 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
             Guid.NewGuid(),
             PermissionCodes.PropertyCreate,
             "Seeded by an earlier deployment.");
+        var propertyReadPermission = new Permission(
+            Guid.NewGuid(),
+            PermissionCodes.PropertyRead,
+            "Seeded by an earlier deployment.");
         var role = new Role(
             Guid.NewGuid(),
             BootstrapPlatformAdminCommandHandler.PlatformAdminRoleName,
@@ -259,7 +314,11 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
 
         _permissions.Seed(permission);
         _permissions.Seed(propertyCreatePermission);
+        _permissions.Seed(propertyReadPermission);
         _roles.Seed(role);
+        _roles.Seed(new RolePermission(role.Id, permission.Id));
+        _roles.Seed(new RolePermission(role.Id, propertyCreatePermission.Id));
+        _roles.Seed(new RolePermission(role.Id, propertyReadPermission.Id));
 
         var handler = CreateHandler();
 
@@ -267,16 +326,86 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.PermissionCreated);
+        Assert.False(result.Value.PropertyCreatePermissionCreated);
+        Assert.False(result.Value.PropertyReadPermissionCreated);
         Assert.False(result.Value.RoleCreated);
+        Assert.False(result.Value.RolePermissionCreated);
+        Assert.False(result.Value.PropertyCreateRolePermissionCreated);
+        Assert.False(result.Value.PropertyReadRolePermissionCreated);
         Assert.Equal(permission.Id, result.Value.PermissionId);
+        Assert.Equal(propertyCreatePermission.Id, result.Value.PropertyCreatePermissionId);
+        Assert.Equal(propertyReadPermission.Id, result.Value.PropertyReadPermissionId);
         Assert.Equal(role.Id, result.Value.RoleId);
 
-        // The wiring was still missing, so only that is added.
+        // The role assignment was the only missing piece of an otherwise fully provisioned state.
         Assert.Empty(_permissions.Added);
         Assert.Empty(_roles.AddedRoles);
-        Assert.Equal(2, _roles.AddedRolePermissions.Count);
+        Assert.Empty(_roles.AddedRolePermissions);
         var assignment = Assert.Single(_roles.AddedUserAssignments);
         Assert.Equal(user.Id, assignment.UserId);
+        Assert.Equal(role.Id, assignment.RoleId);
+        Assert.True(result.Value.PlatformRoleAssigned);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task AnExistingPropertyReadPermission_IsReusedAndOnlyAttached()
+    {
+        var user = SeedUser(UserStatus.Active);
+        var reviewPermission = SeedPermission(PermissionCodes.WorkspaceAccessRequestsReview);
+        var propertyCreatePermission = SeedPermission(PermissionCodes.PropertyCreate);
+        var propertyReadPermission = SeedPermission(PermissionCodes.PropertyRead);
+        var role = SeedPlatformAdminRole();
+        _roles.Seed(new RolePermission(role.Id, reviewPermission.Id));
+        _roles.Seed(new RolePermission(role.Id, propertyCreatePermission.Id));
+        _roles.Seed(new UserPlatformRole(user.Id, role.Id));
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.PropertyReadPermissionCreated);
+        Assert.Equal(propertyReadPermission.Id, result.Value.PropertyReadPermissionId);
+        Assert.True(result.Value.PropertyReadRolePermissionCreated);
+        Assert.Empty(_permissions.Added);
+        Assert.Empty(_roles.AddedRoles);
+        var attachment = Assert.Single(_roles.AddedRolePermissions);
+        Assert.Equal(role.Id, attachment.RoleId);
+        Assert.Equal(propertyReadPermission.Id, attachment.PermissionId);
+        Assert.Empty(_roles.AddedUserAssignments);
+    }
+
+    [Fact]
+    public async Task AnEnvironmentBootstrappedBeforePropertyRead_GainsOnlyPropertyReadOnTheNextRun()
+    {
+        var user = SeedUser(UserStatus.Active);
+        var reviewPermission = SeedPermission(PermissionCodes.WorkspaceAccessRequestsReview);
+        var propertyCreatePermission = SeedPermission(PermissionCodes.PropertyCreate);
+        var role = SeedPlatformAdminRole();
+        _roles.Seed(new RolePermission(role.Id, reviewPermission.Id));
+        _roles.Seed(new RolePermission(role.Id, propertyCreatePermission.Id));
+        _roles.Seed(new UserPlatformRole(user.Id, role.Id));
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.PropertyReadPermissionCreated);
+        Assert.True(result.Value.PropertyReadRolePermissionCreated);
+        var permission = Assert.Single(_permissions.Added);
+        Assert.Equal(PermissionCodes.PropertyRead, permission.Code);
+        var attachment = Assert.Single(_roles.AddedRolePermissions);
+        Assert.Equal(role.Id, attachment.RoleId);
+        Assert.Equal(permission.Id, attachment.PermissionId);
+        Assert.Empty(_roles.AddedRoles);
+        Assert.Empty(_roles.AddedUserAssignments);
+    }
+
+    [Fact]
+    public void ThePropertyReadPermissionCodeIsTheDeclaredContract()
+    {
+        Assert.Equal("property.read", PermissionCodes.PropertyRead);
+        Assert.Equal("Read canonical properties.", PermissionCodes.PropertyReadDescription);
     }
 
     [Fact]
@@ -322,6 +451,25 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         _users.Seed(user);
 
         return user;
+    }
+
+    private Permission SeedPermission(string code)
+    {
+        var permission = new Permission(Guid.NewGuid(), code, "Seeded by an earlier deployment.");
+        _permissions.Seed(permission);
+        return permission;
+    }
+
+    private Role SeedPlatformAdminRole()
+    {
+        var role = new Role(
+            Guid.NewGuid(),
+            BootstrapPlatformAdminCommandHandler.PlatformAdminRoleName,
+            RoleScope.Platform,
+            workspaceId: null,
+            CreatedAt);
+        _roles.Seed(role);
+        return role;
     }
 
     private BootstrapPlatformAdminCommandHandler CreateHandler()

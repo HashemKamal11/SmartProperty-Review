@@ -20,6 +20,14 @@ public static class PermissionCodes
     public const string PropertyCreateDescription = "Create canonical properties.";
 
     /// <summary>
+    /// Read canonical platform-global properties. Platform-scoped: the registry is not owned by a workspace, so
+    /// nothing held inside a workspace satisfies it.
+    /// </summary>
+    public const string PropertyRead = "property.read";
+
+    public const string PropertyReadDescription = "Read canonical properties.";
+
+    /// <summary>
     /// Review — approve or reject — a workspace access request. Platform-scoped: reviewing who may enter a
     /// workspace is a platform administration act, so it is never satisfied by anything held inside a workspace.
     /// </summary>

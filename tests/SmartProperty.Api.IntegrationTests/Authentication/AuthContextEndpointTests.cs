@@ -64,7 +64,12 @@ public sealed class AuthContextEndpointTests
     public async Task BootstrappedPlatformAdminGetsOnlyPlatformRoleAndPermissions()
     {
         RegisteredUser candidate;
-        using (var registrationFactory = new SmartPropertyApiFactory(_fixture))
+        using (var registrationFactory = new SmartPropertyApiFactory(
+                   _fixture,
+                   configuration:
+                   [
+                       new KeyValuePair<string, string?>("Bootstrap:Enabled", "false")
+                   ]))
         using (var registrationClient = registrationFactory.CreateClient())
         {
             var workspaceId = await _scenario.CreateWorkspaceAsync();
@@ -85,7 +90,11 @@ public sealed class AuthContextEndpointTests
 
         Assert.Equal([BootstrapPlatformAdminCommandHandler.PlatformAdminRoleName], body.PlatformRoles);
         Assert.Equal(
-            [PermissionCodes.PropertyCreate, PermissionCodes.WorkspaceAccessRequestsReview],
+            [
+                PermissionCodes.PropertyCreate,
+                PermissionCodes.PropertyRead,
+                PermissionCodes.WorkspaceAccessRequestsReview
+            ],
             body.PlatformPermissions);
         Assert.Empty(body.Workspaces);
     }

@@ -14,10 +14,13 @@ public sealed record BootstrapPlatformAdminResult(
     bool PermissionCreated,
     Guid PropertyCreatePermissionId,
     bool PropertyCreatePermissionCreated,
+    Guid PropertyReadPermissionId,
+    bool PropertyReadPermissionCreated,
     Guid RoleId,
     bool RoleCreated,
     bool RolePermissionCreated,
     bool PropertyCreateRolePermissionCreated,
+    bool PropertyReadRolePermissionCreated,
     bool PlatformRoleAssigned)
 {
     /// <summary>True when the run left the database exactly as it found it.</summary>
@@ -25,8 +28,10 @@ public sealed record BootstrapPlatformAdminResult(
         !UserActivated
         && !PermissionCreated
         && !PropertyCreatePermissionCreated
+        && !PropertyReadPermissionCreated
         && !RoleCreated
         && !RolePermissionCreated
         && !PropertyCreateRolePermissionCreated
+        && !PropertyReadRolePermissionCreated
         && !PlatformRoleAssigned;
 }

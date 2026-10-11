@@ -132,6 +132,22 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             await permissionRepository.AddAsync(propertyCreatePermission, cancellationToken);
         }
 
+        var propertyReadPermission = await permissionRepository.GetByCodeAsync(
+            PermissionCodes.PropertyRead,
+            cancellationToken);
+
+        var propertyReadPermissionCreated = propertyReadPermission is null;
+
+        if (propertyReadPermission is null)
+        {
+            propertyReadPermission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.PropertyRead,
+                PermissionCodes.PropertyReadDescription);
+
+            await permissionRepository.AddAsync(propertyReadPermission, cancellationToken);
+        }
+
         var role = await roleRepository.GetPlatformRoleByNameAsync(PlatformAdminRoleName, cancellationToken);
 
         var roleCreated = role is null;
@@ -173,6 +189,18 @@ public sealed class BootstrapPlatformAdminCommandHandler(
                 cancellationToken);
         }
 
+        var propertyReadRolePermissionCreated = !await roleRepository.HasPermissionAsync(
+            role.Id,
+            propertyReadPermission.Id,
+            cancellationToken);
+
+        if (propertyReadRolePermissionCreated)
+        {
+            await roleRepository.AddPermissionAsync(
+                new RolePermission(role.Id, propertyReadPermission.Id),
+                cancellationToken);
+        }
+
         var platformRoleAssigned = !await roleRepository.IsAssignedToUserAsync(
             user.Id,
             role.Id,
@@ -195,10 +223,13 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             permissionCreated,
             propertyCreatePermission.Id,
             propertyCreatePermissionCreated,
+            propertyReadPermission.Id,
+            propertyReadPermissionCreated,
             role.Id,
             roleCreated,
             rolePermissionCreated,
             propertyCreateRolePermissionCreated,
+            propertyReadRolePermissionCreated,
             platformRoleAssigned));
     }
 }

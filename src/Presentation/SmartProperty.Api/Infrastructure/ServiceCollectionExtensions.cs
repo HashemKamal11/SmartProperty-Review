@@ -24,7 +24,10 @@ using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
 using SmartProperty.Application.Identity.Bootstrap;
+using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Create;
+using SmartProperty.Application.PropertyRegistry.GetById;
+using SmartProperty.Application.PropertyRegistry.List;
 using SmartProperty.Application.WorkspaceAccessRequests.Approve;
 using SmartProperty.Application.WorkspaceAccessRequests.List;
 using SmartProperty.Application.WorkspaceAccessRequests.Reject;
@@ -252,6 +255,8 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetMeQuery, MeResult>, GetMeQueryHandler>();
         services.AddScoped<IQueryHandler<GetAuthContextQuery, AuthContextResult>, GetAuthContextQueryHandler>();
         services.AddScoped<ICommandHandler<CreatePropertyCommand, CreatePropertyResult>, CreatePropertyCommandHandler>();
+        services.AddScoped<IQueryHandler<GetPropertyByIdQuery, PropertyDetails>, GetPropertyByIdQueryHandler>();
+        services.AddScoped<IQueryHandler<GetPropertiesQuery, PagedList<PropertyDetails>>, GetPropertiesQueryHandler>();
 
         services
             .AddScoped<ICommandHandler<ApproveWorkspaceAccessRequestCommand, ApproveWorkspaceAccessRequestResult>,
