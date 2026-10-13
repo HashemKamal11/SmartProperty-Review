@@ -121,7 +121,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
     }
 
     [Fact]
-    public void NoPropertyColumnIsAConcurrencyToken()
+    public void StatusIsThePropertysOnlyConcurrencyToken()
     {
         using var context = Host.CreateVerificationContext();
         var entityType = context.Model.FindEntityType(typeof(Property))!;
@@ -131,7 +131,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             .Where(property => property.IsConcurrencyToken)
             .Select(property => property.Name);
 
-        Assert.Empty(tokens);
+        Assert.Equal([nameof(Property.Status)], tokens);
     }
 
     private async Task<IReadOnlyList<string>> QueryStringsAsync(string sql)

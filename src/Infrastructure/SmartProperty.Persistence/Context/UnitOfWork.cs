@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.Domain.Workspaces;
 using SmartProperty.Persistence.Configurations.Identity;
 
@@ -51,8 +52,13 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
             return PersistenceResource.RefreshToken;
         }
 
-        return entityType == typeof(WorkspaceAccessRequest)
-            ? PersistenceResource.WorkspaceAccessRequest
+        if (entityType == typeof(WorkspaceAccessRequest))
+        {
+            return PersistenceResource.WorkspaceAccessRequest;
+        }
+
+        return entityType == typeof(Property)
+            ? PersistenceResource.Property
             : null;
     }
 

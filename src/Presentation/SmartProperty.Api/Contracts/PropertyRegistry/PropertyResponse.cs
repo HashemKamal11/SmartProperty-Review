@@ -2,8 +2,9 @@
 namespace SmartProperty.Api.Contracts.PropertyRegistry;
 
 /// <summary>
-/// One canonical property, as returned by the read endpoints and by an update. The JSON shape intentionally matches
-/// <see cref="CreatePropertyResponse"/>; the types are kept separate so each contract can evolve on its own.
+/// One canonical property, as returned by the read endpoints, by an update, and by an archive. The JSON shape
+/// intentionally matches <see cref="CreatePropertyResponse"/>; the types are kept separate so each contract can
+/// evolve on its own.
 /// </summary>
 public sealed record PropertyResponse(
     Guid Id,

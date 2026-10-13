@@ -91,6 +91,7 @@ public sealed class AuthContextEndpointTests
         Assert.Equal([BootstrapPlatformAdminCommandHandler.PlatformAdminRoleName], body.PlatformRoles);
         Assert.Equal(
             [
+                PermissionCodes.PropertyArchive,
                 PermissionCodes.PropertyCreate,
                 PermissionCodes.PropertyRead,
                 PermissionCodes.PropertyUpdate,

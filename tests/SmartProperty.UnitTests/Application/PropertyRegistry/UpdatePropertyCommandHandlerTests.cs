@@ -325,6 +325,20 @@ public sealed class UpdatePropertyCommandHandlerTests
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
 
+    [Fact]
+    public async Task ConcurrentArchiveCommittedFirstReturnsArchivedConflict()
+    {
+        var property = SeedProperty();
+        _unitOfWork.ExceptionToThrow = FakeUnitOfWork.PropertyConcurrencyConflict();
+
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "AE"));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("properties.archived", result.Error!.Code);
+        Assert.Equal(ErrorType.Conflict, result.Error.Type);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
     private Property SeedProperty(PropertyAddress? address = null)
     {
         var property = new Property(Guid.NewGuid(), PropertyType.Land, address ?? new PropertyAddress("SA"), CreatedAt);

@@ -164,6 +164,22 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             await permissionRepository.AddAsync(propertyUpdatePermission, cancellationToken);
         }
 
+        var propertyArchivePermission = await permissionRepository.GetByCodeAsync(
+            PermissionCodes.PropertyArchive,
+            cancellationToken);
+
+        var propertyArchivePermissionCreated = propertyArchivePermission is null;
+
+        if (propertyArchivePermission is null)
+        {
+            propertyArchivePermission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.PropertyArchive,
+                PermissionCodes.PropertyArchiveDescription);
+
+            await permissionRepository.AddAsync(propertyArchivePermission, cancellationToken);
+        }
+
         var role = await roleRepository.GetPlatformRoleByNameAsync(PlatformAdminRoleName, cancellationToken);
 
         var roleCreated = role is null;
@@ -229,6 +245,18 @@ public sealed class BootstrapPlatformAdminCommandHandler(
                 cancellationToken);
         }
 
+        var propertyArchiveRolePermissionCreated = !await roleRepository.HasPermissionAsync(
+            role.Id,
+            propertyArchivePermission.Id,
+            cancellationToken);
+
+        if (propertyArchiveRolePermissionCreated)
+        {
+            await roleRepository.AddPermissionAsync(
+                new RolePermission(role.Id, propertyArchivePermission.Id),
+                cancellationToken);
+        }
+
         var platformRoleAssigned = !await roleRepository.IsAssignedToUserAsync(
             user.Id,
             role.Id,
@@ -255,12 +283,15 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             propertyReadPermissionCreated,
             propertyUpdatePermission.Id,
             propertyUpdatePermissionCreated,
+            propertyArchivePermission.Id,
+            propertyArchivePermissionCreated,
             role.Id,
             roleCreated,
             rolePermissionCreated,
             propertyCreateRolePermissionCreated,
             propertyReadRolePermissionCreated,
             propertyUpdateRolePermissionCreated,
+            propertyArchiveRolePermissionCreated,
             platformRoleAssigned));
     }
 }

@@ -112,7 +112,7 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task RepeatedRunsAttachExactlyTheFourDeclaredPlatformAdminPermissionsWithoutDuplicates()
+    public async Task RepeatedRunsAttachExactlyTheFiveDeclaredPlatformAdminPermissionsWithoutDuplicates()
     {
         var candidate = await RegisterCandidateAsync();
 
@@ -139,6 +139,7 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
 
         Assert.Equal(
             [
+                PermissionCodes.PropertyArchive,
                 PermissionCodes.PropertyCreate,
                 PermissionCodes.PropertyRead,
                 PermissionCodes.PropertyUpdate,
@@ -149,6 +150,7 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
         // The collection shares one database, so another test may have created the row first; bootstrap must reuse
         // it rather than add a second.
         Assert.Equal(1, await context.Permissions.CountAsync(row => row.Code == PermissionCodes.PropertyUpdate));
+        Assert.Equal(1, await context.Permissions.CountAsync(row => row.Code == PermissionCodes.PropertyArchive));
     }
 
     [Fact]

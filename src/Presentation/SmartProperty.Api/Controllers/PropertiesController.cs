@@ -7,6 +7,7 @@ using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Authorization;
 using SmartProperty.Application.PropertyRegistry;
+using SmartProperty.Application.PropertyRegistry.Archive;
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Application.PropertyRegistry.GetById;
 using SmartProperty.Application.PropertyRegistry.List;
@@ -23,7 +24,7 @@ namespace SmartProperty.Api.Controllers;
 /// Each action declares its own permission rather than the controller declaring one for all: the attribute allows
 /// multiples and every one must pass, so a controller-level requirement would silently be added to every action.
 /// Reading must not require <c>property.create</c>, and creating must not require <c>property.read</c>. Updating
-/// requires <c>property.update</c> alone.
+/// requires <c>property.update</c> alone, and archiving requires <c>property.archive</c> alone.
 /// </remarks>
 [ApiController]
 [Route("api/properties")]
@@ -183,6 +184,36 @@ public sealed class PropertiesController : ControllerBase
             request.Longitude);
 
         var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(ToResponse(result.Value));
+    }
+
+    /// <summary>
+    /// Archives one active property. The record is kept and stays readable; only its status and
+    /// <c>updatedAt</c> change.
+    /// </summary>
+    /// <remarks>
+    /// Not idempotent: an already archived property is refused with <c>409 properties.archived</c>.
+    /// </remarks>
+    [HttpPost("{id:guid}/archive")]
+    [RequirePermission(PermissionCodes.PropertyArchive)]
+    [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Archive(
+        Guid id,
+        [FromServices] ICommandHandler<ArchivePropertyCommand, PropertyDetails> handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(new ArchivePropertyCommand(id), cancellationToken);
 
         if (result.IsFailure)
         {

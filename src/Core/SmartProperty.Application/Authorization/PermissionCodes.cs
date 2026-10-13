@@ -36,6 +36,14 @@ public static class PermissionCodes
     public const string PropertyUpdateDescription = "Update canonical properties.";
 
     /// <summary>
+    /// Archive a canonical platform-global property. Platform-scoped for the same reason as
+    /// <see cref="PropertyRead"/>: nothing held inside a workspace satisfies it.
+    /// </summary>
+    public const string PropertyArchive = "property.archive";
+
+    public const string PropertyArchiveDescription = "Archive canonical properties.";
+
+    /// <summary>
     /// Review — approve or reject — a workspace access request. Platform-scoped: reviewing who may enter a
     /// workspace is a platform administration act, so it is never satisfied by anything held inside a workspace.
     /// </summary>

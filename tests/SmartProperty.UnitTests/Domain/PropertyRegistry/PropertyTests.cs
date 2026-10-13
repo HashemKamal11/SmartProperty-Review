@@ -110,6 +110,21 @@ public sealed class PropertyTests
     }
 
     [Fact]
+    public void Archive_ChangesNothingButStatusAndUpdateInstant()
+    {
+        var id = Guid.NewGuid();
+        var address = new PropertyAddress("AE", city: "Dubai", latitude: 25.2m);
+        var property = CreateProperty(id: id, type: PropertyType.Building, address: address);
+
+        property.Archive(CreatedAt.AddDays(1));
+
+        Assert.Equal(id, property.Id);
+        Assert.Equal(PropertyType.Building, property.Type);
+        Assert.Same(address, property.Address);
+        Assert.Equal(CreatedAt, property.CreatedAt);
+    }
+
+    [Fact]
     public void Archive_AllowsArchivingAtTheCreationInstant()
     {
         var property = CreateProperty();

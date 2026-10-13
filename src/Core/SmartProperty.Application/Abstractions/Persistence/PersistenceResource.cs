@@ -15,5 +15,10 @@ public enum PersistenceResource
     /// <summary>
     /// A workspace access request whose review status changed between loading it and saving a terminal decision.
     /// </summary>
-    WorkspaceAccessRequest = 2
+    WorkspaceAccessRequest = 2,
+
+    /// <summary>
+    /// A canonical property whose lifecycle status changed between loading it and saving an archive or an update.
+    /// </summary>
+    Property = 3
 }

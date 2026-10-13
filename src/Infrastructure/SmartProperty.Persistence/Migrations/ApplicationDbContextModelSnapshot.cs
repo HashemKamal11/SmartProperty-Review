@@ -266,6 +266,7 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnName("created_at");
 
                     b.Property<string>("Status")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")

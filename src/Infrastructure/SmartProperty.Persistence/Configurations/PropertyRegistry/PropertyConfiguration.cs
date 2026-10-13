@@ -49,7 +49,8 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
             .HasColumnName("status")
             .HasConversion<string>()
             .HasMaxLength(32)
-            .IsRequired();
+            .IsRequired()
+            .IsConcurrencyToken();
 
         // The address is a value object with no identity of its own, so it is stored inline in this row rather
         // than in a table of its own. Coordinates keep the unconstrained numeric type so no valid domain value is

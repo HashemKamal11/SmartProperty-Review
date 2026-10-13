@@ -53,6 +53,13 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
             new InvalidOperationException("Simulated concurrent workspace access request review."));
     }
 
+    public static ConcurrencyConflictException PropertyConcurrencyConflict()
+    {
+        return new ConcurrencyConflictException(
+            PersistenceResource.Property,
+            new InvalidOperationException("Simulated concurrent property status change."));
+    }
+
     public static UniqueConstraintViolationException WorkspaceMembershipUniqueConstraintViolation()
     {
         return new UniqueConstraintViolationException(

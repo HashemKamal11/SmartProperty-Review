@@ -25,6 +25,7 @@ using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
 using SmartProperty.Application.Identity.Bootstrap;
 using SmartProperty.Application.PropertyRegistry;
+using SmartProperty.Application.PropertyRegistry.Archive;
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Application.PropertyRegistry.GetById;
 using SmartProperty.Application.PropertyRegistry.List;
@@ -259,6 +260,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetPropertyByIdQuery, PropertyDetails>, GetPropertyByIdQueryHandler>();
         services.AddScoped<IQueryHandler<GetPropertiesQuery, PagedList<PropertyDetails>>, GetPropertiesQueryHandler>();
         services.AddScoped<ICommandHandler<UpdatePropertyCommand, PropertyDetails>, UpdatePropertyCommandHandler>();
+        services.AddScoped<ICommandHandler<ArchivePropertyCommand, PropertyDetails>, ArchivePropertyCommandHandler>();
 
         services
             .AddScoped<ICommandHandler<ApproveWorkspaceAccessRequestCommand, ApproveWorkspaceAccessRequestResult>,

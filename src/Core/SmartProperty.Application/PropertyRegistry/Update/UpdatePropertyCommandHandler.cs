@@ -17,8 +17,9 @@ namespace SmartProperty.Application.PropertyRegistry.Update;
 /// Every precondition is checked before the aggregate is mutated, so a refused update leaves it exactly as it was.
 /// An update whose normalized values are already current changes nothing and commits nothing.
 ///
-/// No concurrency token guards the row, so two concurrent corrections resolve as last-writer-wins. That is an
-/// accepted limitation of this operation and must be revisited when archiving becomes reachable.
+/// Status is the row's concurrency token. Two concurrent corrections still resolve as last-writer-wins, because
+/// neither changes the status; but an update that loaded the property Active and saves after an archive committed
+/// no longer succeeds against the archived row, and is refused as <c>properties.archived</c>.
 /// </remarks>
 public sealed class UpdatePropertyCommandHandler(
     IPropertyRepository propertyRepository,
@@ -67,40 +68,25 @@ public sealed class UpdatePropertyCommandHandler(
             command.Latitude,
             command.Longitude);
 
-        var changed = property.UpdateDetails(propertyType, address, ResolveUpdatedAt(property.UpdatedAt));
+        var changed = property.UpdateDetails(
+            propertyType,
+            address,
+            PropertyCommandSupport.ResolveUpdatedAt(dateTimeProvider, property.UpdatedAt));
 
         if (changed)
         {
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+            catch (ConcurrencyConflictException exception)
+                when (exception.Resource == PersistenceResource.Property)
+            {
+                // The status changed after the load, and Active is the only status an update starts from.
+                return Result<PropertyDetails>.Failure(UpdatePropertyErrors.Archived);
+            }
         }
 
-        return Result<PropertyDetails>.Success(new PropertyDetails(
-            property.Id,
-            property.Type,
-            property.Status,
-            new PropertyAddressDetails(
-                property.Address.CountryCode,
-                property.Address.City,
-                property.Address.Region,
-                property.Address.District,
-                property.Address.AddressLine,
-                property.Address.PostalCode,
-                property.Address.Latitude,
-                property.Address.Longitude),
-            property.CreatedAt,
-            property.UpdatedAt));
-    }
-
-    /// <summary>
-    /// The instant a real change is stamped with: the clock, read once and truncated to the microsecond precision
-    /// PostgreSQL stores, so the value returned is exactly the value persisted and later read back. A clock behind
-    /// the current update instant keeps that instant rather than moving backwards.
-    /// </summary>
-    private DateTimeOffset ResolveUpdatedAt(DateTimeOffset currentUpdatedAt)
-    {
-        var now = dateTimeProvider.UtcNow;
-        var truncated = new DateTimeOffset(now.Ticks - (now.Ticks % TimeSpan.TicksPerMicrosecond), now.Offset);
-
-        return truncated >= currentUpdatedAt ? truncated : currentUpdatedAt;
+        return Result<PropertyDetails>.Success(PropertyCommandSupport.ToDetails(property));
     }
 }
