@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -15,6 +16,10 @@ namespace SmartProperty.Api.IntegrationTests.Infrastructure;
 /// The real API host, started in memory with an isolated test database and no developer machine configuration.
 /// </summary>
 /// <remarks>
+/// Isolation is explicit: the User Secrets configuration source is removed, and the in-memory collection (added
+/// last) pins the database, JWT settings and <c>Bootstrap:Enabled=false</c> before the test's own configuration.
+/// appsettings files and environment variables still load, but the values above override them.
+///
 /// Everything that decides the outcome of an authentication or authorization test stays production code:
 /// routing, <c>CorrelationIdMiddleware</c>, JWT Bearer with its <c>OnTokenValidated</c>, <c>OnChallenge</c> and
 /// <c>OnForbidden</c> events, the authorization stack including <c>PermissionAuthorizationHandler</c>, MVC
@@ -90,14 +95,32 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureAppConfiguration(configuration =>
         {
-            // Added last so it wins over appsettings.json, and so nothing depends on User Secrets, an
-            // appsettings.Local file, or an environment variable on the machine running the suite.
-            configuration.AddInMemoryCollection(
+            // The Development host loads the developer's User Secrets whenever the API assembly has a
+            // UserSecretsId, and those values would otherwise reach every test (Bootstrap:* in particular).
+            // Drop that source first, identified by what it is rather than where it sits in the list.
+            RemoveUserSecretsSources(configuration);
+
+            // Added last so it wins over appsettings.json and any appsettings.Local file or environment
+            // variable. Bootstrap is switched off by default, ahead of extraConfiguration, so a test that
+            // exercises it still enables it explicitly and wins.
+            // The in-memory provider rejects duplicate keys, so the layers are merged here, later ones winning.
+            KeyValuePair<string, string?>[] layers =
             [
                 new KeyValuePair<string, string?>("ConnectionStrings:Database", databaseConnectionString),
                 .. TestJwt.Configuration(),
+                new KeyValuePair<string, string?>("Bootstrap:Enabled", "false"),
+                new KeyValuePair<string, string?>("Bootstrap:PlatformAdminEmail", string.Empty),
                 .. extraConfiguration
-            ]);
+            ];
+
+            var merged = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var (key, value) in layers)
+            {
+                merged[key] = value;
+            }
+
+            configuration.AddInMemoryCollection(merged);
         });
 
         builder.ConfigureTestServices(services =>
@@ -130,6 +153,24 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
             services.AddControllers()
                 .AddApplicationPart(typeof(TestPermissionController).Assembly);
         });
+    }
+
+    /// <summary>The file name <c>AddUserSecrets</c> registers its JSON source under.</summary>
+    internal const string UserSecretsFileName = "secrets.json";
+
+    /// <summary>True for the JSON source <c>AddUserSecrets</c> adds.</summary>
+    internal static bool IsUserSecretsSource(IConfigurationSource source)
+    {
+        return source is JsonConfigurationSource json
+            && string.Equals(json.Path, UserSecretsFileName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void RemoveUserSecretsSources(IConfigurationBuilder configuration)
+    {
+        foreach (var source in configuration.Sources.Where(IsUserSecretsSource).ToList())
+        {
+            configuration.Sources.Remove(source);
+        }
     }
 
     private static bool DescribesApplicationDbContext(Type serviceType)

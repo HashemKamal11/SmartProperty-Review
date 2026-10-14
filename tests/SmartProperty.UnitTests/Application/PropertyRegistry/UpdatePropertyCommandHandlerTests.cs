@@ -1,3 +1,4 @@
+using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.PropertyRegistry.Update;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.PropertyRegistry;
@@ -336,6 +337,21 @@ public sealed class UpdatePropertyCommandHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("properties.archived", result.Error!.Code);
         Assert.Equal(ErrorType.Conflict, result.Error.Type);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task ConflictOnAnotherResourceIsNotTurnedIntoAnArchivedConflict()
+    {
+        var property = SeedProperty();
+        var conflict = FakeUnitOfWork.RefreshTokenConcurrencyConflict();
+        _unitOfWork.ExceptionToThrow = conflict;
+
+        var thrown = await Assert.ThrowsAsync<ConcurrencyConflictException>(
+            () => CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "AE")));
+
+        Assert.Same(conflict, thrown);
+        Assert.Equal(PersistenceResource.RefreshToken, thrown.Resource);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
 
