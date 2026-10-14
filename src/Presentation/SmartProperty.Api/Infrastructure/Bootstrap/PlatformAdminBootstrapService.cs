@@ -86,7 +86,14 @@ internal sealed class PlatformAdminBootstrapService(
         logger.LogWarning(
             "Platform administrator bootstrap provisioned user {UserId} (status {UserStatus}) with role {RoleId}. "
             + "Activated: {UserActivated}. Permission created: {PermissionCreated}. Role created: {RoleCreated}. "
-            + "Permission attached: {RolePermissionCreated}. Role assigned: {PlatformRoleAssigned}. "
+            + "Permission attached: {RolePermissionCreated}. "
+            + "Property permissions created (create/read/update/archive): "
+            + "{PropertyCreatePermissionCreated}/{PropertyReadPermissionCreated}/"
+            + "{PropertyUpdatePermissionCreated}/{PropertyArchivePermissionCreated}. "
+            + "Property permissions attached (create/read/update/archive): "
+            + "{PropertyCreateRolePermissionCreated}/{PropertyReadRolePermissionCreated}/"
+            + "{PropertyUpdateRolePermissionCreated}/{PropertyArchiveRolePermissionCreated}. "
+            + "Role assigned: {PlatformRoleAssigned}. "
             + "Set Bootstrap__Enabled=false now that provisioning has succeeded.",
             bootstrap.UserId,
             bootstrap.UserStatus,
@@ -95,6 +102,14 @@ internal sealed class PlatformAdminBootstrapService(
             bootstrap.PermissionCreated,
             bootstrap.RoleCreated,
             bootstrap.RolePermissionCreated,
+            bootstrap.PropertyCreatePermissionCreated,
+            bootstrap.PropertyReadPermissionCreated,
+            bootstrap.PropertyUpdatePermissionCreated,
+            bootstrap.PropertyArchivePermissionCreated,
+            bootstrap.PropertyCreateRolePermissionCreated,
+            bootstrap.PropertyReadRolePermissionCreated,
+            bootstrap.PropertyUpdateRolePermissionCreated,
+            bootstrap.PropertyArchiveRolePermissionCreated,
             bootstrap.PlatformRoleAssigned);
     }
 
