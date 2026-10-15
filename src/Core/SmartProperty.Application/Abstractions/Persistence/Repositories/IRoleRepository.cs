@@ -1,4 +1,5 @@
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.Workspaces;
 
 namespace SmartProperty.Application.Abstractions.Persistence.Repositories;
 
@@ -21,6 +22,15 @@ public interface IRoleRepository
     /// </summary>
     Task<Role?> GetPlatformRoleByNameAsync(string name, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The workspace-scoped role with this name in this workspace, if one exists. Scope and workspace are both
+    /// constrained, so a platform role or another workspace's role sharing the name can never be returned.
+    /// </summary>
+    Task<Role?> GetWorkspaceRoleByNameAsync(
+        Guid workspaceId,
+        string name,
+        CancellationToken cancellationToken = default);
+
     Task AddAsync(Role role, CancellationToken cancellationToken = default);
 
     /// <summary>True when this role already carries this permission.</summary>
@@ -38,4 +48,14 @@ public interface IRoleRepository
         CancellationToken cancellationToken = default);
 
     Task AddUserAssignmentAsync(UserPlatformRole userPlatformRole, CancellationToken cancellationToken = default);
+
+    /// <summary>True when this workspace membership already holds this role.</summary>
+    Task<bool> IsAssignedToMembershipAsync(
+        Guid workspaceMembershipId,
+        Guid roleId,
+        CancellationToken cancellationToken = default);
+
+    Task AddMembershipAssignmentAsync(
+        WorkspaceMembershipRole workspaceMembershipRole,
+        CancellationToken cancellationToken = default);
 }

@@ -2,9 +2,9 @@
 
 This document records the authorization scope semantics, contracts, and rules, how permission resolution implements them, and how ASP.NET Core authorization reaches them. Step 05.6A established the model and contracts; Step 05.6B supplied the resolver that answers a permission question from the database; Step 05.6C added the reusable ASP.NET bridge; Step 05.7 put the first permission on real endpoints, added the code that names it, and added the bootstrap that provisions the first account able to hold it.
 
-**Platform enforcement is now live.** One permission code exists, `workspace.access_requests.review`, declared once in `PermissionCodes`; `RequirePermissionAttribute` attaches it to the workspace access request review endpoints; and `PlatformAdminBootstrapService` is the configuration-gated, default-off way the first administrator comes to hold it.
+**Platform enforcement is now live.** Six permission codes exist, each declared once in `PermissionCodes`: five platform permissions (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`) and one workspace permission (`workspace.read`). `RequirePermissionAttribute` attaches the platform ones to endpoints, and `PlatformAdminBootstrapService` is the configuration-gated, default-off way the first administrator comes to hold all five. `workspace.read` is a workspace permission held by the default "Member" role; the bootstrap never grants it.
 
-Route workspace-id extraction, workspace enforcement on an endpoint, a named-policy catalog, and caching remain deferred.
+**Workspace enforcement is now live too.** `RequireWorkspacePermissionAttribute` reads the `workspaceId` route value and checks the permission against `AuthorizationTarget.Workspace(id)`; its first user is `GET /api/workspaces/{workspaceId}` with `workspace.read` (see [Workspace Enforcement](#workspace-enforcement)). A named-policy catalog and caching remain deferred.
 
 ## Authentication Versus Authorization
 
@@ -152,19 +152,26 @@ A Platform Administrator role may exist as a platform-scoped role, but it gets n
 
 If Platform Admin is meant to hold every permission, that must be expressed as explicit permission assignments, or as an explicitly designed and documented policy — never as an accidental consequence of a role name. The identity access model already states the related rule: membership of a workspace named "Admin Workspace" grants no global permission.
 
-Whether Platform Admin implies workspace-level access is **an open decision**, deferred. Until it is decided, no implicit platform-to-workspace bypass exists.
+Whether Platform Admin implies workspace-level access is **an open decision**, deferred. Until it is decided, no implicit platform-to-workspace bypass exists: a platform role holding the same permission code does not satisfy a workspace check.
 
-A `"Platform Admin"` role does now exist, created by the bootstrap described below, and it holds exactly one permission. The name is a provisioning key — the string the bootstrap looks a role up by so that a second run finds the same row — and nothing else. No code branches on it, and holding it grants nothing beyond the permissions explicitly attached to it.
+A `"Platform Admin"` role does now exist, created by the bootstrap described below, and it holds exactly the five platform permissions the bootstrap attaches (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`), never `workspace.read`. The name is a provisioning key — the string the bootstrap looks a role up by so that a second run finds the same row — and nothing else. No code branches on it, and holding it grants nothing beyond the permissions explicitly attached to it.
 
 ## Permission Catalog
 
 `PermissionCodes` (Application/Authorization) is the one place a permission code is spelled:
 
 ```csharp
-public const string WorkspaceAccessRequestsReview = "workspace.access_requests.review";
+public const string PropertyCreate = "property.create";                                 // platform
+public const string PropertyRead = "property.read";                                     // platform
+public const string PropertyUpdate = "property.update";                                 // platform
+public const string PropertyArchive = "property.archive";                               // platform
+public const string WorkspaceAccessRequestsReview = "workspace.access_requests.review"; // platform
+public const string WorkspaceRead = "workspace.read";                                   // workspace
 ```
 
-Endpoints, the bootstrap, and the tests all reference the constant, so the string that is *granted* and the string that is *demanded* cannot drift apart. It is not a speculative catalog: a code is added when an endpoint actually requires one, and there is exactly one so far.
+The Platform Admin bootstrap grants the five platform permissions to the platform-scoped "Platform Admin" role. `workspace.read` is a workspace permission: it is held by each workspace's default "Member" role, which approval provisions, and the bootstrap never grants it.
+
+Endpoints, the bootstrap, and the tests all reference the constant, so the string that is *granted* and the string that is *demanded* cannot drift apart. It is not a speculative catalog: a code is added when an endpoint actually requires one, and there are six so far (see the list under [Permission Catalog](#permission-catalog)).
 
 A companion `…Description` constant supplies `Permission.Description` when the row is provisioned. It is human-readable text; nothing authorizes on it.
 
@@ -192,7 +199,7 @@ The filter is a translation and nothing more. It hands the real `IAuthorizationS
 
 It fails closed: only `Succeeded` lets the action run, and a denial, an unusable identity, and an unrecognized resource all end as `ForbidResult`. A checker exception is deliberately not caught, so a database outage still surfaces as `500` rather than as a permission denial.
 
-**The attribute is platform-scoped, fixed at construction.** Workspace targets need a workspace id taken from the request, which is still deferred, so a workspace-scoped permission must not be declared with this attribute until that exists.
+**The attribute is platform-scoped, fixed at construction.** A workspace-scoped permission must not be declared with it; use `RequireWorkspacePermissionAttribute`, described under [Workspace Enforcement](#workspace-enforcement), which takes the workspace id from the request.
 
 Why an MVC authorization filter rather than a dynamic policy provider: the existing handler is typed `AuthorizationHandler<PermissionRequirement, AuthorizationTarget>`, and the authorization middleware passes the `Endpoint` as the resource, so a policy evaluated there would never reach that handler. A policy provider would therefore have required a second handler duplicating the first. The filter supplies the real resource instead, and the one handler stays the only path to the checker.
 
@@ -213,7 +220,7 @@ With `Enabled` true, `PlatformAdminBootstrapService` (an `IHostedService`) runs 
 
 1. normalizes the configured email the same way `User` normalizes a stored one, and finds the **existing** account
 2. activates it only if it is `Pending`; leaves an `Active` one untouched, including its `UpdatedAt`
-3. ensures the permission row, the platform-scoped `"Platform Admin"` role, the role/permission row, and the user/role row exist
+3. ensures the five platform permission rows, the platform-scoped `"Platform Admin"` role, its five role/permission rows, and the user/role row exist
 4. commits all of it through one `IUnitOfWork.SaveChangesAsync`
 
 What it cannot do is the point:
@@ -221,7 +228,7 @@ What it cannot do is the point:
 - it never creates a `User`, a `UserCredential`, or a password — it elevates an account that registered normally
 - no account is named in code; the email is deployment configuration
 - it refuses a `Suspended` or `Deactivated` account rather than reviving one, because reviving a disabled account and handing it platform authority is exactly the escalation a bootstrap must not offer
-- it grants one permission, not every permission
+- it grants five platform permissions (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`), not every permission, and never the workspace permission `workspace.read`
 
 Every write is guarded by a lookup, so a second run creates no duplicate permission, role, role-permission, or platform-role row and reports `MadeNoChange`.
 
@@ -251,12 +258,15 @@ Permission codes follow lowercase dot-separated segments:
 <area>.<resource>.<action>
 ```
 
-The one code that exists, plus further examples of the shape:
+Codes that exist today are marked; the others are further examples of the shape:
 
 ```text
-workspace.access_requests.review   <- implemented, see Permission Catalog
-property.read
-property.create
+workspace.access_requests.review   <- implemented, platform, see Permission Catalog
+property.read                      <- implemented, platform
+property.create                    <- implemented, platform
+property.update                    <- implemented, platform
+property.archive                   <- implemented, platform
+workspace.read                     <- implemented, workspace
 workspace.members.read
 workspace.members.manage
 ```
@@ -270,7 +280,7 @@ Rules:
 
 > Earlier examples in identity-access-model.md used a PascalCase form such as `Admin.Users.View`. Nothing persisted uses that spelling; the lowercase convention above is the one to follow, and `workspace.access_requests.review` follows it.
 
-There is still no migration that seeds permissions. The one permission row is created by the bootstrap described above, on demand and idempotently, rather than by migration data — so a fresh database contains no authorization rows at all until an operator provisions them.
+There is still no migration that seeds permissions. The five platform permission rows are created by the bootstrap described above, on demand and idempotently, and the `workspace.read` row together with each workspace's "Member" role is created by the first approval into that workspace, rather than by migration data — so a fresh database contains no authorization rows at all until an operator provisions them or a request is approved.
 
 ## Platform Authorization Path
 
@@ -397,14 +407,33 @@ Repositories were deliberately not extended for *resolution*. `IUserRepository`,
 
 `IRoleRepository` did gain the assignment members the bootstrap needs — `GetPlatformRoleByNameAsync`, `HasPermissionAsync`, `AddPermissionAsync`, `IsAssignedToUserAsync`, `AddUserAssignmentAsync` — and they are for **provisioning**, not for deciding. Nothing authorizes through them; the checker's single query remains the only resolution path, and no repository was introduced for `UserPlatformRole`, `RolePermission`, or `WorkspaceMembershipRole` as a type of its own.
 
+## Workspace Enforcement
+
+`RequireWorkspacePermissionAttribute` (Api/Infrastructure/Authorization) is the workspace counterpart of `RequirePermissionAttribute`, in the same shape: an `AuthorizeAttribute` (so the default policy answers `401` first and the OpenAPI transformer documents the route as authenticated) and an `IAsyncAuthorizationFilter` that produces the `403`.
+
+```csharp
+[HttpGet("{workspaceId:guid}")]
+[RequireWorkspacePermission(PermissionCodes.WorkspaceRead)]
+```
+
+The only difference is the target. It reads the `workspaceId` route value and builds `AuthorizationTarget.Workspace(id)`; the requirement, `PermissionAuthorizationHandler`, and `IPermissionChecker` are the existing ones, so no checking logic is repeated.
+
+- **One uniform `403`** for every refusal: the caller is not a member, a member lacks the permission, and the workspace does not exist. Nothing distinguishes them, so the response never reveals whether a workspace exists or whether the caller belongs to it. A missing, empty, or unparseable `workspaceId` is the same `403`.
+- **Only a non-guid id is a `404`**, produced by the `:guid` route constraint before authorization runs. A guid that names no workspace is never a `404`.
+- **No platform-to-workspace bypass.** A platform role holding `workspace.read` does not satisfy a workspace check, and platform administration grants no implicit membership. The access token still carries identity only.
+- **Fails closed.** A failure inside the checker is deliberately not caught, so an outage is a `500`, not a denial.
+
+The first workspace endpoint is `GET /api/workspaces/{workspaceId}`, requiring `workspace.read` in that workspace. It returns only `{ id, name }`. A member who holds no role (for example one approved before approval assigned the "Member" role) has no permission and gets `403`.
+
+`PermissionCodes.WorkspaceRead` is `workspace.read`. It is the only permission the default "Member" role carries.
+
 ## Deferred
 
-- **Workspace enforcement** on a real endpoint, and **workspace route resolution** — how a workspace id is taken from a request and turned into a target. Platform enforcement is live; `RequirePermissionAttribute` is platform-only until this exists.
 - **A named-policy catalog** and endpoint filters for minimal APIs. The attribute covers MVC controllers, which is all the API has.
 - **Role and permission seed data in a migration.** The single permission row is provisioned by the bootstrap instead.
 - **Caching** of authorization results, in memory or Redis.
 - **Platform Admin semantics** — whether it should imply all permissions, and whether it reaches into workspaces. It currently implies neither: it holds one explicitly attached permission.
-- **Administration of permissions after bootstrap** — no endpoint creates a role, attaches a permission, or assigns a platform role. Bootstrap is the only way any of that happens, and it provisions exactly one fixed grant.
+- **Administration of permissions after bootstrap** — no endpoint creates a role, attaches a permission, or assigns a platform role. Bootstrap and approval are the only things that write any of it: bootstrap provisions one fixed platform grant (the five platform permissions), and approval provisions the workspace "Member" role with `workspace.read`.
 - **Claims strategy** — if permissions are ever put in a token, the staleness trade-off above must be addressed explicitly.
 
 ## The Protected Routes
@@ -426,10 +455,10 @@ Approval, in one unit of work:
 - approves the request
 - activates the account **only** if it is `Pending`; an `Active` one is left untouched
 - creates a `WorkspaceMembership` for the target workspace if none exists, and reuses one that does
-- **assigns no role.** Membership answers whether an account may be in a workspace; what it may do there is a separate grant, and approval does not smuggle one in. No `WorkspaceMembershipRole` row is written, which an integration test asserts against the table.
+- **assigns the workspace's default "Member" role.** The role is workspace-scoped, found or created in the request's own workspace, and carries only `workspace.read`. Exactly one `WorkspaceMembershipRole` row is written for the membership, which integration tests assert against the tables; no platform role is ever assigned.
 - refuses a `Suspended` or `Deactivated` applicant with `409 workspace_access_requests.target_account_unavailable` rather than reactivating one
 
-Rejection records the decision and nothing else: no activation, suspension, deactivation, membership, or role. A rejected applicant that registered as `Pending` stays `Pending` and still cannot sign in — an integration test proves it by calling the real login endpoint and asserting `403 authentication.account_unavailable`.
+Rejection records the decision and nothing else: no activation, suspension, deactivation, membership, or role. A refused approval (suspended or deactivated applicant, missing user, already reviewed) assigns nothing either. A rejected applicant that registered as `Pending` stays `Pending` and still cannot sign in — an integration test proves it by calling the real login endpoint and asserting `403 authentication.account_unavailable`.
 
 Both return `200` with the resulting state rather than `204`: the membership id and the two resulting statuses are the useful outcome, and a caller should not have to go looking for them.
 

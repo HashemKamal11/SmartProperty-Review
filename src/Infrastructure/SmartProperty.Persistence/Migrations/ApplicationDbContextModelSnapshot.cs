@@ -138,6 +138,11 @@ namespace SmartProperty.Persistence.Migrations
                     b.HasIndex("WorkspaceId")
                         .HasDatabaseName("ix_identity_roles_workspace_id");
 
+                    b.HasIndex("WorkspaceId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_identity_roles_workspace_name")
+                        .HasFilter("scope = 'Workspace'");
+
                     b.ToTable("roles", "identity", t =>
                         {
                             t.HasCheckConstraint("ck_identity_roles_scope_workspace", "(scope = 'Platform' AND workspace_id IS NULL) OR (scope = 'Workspace' AND workspace_id IS NOT NULL)");

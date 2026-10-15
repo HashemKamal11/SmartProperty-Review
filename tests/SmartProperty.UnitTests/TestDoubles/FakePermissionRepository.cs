@@ -20,6 +20,17 @@ internal sealed class FakePermissionRepository : IPermissionRepository
         _permissionsById[permission.Id] = permission;
     }
 
+    /// <summary>Forgets every permission added since construction, as a rolled-back transaction would.</summary>
+    public void RollBackAdded()
+    {
+        foreach (var permission in _added)
+        {
+            _permissionsById.Remove(permission.Id);
+        }
+
+        _added.Clear();
+    }
+
     public Task<Permission?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(_permissionsById.GetValueOrDefault(id));

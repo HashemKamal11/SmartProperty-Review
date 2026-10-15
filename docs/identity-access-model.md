@@ -2,17 +2,18 @@
 
 This document records the current identity and workspace-access model. Authentication and JWT are implemented (see [authentication-model.md](authentication-model.md)); platform permission enforcement, workspace access-request review, and the Platform Admin bootstrap are implemented (see [authorization-model.md](authorization-model.md)). Compliance APIs, the rest of the admin APIs, and a broader permission/role catalog remain deferred.
 
-One rule this document states is worth repeating because the approval workflow depends on it: approving a workspace access request creates a `WorkspaceMembership` and **no** `WorkspaceMembershipRole`. Membership and role are separate grants, and nothing assigns a default workspace role.
+One rule this document states is worth repeating because the approval workflow depends on it: approving a workspace access request creates (or reuses) a `WorkspaceMembership` and gives it the workspace's default **"Member"** role, which carries only `workspace.read`. Membership and role remain separate records; rejection and a refused approval assign nothing.
 
 ## Core Decisions
 
 - A user can access multiple workspaces through workspace memberships.
+- Workspaces are personas (buyer, investor, and so on): one account can hold memberships in several workspaces at once and act in each of them without signing in again.
 - A user can hold multiple roles inside the same workspace.
 - Workspaces are dynamic database entities, not enum values.
 - The current workspace names shown by the frontend are business data, not domain constants: Customer Workspace, Operations Workspace, Developer Workspace, Investor Workspace, Admin Workspace, and Compliance Workspace.
 - Registration workspace selection creates a workspace access request only. It does not grant access.
 - Listing and reviewing workspace access requests requires the persisted platform permission `workspace.access_requests.review`.
-- Approval of an access request does not automatically imply any role assignment.
+- Approval of an access request gives the membership the workspace's default "Member" role (see Access Request Flow); it carries only `workspace.read`. No other role is assigned by approval.
 - `WorkspaceAccessRequest` and `WorkspaceMembership` are separate concepts.
 - `WorkspaceMembership` represents actual workspace access.
 
@@ -34,7 +35,9 @@ Permissions are assigned through roles:
 - Platform authorization: User -> Platform Role -> Permission.
 - Workspace authorization: User -> WorkspaceMembership -> Workspace Role -> Permission.
 
-There are no direct User -> Permission assignments. Permission codes are database-driven machine-readable identifiers. The default-off Platform Admin bootstrap provisions only the review permission it needs; no broader permission catalog is seeded.
+There are no direct User -> Permission assignments. Permission codes are database-driven machine-readable identifiers. The default-off Platform Admin bootstrap provisions five platform permissions (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`) and attaches them to the platform-scoped "Platform Admin" role; no broader permission catalog is seeded. `workspace.read` is a workspace permission held by each workspace's default "Member" role, which approval provisions; the bootstrap never grants it.
+
+Role names are unique per workspace, enforced by the filtered unique index `ux_identity_roles_workspace_name` on `(workspace_id, name)` where `scope = 'Workspace'`. The same name may exist in two different workspaces, and a platform role and a workspace role may share a name. Platform role names stay unique among platform roles (`ux_identity_roles_platform_name`).
 
 Roles aggregate permissions; permissions are what authorization checks. The two scopes stay separate: a workspace role never grants platform access, and a platform role is not automatically a workspace role. The naming convention for permission codes and the full enforcement design are documented separately in [authorization-model.md](authorization-model.md).
 
@@ -58,9 +61,9 @@ Registration creates a `Pending` user, credential, and `Pending` access request 
 
 An authenticated caller holding `workspace.access_requests.review` can list the review queue and approve or reject a request. The reviewer id is never accepted from the route, query, headers, or body; Application reads it from `ICurrentUser`, which is populated from the validated access-token subject.
 
-Approval records the decision, activates the applicant only when the account is `Pending`, and ensures a `WorkspaceMembership` exists for the requested Workspace. It reuses an existing membership and does **not** create a `WorkspaceMembershipRole` or assign any default role. A `Suspended` or `Deactivated` applicant is not reactivated.
+Approval records the decision, activates the applicant only when the account is `Pending`, and ensures a `WorkspaceMembership` exists for the requested Workspace, reusing an existing one. It then gives that membership the workspace's default **"Member"** role. The role is workspace-scoped and is found, or created, in the request's own workspace; it carries only `workspace.read`. A `Suspended` or `Deactivated` applicant is not reactivated.
 
-Rejection records the decision and nothing else. It does not activate the user or create a membership, role, or permission grant; a rejected applicant that registered as `Pending` remains unable to sign in.
+Rejection records the decision and nothing else. It does not activate the user or create a membership, role, or permission grant; a rejected applicant that registered as `Pending` remains unable to sign in. A refused approval (a `Suspended` or `Deactivated` applicant, a missing user, or an already-reviewed request) assigns nothing either: no role, role permission, or membership assignment is written.
 
 Self-approval is currently allowed when the applicant is already `Active` and independently holds the review permission. There is no reviewer-versus-applicant prohibition in the current use case. Whether that should remain allowed is a business decision; this document does not describe it as forbidden, and F-007 does not change the behavior.
 

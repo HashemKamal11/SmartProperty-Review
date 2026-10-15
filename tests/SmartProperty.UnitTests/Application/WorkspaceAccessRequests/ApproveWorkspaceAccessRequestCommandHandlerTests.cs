@@ -1,6 +1,8 @@
 using SmartProperty.Application.Abstractions.Persistence;
+using SmartProperty.Application.Authorization;
 using SmartProperty.Application.WorkspaceAccessRequests;
 using SmartProperty.Application.WorkspaceAccessRequests.Approve;
+using SmartProperty.Application.Workspaces;
 using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.Workspaces;
 using SmartProperty.UnitTests.TestDoubles;
@@ -14,7 +16,8 @@ namespace SmartProperty.UnitTests.Application.WorkspaceAccessRequests;
 /// </summary>
 /// <remarks>
 /// The reviewer only ever arrives through <c>ICurrentUser</c>; the command carries no reviewer field for a test to
-/// set, which is the point.
+/// set, which is the point. Approval also gives the membership the workspace's Member role, which carries only
+/// <c>workspace.read</c>.
 /// </remarks>
 public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
 {
@@ -24,6 +27,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
     private readonly FakeWorkspaceAccessRequestRepository _accessRequests = new();
     private readonly FakeUserRepository _users = new();
     private readonly FakeWorkspaceMembershipRepository _memberships = new();
+    private readonly FakeRoleRepository _roles = new();
+    private readonly FakePermissionRepository _permissions = new();
     private readonly FakeDateTimeProvider _clock = new(ReviewedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly Guid _reviewerUserId = Guid.NewGuid();
@@ -182,7 +187,7 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
 
         await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
 
-        // The decision, the activation, and the membership all land together or not at all.
+        // The decision, the activation, the membership and its Member role all land together or not at all.
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
 
@@ -212,6 +217,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         _unitOfWork.DiscardTrackedChangesAction = () =>
         {
             _memberships.RollBackAdded();
+            _roles.RollBackAdded();
+            _permissions.RollBackAdded();
 
             var persistedUser = new User(user.Id, user.Email, user.FirstName, user.LastName, RequestedAt);
             persistedUser.Activate(winningReviewedAt);
@@ -252,6 +259,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         _unitOfWork.DiscardTrackedChangesAction = () =>
         {
             _memberships.RollBackAdded();
+            _roles.RollBackAdded();
+            _permissions.RollBackAdded();
 
             persistedUser = new User(user.Id, user.Email, user.FirstName, user.LastName, RequestedAt);
             _users.Seed(persistedUser);
@@ -278,6 +287,10 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         Assert.Equal(ReviewedAt, persistedRequest.ReviewedAt);
         Assert.Equal(UserStatus.Active, persistedUser!.Status);
         Assert.Empty(_memberships.Added);
+
+        // The retry attaches the Member role to the membership the other writer created.
+        var assignment = Assert.Single(_roles.AddedMembershipAssignments);
+        Assert.Equal(persistedMembership.Id, assignment.WorkspaceMembershipId);
         Assert.Equal(2, _unitOfWork.SaveChangesCallCount);
         Assert.Equal(1, _unitOfWork.DiscardTrackedChangesCallCount);
     }
@@ -292,6 +305,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         _unitOfWork.DiscardTrackedChangesAction = () =>
         {
             _memberships.RollBackAdded();
+            _roles.RollBackAdded();
+            _permissions.RollBackAdded();
             _users.Seed(new User(user.Id, user.Email, user.FirstName, user.LastName, RequestedAt));
             _accessRequests.Seed(new WorkspaceAccessRequest(
                 request.Id,
@@ -323,6 +338,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         _unitOfWork.DiscardTrackedChangesAction = () =>
         {
             _memberships.RollBackAdded();
+            _roles.RollBackAdded();
+            _permissions.RollBackAdded();
 
             persistedUser = new User(user.Id, user.Email, user.FirstName, user.LastName, RequestedAt);
 
@@ -374,6 +391,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         _unitOfWork.DiscardTrackedChangesAction = () =>
         {
             _memberships.RollBackAdded();
+            _roles.RollBackAdded();
+            _permissions.RollBackAdded();
             _accessRequests.Remove(request.Id);
 
             persistedUser = new User(user.Id, user.Email, user.FirstName, user.LastName, RequestedAt);
@@ -407,6 +426,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         _unitOfWork.DiscardTrackedChangesAction = () =>
         {
             _memberships.RollBackAdded();
+            _roles.RollBackAdded();
+            _permissions.RollBackAdded();
             _users.Seed(new User(user.Id, user.Email, user.FirstName, user.LastName, RequestedAt));
             _accessRequests.Seed(new WorkspaceAccessRequest(
                 request.Id,
@@ -427,6 +448,260 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         Assert.Equal(2, _unitOfWork.SaveChangesCallCount);
         Assert.Equal(1, _unitOfWork.DiscardTrackedChangesCallCount);
         Assert.Empty(_memberships.Added);
+    }
+
+    [Fact]
+    public async Task Approval_CreatesTheMemberRoleAttachesWorkspaceReadAndAssignsItToTheMembership()
+    {
+        var (request, _) = Seed(UserStatus.Pending);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsSuccess);
+
+        var role = Assert.Single(_roles.AddedRoles);
+        Assert.Equal(WorkspaceRoles.MemberRoleName, role.Name);
+        Assert.Equal(RoleScope.Workspace, role.Scope);
+        Assert.Equal(_workspaceId, role.WorkspaceId);
+
+        var permission = Assert.Single(_permissions.Added);
+        Assert.Equal(PermissionCodes.WorkspaceRead, permission.Code);
+        Assert.Equal(PermissionCodes.WorkspaceReadDescription, permission.Description);
+
+        var rolePermission = Assert.Single(_roles.AddedRolePermissions);
+        Assert.Equal(role.Id, rolePermission.RoleId);
+        Assert.Equal(permission.Id, rolePermission.PermissionId);
+
+        var assignment = Assert.Single(_roles.AddedMembershipAssignments);
+        Assert.Equal(result.Value.MembershipId, assignment.WorkspaceMembershipId);
+        Assert.Equal(role.Id, assignment.RoleId);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Approval_ReusesAnExistingMemberRoleAndPermission()
+    {
+        var (request, _) = Seed(UserStatus.Active);
+        var (role, permission) = SeedMemberRole(_workspaceId, withPermission: true);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(_roles.AddedRoles);
+        Assert.Empty(_permissions.Added);
+        Assert.Empty(_roles.AddedRolePermissions);
+
+        var assignment = Assert.Single(_roles.AddedMembershipAssignments);
+        Assert.Equal(role.Id, assignment.RoleId);
+        Assert.Equal(result.Value.MembershipId, assignment.WorkspaceMembershipId);
+        Assert.Single(_roles.RolePermissions, rp => rp.RoleId == role.Id && rp.PermissionId == permission.Id);
+    }
+
+    [Fact]
+    public async Task Approval_AttachesWorkspaceReadToAnExistingMemberRoleThatLacksIt()
+    {
+        var (request, _) = Seed(UserStatus.Active);
+        var (role, permission) = SeedMemberRole(_workspaceId, withPermission: false);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(_roles.AddedRoles);
+        Assert.Empty(_permissions.Added);
+
+        var rolePermission = Assert.Single(_roles.AddedRolePermissions);
+        Assert.Equal(role.Id, rolePermission.RoleId);
+        Assert.Equal(permission.Id, rolePermission.PermissionId);
+    }
+
+    [Fact]
+    public async Task Approval_DoesNotDuplicateAnExistingMembershipRole()
+    {
+        var (request, user) = Seed(UserStatus.Active);
+        var (role, _) = SeedMemberRole(_workspaceId, withPermission: true);
+        var existing = new WorkspaceMembership(Guid.NewGuid(), user.Id, _workspaceId, RequestedAt);
+        _memberships.Seed(existing);
+        _roles.Seed(new WorkspaceMembershipRole(existing.Id, role.Id));
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(_roles.AddedMembershipAssignments);
+        Assert.Single(_roles.MembershipAssignments);
+    }
+
+    [Fact]
+    public async Task Approval_NeverReusesAnotherWorkspacesMemberRole()
+    {
+        var (request, _) = Seed(UserStatus.Active);
+        var (otherWorkspaceRole, _) = SeedMemberRole(Guid.NewGuid(), withPermission: true);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsSuccess);
+
+        var created = Assert.Single(_roles.AddedRoles);
+        Assert.NotEqual(otherWorkspaceRole.Id, created.Id);
+        Assert.Equal(_workspaceId, created.WorkspaceId);
+        Assert.Equal(created.Id, Assert.Single(_roles.AddedMembershipAssignments).RoleId);
+    }
+
+    [Theory]
+    [InlineData(UserStatus.Suspended)]
+    [InlineData(UserStatus.Deactivated)]
+    public async Task DisabledUser_GetsNoMemberRole(UserStatus status)
+    {
+        var (request, _) = Seed(status);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(_roles.AddedRoles);
+        Assert.Empty(_permissions.Added);
+        Assert.Empty(_roles.AddedRolePermissions);
+        Assert.Empty(_roles.AddedMembershipAssignments);
+    }
+
+    [Fact]
+    public async Task WorkspaceRoleNameCollision_WithNoMembership_CreatesTheMembershipAndAttachesTheWinnersRole()
+    {
+        var (request, user) = Seed(UserStatus.Pending);
+        Role? winnerRole = null;
+        WorkspaceAccessRequest? persistedRequest = null;
+
+        _unitOfWork.ExceptionToThrow = FakeUnitOfWork.WorkspaceRoleNameUniqueConstraintViolation();
+        _unitOfWork.DiscardTrackedChangesAction = () =>
+        {
+            (persistedRequest, _) = ReloadAfterRollBack(request, user);
+
+            // The other approval committed the Member role, workspace.read, and their link.
+            (winnerRole, _) = SeedMemberRole(_workspaceId, withPermission: true);
+            _unitOfWork.ExceptionToThrow = null;
+        };
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(WorkspaceAccessRequestStatus.Approved, persistedRequest!.Status);
+
+        var membership = Assert.Single(_memberships.Added);
+        Assert.Equal(membership.Id, result.Value.MembershipId);
+
+        // Reused, not recreated.
+        Assert.Empty(_roles.AddedRoles);
+        Assert.Empty(_permissions.Added);
+        Assert.Empty(_roles.AddedRolePermissions);
+
+        var assignment = Assert.Single(_roles.AddedMembershipAssignments);
+        Assert.Equal(membership.Id, assignment.WorkspaceMembershipId);
+        Assert.Equal(winnerRole!.Id, assignment.RoleId);
+        Assert.Equal(2, _unitOfWork.SaveChangesCallCount);
+        Assert.Equal(1, _unitOfWork.DiscardTrackedChangesCallCount);
+    }
+
+    [Fact]
+    public async Task PermissionCodeCollision_WithNoMembership_CreatesTheMembershipAndAttachesMember()
+    {
+        var (request, user) = Seed(UserStatus.Pending);
+        Permission? winnerPermission = null;
+
+        _unitOfWork.ExceptionToThrow = FakeUnitOfWork.PermissionCodeUniqueConstraintViolation();
+        _unitOfWork.DiscardTrackedChangesAction = () =>
+        {
+            ReloadAfterRollBack(request, user);
+
+            // The other approval committed only workspace.read; the Member role is still missing.
+            winnerPermission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.WorkspaceRead,
+                PermissionCodes.WorkspaceReadDescription);
+            _permissions.Seed(winnerPermission);
+            _unitOfWork.ExceptionToThrow = null;
+        };
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsSuccess);
+
+        var membership = Assert.Single(_memberships.Added);
+        Assert.Equal(membership.Id, result.Value.MembershipId);
+        Assert.Empty(_permissions.Added);
+
+        var role = Assert.Single(_roles.AddedRoles);
+        var rolePermission = Assert.Single(_roles.AddedRolePermissions);
+        Assert.Equal(role.Id, rolePermission.RoleId);
+        Assert.Equal(winnerPermission!.Id, rolePermission.PermissionId);
+
+        var assignment = Assert.Single(_roles.AddedMembershipAssignments);
+        Assert.Equal(membership.Id, assignment.WorkspaceMembershipId);
+        Assert.Equal(role.Id, assignment.RoleId);
+        Assert.Equal(2, _unitOfWork.SaveChangesCallCount);
+        Assert.Equal(1, _unitOfWork.DiscardTrackedChangesCallCount);
+    }
+
+    [Fact]
+    public async Task MembershipCollision_AlsoAttachesTheMemberRoleDuringTheRetry()
+    {
+        var (request, user) = Seed(UserStatus.Pending);
+        var persistedMembership = new WorkspaceMembership(
+            Guid.NewGuid(),
+            user.Id,
+            _workspaceId,
+            ReviewedAt.AddSeconds(-1));
+
+        _unitOfWork.ExceptionToThrow = FakeUnitOfWork.WorkspaceMembershipUniqueConstraintViolation();
+        _unitOfWork.DiscardTrackedChangesAction = () =>
+        {
+            ReloadAfterRollBack(request, user);
+            _memberships.Seed(persistedMembership);
+            _unitOfWork.ExceptionToThrow = null;
+        };
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(persistedMembership.Id, result.Value.MembershipId);
+        Assert.Empty(_memberships.Added);
+
+        var role = Assert.Single(_roles.AddedRoles);
+        Assert.Equal(WorkspaceRoles.MemberRoleName, role.Name);
+
+        var assignment = Assert.Single(_roles.AddedMembershipAssignments);
+        Assert.Equal(persistedMembership.Id, assignment.WorkspaceMembershipId);
+        Assert.Equal(role.Id, assignment.RoleId);
+        Assert.Equal(2, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task WorkspaceRoleNameCollision_ThatFailsAgainOnRetry_Propagates()
+    {
+        var (request, user) = Seed(UserStatus.Pending);
+        var secondCollision = FakeUnitOfWork.WorkspaceRoleNameUniqueConstraintViolation();
+
+        _unitOfWork.ExceptionToThrow = FakeUnitOfWork.WorkspaceRoleNameUniqueConstraintViolation();
+        _unitOfWork.DiscardTrackedChangesAction = () =>
+        {
+            ReloadAfterRollBack(request, user);
+            _unitOfWork.ExceptionToThrow = secondCollision;
+        };
+        var handler = CreateHandler();
+
+        var thrown = await Assert.ThrowsAsync<UniqueConstraintViolationException>(
+            () => handler.Handle(new ApproveWorkspaceAccessRequestCommand(request.Id)));
+
+        // One attempt only: no third save and no second discard.
+        Assert.Same(secondCollision, thrown);
+        Assert.Equal(2, _unitOfWork.SaveChangesCallCount);
+        Assert.Equal(1, _unitOfWork.DiscardTrackedChangesCallCount);
     }
 
     [Fact]
@@ -506,6 +781,55 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
         return (request, user);
     }
 
+    // Seeds a Member role in the given workspace, plus workspace.read, optionally already attached to it.
+    private (Role Role, Permission Permission) SeedMemberRole(Guid workspaceId, bool withPermission)
+    {
+        var role = new Role(
+            Guid.NewGuid(),
+            WorkspaceRoles.MemberRoleName,
+            RoleScope.Workspace,
+            workspaceId,
+            RequestedAt);
+        _roles.Seed(role);
+
+        var permission = _permissions.GetByCodeAsync(PermissionCodes.WorkspaceRead).GetAwaiter().GetResult();
+
+        if (permission is null)
+        {
+            permission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.WorkspaceRead,
+                PermissionCodes.WorkspaceReadDescription);
+            _permissions.Seed(permission);
+        }
+
+        if (withPermission)
+        {
+            _roles.Seed(new RolePermission(role.Id, permission.Id));
+        }
+
+        return (role, permission);
+    }
+
+    // What the database holds once the failed attempt has been rolled back and the tracked graph discarded: the
+    // original rows, still Pending, and nothing the attempt had added.
+    private (WorkspaceAccessRequest Request, User User) ReloadAfterRollBack(
+        WorkspaceAccessRequest request,
+        User user)
+    {
+        _memberships.RollBackAdded();
+        _roles.RollBackAdded();
+        _permissions.RollBackAdded();
+
+        var persistedUser = new User(user.Id, user.Email, user.FirstName, user.LastName, RequestedAt);
+        _users.Seed(persistedUser);
+
+        var persistedRequest = new WorkspaceAccessRequest(request.Id, user.Id, _workspaceId, RequestedAt);
+        _accessRequests.Seed(persistedRequest);
+
+        return (persistedRequest, persistedUser);
+    }
+
     private ApproveWorkspaceAccessRequestCommandHandler CreateHandler(FakeCurrentUser? currentUser = null)
     {
         return new ApproveWorkspaceAccessRequestCommandHandler(
@@ -513,6 +837,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandlerTests
             _accessRequests,
             _users,
             _memberships,
+            _roles,
+            _permissions,
             _clock,
             _unitOfWork);
     }

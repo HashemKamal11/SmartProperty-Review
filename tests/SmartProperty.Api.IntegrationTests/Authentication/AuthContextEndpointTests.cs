@@ -102,7 +102,7 @@ public sealed class AuthContextEndpointTests
     }
 
     [Fact]
-    public async Task ApprovedOrdinaryUserGetsMembershipWithNoRolesOrPermissions()
+    public async Task ApprovedOrdinaryUserGetsMembershipWithTheMemberRoleOnly()
     {
         using var factory = new SmartPropertyApiFactory(_fixture, usePersistencePermissionChecker: true);
         using var setup = factory.CreateClient();
@@ -126,8 +126,10 @@ public sealed class AuthContextEndpointTests
 
         var workspace = Assert.Single(body.Workspaces);
         Assert.Equal(workspaceId, workspace.Id);
-        Assert.Empty(workspace.Roles);
-        Assert.Empty(workspace.Permissions);
+        Assert.Equal(["Member"], workspace.Roles);
+        Assert.Equal([PermissionCodes.WorkspaceRead], workspace.Permissions);
+        Assert.Empty(body.PlatformRoles);
+        Assert.Empty(body.PlatformPermissions);
     }
 
     [Fact]

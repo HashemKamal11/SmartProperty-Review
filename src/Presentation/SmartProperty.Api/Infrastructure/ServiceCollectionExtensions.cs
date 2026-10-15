@@ -33,6 +33,7 @@ using SmartProperty.Application.PropertyRegistry.Update;
 using SmartProperty.Application.WorkspaceAccessRequests.Approve;
 using SmartProperty.Application.WorkspaceAccessRequests.List;
 using SmartProperty.Application.WorkspaceAccessRequests.Reject;
+using SmartProperty.Application.Workspaces.Get;
 using SmartProperty.Application.Workspaces.RegistrationOptions;
 using SmartProperty.Common.Pagination;
 
@@ -275,6 +276,7 @@ internal static class ServiceCollectionExtensions
         services
             .AddScoped<IQueryHandler<GetRegistrationWorkspaceOptionsQuery, IReadOnlyList<RegistrationWorkspaceOption>>,
                 GetRegistrationWorkspaceOptionsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetWorkspaceQuery, WorkspaceDetails>, GetWorkspaceQueryHandler>();
 
         services
             .AddScoped<ICommandHandler<BootstrapPlatformAdminCommand, BootstrapPlatformAdminResult>,

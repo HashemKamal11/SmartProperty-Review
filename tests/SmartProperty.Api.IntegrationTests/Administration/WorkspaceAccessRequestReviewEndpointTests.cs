@@ -155,7 +155,7 @@ public sealed class WorkspaceAccessRequestReviewEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task AfterApprovalTheDatabaseHoldsTheDecisionTheActivationAndTheMembershipAndNoRole()
+    public async Task AfterApprovalTheDatabaseHoldsTheDecisionTheActivationAndTheMembershipAndTheMemberRole()
     {
         AllowReview();
         var applicant = await RegisterApplicantAsync();
@@ -185,9 +185,27 @@ public sealed class WorkspaceAccessRequestReviewEndpointTests : IDisposable
             candidate.UserId == applicant.UserId && candidate.WorkspaceId == applicant.WorkspaceId);
         Assert.Equal(body.MembershipId, membership.Id);
 
-        // Approval grants membership only. No workspace role is assigned, silently or otherwise.
-        Assert.False(await context.WorkspaceMembershipRoles
-            .AnyAsync(candidate => candidate.WorkspaceMembershipId == membership.Id));
+        // Approval grants membership plus exactly one role: the workspace's own "Member" role, which carries
+        // workspace.read and nothing else. No platform role is granted.
+        var membershipRole = await context.WorkspaceMembershipRoles
+            .SingleAsync(candidate => candidate.WorkspaceMembershipId == membership.Id);
+
+        var memberRole = await context.Roles.SingleAsync(candidate => candidate.Id == membershipRole.RoleId);
+        Assert.Equal("Member", memberRole.Name);
+        Assert.Equal(RoleScope.Workspace, memberRole.Scope);
+        Assert.Equal(applicant.WorkspaceId, memberRole.WorkspaceId);
+
+        var permissionCodes = await context.RolePermissions
+            .Where(candidate => candidate.RoleId == memberRole.Id)
+            .Join(
+                context.Permissions,
+                rolePermission => rolePermission.PermissionId,
+                permission => permission.Id,
+                (_, permission) => permission.Code)
+            .ToListAsync();
+        Assert.Equal([PermissionCodes.WorkspaceRead], permissionCodes);
+
+        Assert.False(await context.UserPlatformRoles.AnyAsync(candidate => candidate.UserId == applicant.UserId));
     }
 
     [Fact]

@@ -33,9 +33,9 @@ namespace SmartProperty.Api.Infrastructure.Authorization;
 ///
 /// <para>
 /// Scope is Platform, fixed at construction. Reviewing who may enter a workspace is an act of platform
-/// administration, so nothing held inside a workspace may satisfy it. Taking a workspace id from a route and
-/// building a workspace target is a separate, still-deferred piece of work (docs/authorization-model.md); until
-/// it exists, a workspace-scoped permission must not be declared with this attribute.
+/// administration, so nothing held inside a workspace may satisfy it. A workspace-scoped permission must not be
+/// declared with this attribute: use <see cref="RequireWorkspacePermissionAttribute"/>, which takes the workspace
+/// id from the route and builds the workspace target.
 /// </para>
 /// </remarks>
 [AttributeUsage(

@@ -18,8 +18,12 @@ internal sealed class FakeWorkspaceRepository : IWorkspaceRepository
 
     public CancellationToken LastCancellationToken { get; private set; }
 
+    public int GetByIdCallCount { get; private set; }
+
     public Task<Workspace?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
+        GetByIdCallCount++;
+
         return Task.FromResult(_workspacesById.GetValueOrDefault(id));
     }
 

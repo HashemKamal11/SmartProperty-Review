@@ -17,8 +17,9 @@ namespace SmartProperty.Persistence.IntegrationTests.Persistence;
 /// Every duplicate is attempted from a context that did not write the original row, so the rejection comes from
 /// PostgreSQL rather than from the change tracker.
 ///
-/// Only <c>ux_identity_users_email</c> is translated into a provider-neutral exception today; the others surface
-/// as <see cref="DbUpdateException"/> wrapping a <see cref="PostgresException"/>. That asymmetry is current
+/// Only the user email, workspace membership (user, workspace), workspace role name and permission code
+/// constraints are translated into a provider-neutral exception today; the others surface as
+/// <see cref="DbUpdateException"/> wrapping a <see cref="PostgresException"/>. That asymmetry is current
 /// behaviour, and these tests record it rather than change it.
 /// </remarks>
 public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
@@ -102,8 +103,9 @@ public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fi
     [Fact]
     public async Task ADuplicateRefreshTokenHashIsNotTranslatedIntoANeutralException()
     {
-        // Current behaviour, recorded rather than designed here: UnitOfWork recognizes only the user-email
-        // constraint, so every other unique violation reaches the caller as the provider exception it was.
+        // Current behaviour, recorded rather than designed here: UnitOfWork recognizes only the user email,
+        // workspace membership, workspace role name and permission code constraints, so every other unique
+        // violation reaches the caller as the provider exception it was.
         const string TokenHash = "test-token-hash-not-translated";
 
         Guid userId;
@@ -188,21 +190,115 @@ public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fi
     }
 
     [Fact]
-    public async Task WorkspaceRolesAreExcludedFromPlatformNameUniqueness()
+    public async Task APlatformRoleAndAWorkspaceRoleMayShareAName()
     {
+        const string RoleName = "Platform Admin";
         var workspace = AccessGraph.NewWorkspace();
 
         await using var context = Host.CreateVerificationContext();
         context.Workspaces.Add(workspace);
-        context.Roles.Add(AccessGraph.NewWorkspaceRole(workspace.Id, "Platform Admin"));
-        context.Roles.Add(AccessGraph.NewWorkspaceRole(workspace.Id, "Platform Admin"));
+        context.Roles.Add(AccessGraph.NewPlatformRole(RoleName));
+        context.Roles.Add(AccessGraph.NewWorkspaceRole(workspace.Id, RoleName));
 
         await context.SaveChangesAsync();
 
-        Assert.Equal(2, await context.Roles.CountAsync(role =>
+        Assert.Equal(1, await context.Roles.CountAsync(role =>
+            role.Scope == RoleScope.Platform && role.Name == RoleName));
+        Assert.Equal(1, await context.Roles.CountAsync(role =>
             role.Scope == RoleScope.Workspace
             && role.WorkspaceId == workspace.Id
-            && role.Name == "Platform Admin"));
+            && role.Name == RoleName));
+    }
+
+    [Fact]
+    public async Task TheSameRoleNameInTwoWorkspacesIsAllowed()
+    {
+        const string RoleName = "Member";
+        var workspaceA = AccessGraph.NewWorkspace($"Workspace A {Guid.NewGuid():n}");
+        var workspaceB = AccessGraph.NewWorkspace($"Workspace B {Guid.NewGuid():n}");
+
+        await using var context = Host.CreateVerificationContext();
+        context.Workspaces.AddRange(workspaceA, workspaceB);
+        context.Roles.Add(AccessGraph.NewWorkspaceRole(workspaceA.Id, RoleName));
+        context.Roles.Add(AccessGraph.NewWorkspaceRole(workspaceB.Id, RoleName));
+
+        await context.SaveChangesAsync();
+
+        Assert.Equal(1, await context.Roles.CountAsync(role => role.WorkspaceId == workspaceA.Id && role.Name == RoleName));
+        Assert.Equal(1, await context.Roles.CountAsync(role => role.WorkspaceId == workspaceB.Id && role.Name == RoleName));
+    }
+
+    [Fact]
+    public async Task ASecondWorkspaceRoleWithTheSameNameInOneWorkspaceIsRejectedByTheDatabase()
+    {
+        const string RoleName = "Member";
+        var workspace = AccessGraph.NewWorkspace($"Workspace {Guid.NewGuid():n}");
+
+        await using (var seeding = Host.CreateVerificationContext())
+        {
+            seeding.Workspaces.Add(workspace);
+            seeding.Roles.Add(AccessGraph.NewWorkspaceRole(workspace.Id, RoleName));
+            await seeding.SaveChangesAsync();
+        }
+
+        await using var writing = Host.CreateVerificationContext();
+        writing.Roles.Add(AccessGraph.NewWorkspaceRole(workspace.Id, RoleName));
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => writing.SaveChangesAsync());
+        var postgres = Assert.IsType<PostgresException>(exception.InnerException);
+
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
+        Assert.Equal("ux_identity_roles_workspace_name", postgres.ConstraintName);
+    }
+
+    [Fact]
+    public async Task ADuplicateWorkspaceRoleNameReachesTheApplicationAsWorkspaceRoleName()
+    {
+        const string RoleName = "Member";
+        var workspace = AccessGraph.NewWorkspace($"Workspace {Guid.NewGuid():n}");
+
+        await using (var seeding = Host.CreateVerificationContext())
+        {
+            seeding.Workspaces.Add(workspace);
+            seeding.Roles.Add(AccessGraph.NewWorkspaceRole(workspace.Id, RoleName));
+            await seeding.SaveChangesAsync();
+        }
+
+        using var scope = Host.CreateScope();
+        var roles = scope.ServiceProvider.GetRequiredService<IRoleRepository>();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        await roles.AddAsync(AccessGraph.NewWorkspaceRole(workspace.Id, RoleName));
+
+        var exception = await Assert.ThrowsAsync<UniqueConstraintViolationException>(
+            () => unitOfWork.SaveChangesAsync());
+
+        Assert.Equal(PersistenceConstraint.WorkspaceRoleName, exception.Constraint);
+        Assert.IsType<DbUpdateException>(exception.InnerException);
+    }
+
+    [Fact]
+    public async Task ADuplicatePermissionCodeReachesTheApplicationAsPermissionCode()
+    {
+        const string Code = "property.translated";
+
+        await using (var seeding = Host.CreateVerificationContext())
+        {
+            seeding.Permissions.Add(AccessGraph.NewPermission(Code));
+            await seeding.SaveChangesAsync();
+        }
+
+        using var scope = Host.CreateScope();
+        var permissions = scope.ServiceProvider.GetRequiredService<IPermissionRepository>();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        await permissions.AddAsync(AccessGraph.NewPermission(Code));
+
+        var exception = await Assert.ThrowsAsync<UniqueConstraintViolationException>(
+            () => unitOfWork.SaveChangesAsync());
+
+        Assert.Equal(PersistenceConstraint.PermissionCode, exception.Constraint);
+        Assert.IsType<DbUpdateException>(exception.InnerException);
     }
 
     [Fact]

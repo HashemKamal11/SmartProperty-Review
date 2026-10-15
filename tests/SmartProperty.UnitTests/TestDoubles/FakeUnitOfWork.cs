@@ -60,6 +60,20 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
             new InvalidOperationException("Simulated concurrent property status change."));
     }
 
+    public static UniqueConstraintViolationException WorkspaceRoleNameUniqueConstraintViolation()
+    {
+        return new UniqueConstraintViolationException(
+            PersistenceConstraint.WorkspaceRoleName,
+            new InvalidOperationException("Simulated concurrent workspace role insert."));
+    }
+
+    public static UniqueConstraintViolationException PermissionCodeUniqueConstraintViolation()
+    {
+        return new UniqueConstraintViolationException(
+            PersistenceConstraint.PermissionCode,
+            new InvalidOperationException("Simulated concurrent permission insert."));
+    }
+
     public static UniqueConstraintViolationException WorkspaceMembershipUniqueConstraintViolation()
     {
         return new UniqueConstraintViolationException(

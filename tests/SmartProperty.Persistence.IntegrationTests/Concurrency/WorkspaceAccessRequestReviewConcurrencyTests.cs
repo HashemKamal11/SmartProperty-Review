@@ -219,6 +219,8 @@ public sealed class WorkspaceAccessRequestReviewConcurrencyTests(PostgreSqlFixtu
             approvingScope.ServiceProvider.GetRequiredService<IWorkspaceAccessRequestRepository>(),
             approvingScope.ServiceProvider.GetRequiredService<IUserRepository>(),
             approvingScope.ServiceProvider.GetRequiredService<IWorkspaceMembershipRepository>(),
+            approvingScope.ServiceProvider.GetRequiredService<IRoleRepository>(),
+            approvingScope.ServiceProvider.GetRequiredService<IPermissionRepository>(),
             Host.Clock,
             approvingScope.ServiceProvider.GetRequiredService<IUnitOfWork>());
 
@@ -262,7 +264,22 @@ public sealed class WorkspaceAccessRequestReviewConcurrencyTests(PostgreSqlFixtu
         Assert.Equal(reviewedAt, persistedRequest.ReviewedAt);
         Assert.Equal(UserStatus.Active, persistedUser.Status);
         Assert.Equal(externalMembership.Id, Assert.Single(persistedMemberships).Id);
-        Assert.Equal(0, await verification.WorkspaceMembershipRoles.CountAsync());
+
+        // The reused membership received exactly one role: the workspace's own "Member" role, carrying only
+        // workspace.read. Approval never grants a platform role.
+        var membershipRole = await verification.WorkspaceMembershipRoles.SingleAsync();
+        Assert.Equal(externalMembership.Id, membershipRole.WorkspaceMembershipId);
+
+        var memberRole = await verification.Roles.SingleAsync(row => row.Id == membershipRole.RoleId);
+        Assert.Equal("Member", memberRole.Name);
+        Assert.Equal(RoleScope.Workspace, memberRole.Scope);
+        Assert.Equal(seeded.Workspace.Id, memberRole.WorkspaceId);
+
+        var rolePermission = await verification.RolePermissions.SingleAsync(row => row.RoleId == memberRole.Id);
+        var permission = await verification.Permissions.SingleAsync(row => row.Id == rolePermission.PermissionId);
+        Assert.Equal("workspace.read", permission.Code);
+
+        Assert.False(await verification.UserPlatformRoles.AnyAsync(row => row.UserId == seeded.User.Id));
     }
 
     private static async Task<WorkspaceAccessRequest> GetRequestAsync(IServiceScope scope, Guid requestId)

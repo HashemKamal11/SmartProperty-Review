@@ -115,7 +115,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
         Assert.Equal(nameof(WorkspaceAccessRequestStatus.Approved), approval.RequestStatus);
         Assert.Equal(nameof(UserStatus.Active), approval.UserStatus);
 
-        // 7. Stored state: Approved, Active, one membership, and no workspace role.
+        // 7. Stored state: Approved, Active, one membership, and the workspace's Member role.
         await using (var context = _fixture.CreateContext())
         {
             var request = await context.WorkspaceAccessRequests
@@ -131,8 +131,12 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
                 candidate.UserId == registered.UserId && candidate.WorkspaceId == workspaceId);
             Assert.Equal(approval.MembershipId, membership.Id);
 
-            Assert.False(await context.WorkspaceMembershipRoles
-                .AnyAsync(candidate => candidate.WorkspaceMembershipId == membership.Id));
+            var membershipRole = await context.WorkspaceMembershipRoles
+                .SingleAsync(candidate => candidate.WorkspaceMembershipId == membership.Id);
+            var memberRole = await context.Roles.SingleAsync(candidate => candidate.Id == membershipRole.RoleId);
+            Assert.Equal("Member", memberRole.Name);
+            Assert.Equal(RoleScope.Workspace, memberRole.Scope);
+            Assert.Equal(workspaceId, memberRole.WorkspaceId);
         }
 
         // 8. The same credentials now sign in.
@@ -152,6 +156,16 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
 
             var me = (await meResponse.Content.ReadFromJsonAsync<MeResponse>())!;
             Assert.Equal(new MeResponse(registered.UserId, email, "Lifecycle", "Applicant"), me);
+
+            // The approved user's context: the Member role and only workspace.read in that workspace, and
+            // nothing at platform level.
+            var context = (await authenticated.GetFromJsonAsync<AuthContextResponse>("/api/auth/context"))!;
+            var contextWorkspace = Assert.Single(context.Workspaces);
+            Assert.Equal(workspaceId, contextWorkspace.Id);
+            Assert.Equal(["Member"], contextWorkspace.Roles);
+            Assert.Equal([PermissionCodes.WorkspaceRead], contextWorkspace.Permissions);
+            Assert.Empty(context.PlatformRoles);
+            Assert.Empty(context.PlatformPermissions);
         }
 
         // 10. Refresh rotates the token: a new pair is issued and the presented token is spent.

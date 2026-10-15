@@ -8,6 +8,7 @@ namespace SmartProperty.Persistence.Configurations.Identity;
 internal sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
 {
     public const string PlatformNameUniqueIndexName = "ux_identity_roles_platform_name";
+    public const string WorkspaceNameUniqueIndexName = "ux_identity_roles_workspace_name";
 
     public void Configure(EntityTypeBuilder<Role> builder)
     {
@@ -56,5 +57,12 @@ internal sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
             .HasFilter("scope = 'Platform'")
             .IsUnique()
             .HasDatabaseName(PlatformNameUniqueIndexName);
+
+        // Within one workspace a role name identifies one role; the same name in two workspaces is allowed. The
+        // filter keeps platform roles (null workspace id) out, as the platform index above covers those.
+        builder.HasIndex(role => new { role.WorkspaceId, role.Name })
+            .HasFilter("scope = 'Workspace'")
+            .IsUnique()
+            .HasDatabaseName(WorkspaceNameUniqueIndexName);
     }
 }

@@ -70,6 +70,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ux_identity_permissions_code",
             "ux_identity_refresh_tokens_token_hash",
             "ux_identity_roles_platform_name",
+            "ux_identity_roles_workspace_name",
             "ux_identity_users_email",
             "ux_identity_workspace_memberships_user_workspace"
         ];

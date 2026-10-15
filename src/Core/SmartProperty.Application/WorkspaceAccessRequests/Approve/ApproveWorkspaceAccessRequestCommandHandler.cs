@@ -3,6 +3,8 @@ using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.Authorization;
+using SmartProperty.Application.Workspaces;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.Workspaces;
@@ -11,14 +13,22 @@ namespace SmartProperty.Application.WorkspaceAccessRequests.Approve;
 
 /// <summary>
 /// Approves a pending workspace access request: records the decision, activates the account if it is still
-/// Pending, and gives it a membership in the requested workspace.
+/// Pending, gives it a membership in the requested workspace, and gives that membership the workspace's default
+/// Member role.
 /// </summary>
 /// <remarks>
-/// It assigns no role. A membership answers "may this account be in this workspace"; what it may then do there
-/// is a separate grant, and approval must not smuggle one in — see docs/identity-access-model.md.
+/// Approval grants the membership and then the default <see cref="WorkspaceRoles.MemberRoleName"/> role, which
+/// carries only <see cref="PermissionCodes.WorkspaceRead"/>. The role is found or created in the request's own
+/// workspace, so the invariants in docs/identity-access-model.md hold: it is workspace-scoped and belongs to the
+/// same workspace as the membership. Nothing broader is ever assigned, and rejection assigns nothing.
 ///
-/// The three writes — the decision, the activation, and the membership — are committed by one
-/// <see cref="IUnitOfWork.SaveChangesAsync"/> call, so an approval never half-applies.
+/// The writes — the decision, the activation, the membership, and the Member role with its permission and
+/// assignment — are committed by one <see cref="IUnitOfWork.SaveChangesAsync"/> call, so an approval never
+/// half-applies.
+///
+/// Two approvals in one workspace can race to create the same Member role (or the same permission row). The
+/// unique indexes make exactly one win; the loser clears its tracked changes, reloads, and applies the approval
+/// once more against what the winner committed.
 ///
 /// Every precondition is checked before anything is mutated, so a refused approval leaves the loaded entities
 /// exactly as they were rather than relying on the commit never happening.
@@ -28,6 +38,8 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandler(
     IWorkspaceAccessRequestRepository workspaceAccessRequestRepository,
     IUserRepository userRepository,
     IWorkspaceMembershipRepository workspaceMembershipRepository,
+    IRoleRepository roleRepository,
+    IPermissionRepository permissionRepository,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
     : ICommandHandler<ApproveWorkspaceAccessRequestCommand, ApproveWorkspaceAccessRequestResult>
@@ -107,7 +119,9 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandler(
             await workspaceMembershipRepository.AddAsync(membership, cancellationToken);
         }
 
-        // No WorkspaceMembershipRole is created. Approval grants membership, never a role.
+        // Approval grants the membership and the workspace's default Member role.
+        await EnsureMemberRoleAsync(membership.Id, accessRequest.WorkspaceId, reviewedAt, cancellationToken);
+
         try
         {
             await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -119,12 +133,15 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandler(
                 WorkspaceAccessRequestErrors.AlreadyReviewed);
         }
         catch (UniqueConstraintViolationException exception)
-            when (exception.Constraint == PersistenceConstraint.WorkspaceMembershipUserWorkspace)
+            when (exception.Constraint is PersistenceConstraint.WorkspaceMembershipUserWorkspace
+                or PersistenceConstraint.WorkspaceRoleName
+                or PersistenceConstraint.PermissionCode)
         {
-            // A membership collision does not prove that another reviewer won: an unrelated writer may have
-            // created the membership while this approval was in flight. SaveChanges has rolled its implicit
-            // transaction back, but the failed Added membership and the in-memory approval are still tracked.
-            // Clear that entire graph before consulting authoritative state or attempting one safe recovery.
+            // A collision does not prove that another reviewer won: an unrelated writer may have created the
+            // membership, the Member role, or the workspace.read permission while this approval was in flight.
+            // SaveChanges has rolled its implicit transaction back, but the failed Added rows and the in-memory
+            // approval are still tracked. Clear that entire graph before consulting authoritative state or
+            // attempting one safe recovery.
             unitOfWork.DiscardTrackedChanges();
 
             var persistedRequest = await workspaceAccessRequestRepository.GetByIdAsync(
@@ -156,11 +173,25 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandler(
                 persistedRequest.WorkspaceId,
                 cancellationToken);
 
-            // The known collision and the authoritative state no longer agree. Do not invent a business result
-            // or retry another insert: preserve the provider-neutral persistence failure for normal diagnostics.
             if (persistedMembership is null)
             {
-                throw;
+                // A membership collision means a membership must exist now. If it does not, the known collision
+                // and the authoritative state no longer agree: do not invent a business result or retry another
+                // insert, preserve the provider-neutral persistence failure for normal diagnostics.
+                if (exception.Constraint == PersistenceConstraint.WorkspaceMembershipUserWorkspace)
+                {
+                    throw;
+                }
+
+                // A role or permission collision rolled back the membership this attempt had added, so the single
+                // retry adds it again.
+                persistedMembership = new WorkspaceMembership(
+                    Guid.NewGuid(),
+                    persistedRequest.UserId,
+                    persistedRequest.WorkspaceId,
+                    reviewedAt);
+
+                await workspaceMembershipRepository.AddAsync(persistedMembership, cancellationToken);
             }
 
             persistedRequest.Approve(reviewerUserId, reviewedAt);
@@ -169,6 +200,13 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandler(
             {
                 persistedUser.Activate(reviewedAt);
             }
+
+            // Reads what the winner committed, so the Member role and permission are now reused, not recreated.
+            await EnsureMemberRoleAsync(
+                persistedMembership.Id,
+                persistedRequest.WorkspaceId,
+                reviewedAt,
+                cancellationToken);
 
             try
             {
@@ -197,6 +235,78 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandler(
             accessRequest.Status,
             user.Status,
             membership.Id));
+    }
+
+    /// <summary>
+    /// Makes sure the workspace has a Member role carrying <see cref="PermissionCodes.WorkspaceRead"/> and that this
+    /// membership holds it. Every write is guarded by a lookup, so a repeat adds nothing.
+    /// </summary>
+    private async Task EnsureMemberRoleAsync(
+        Guid membershipId,
+        Guid workspaceId,
+        DateTimeOffset at,
+        CancellationToken cancellationToken)
+    {
+        var role = await roleRepository.GetWorkspaceRoleByNameAsync(
+            workspaceId,
+            WorkspaceRoles.MemberRoleName,
+            cancellationToken);
+
+        var roleCreated = role is null;
+
+        if (role is null)
+        {
+            role = new Role(
+                Guid.NewGuid(),
+                WorkspaceRoles.MemberRoleName,
+                RoleScope.Workspace,
+                workspaceId,
+                at);
+
+            await roleRepository.AddAsync(role, cancellationToken);
+        }
+
+        // The invariants the model requires before assignment. The lookup already constrains both, so this only
+        // fails closed if that ever stops being true.
+        if (role.Scope != RoleScope.Workspace || role.WorkspaceId != workspaceId)
+        {
+            throw new InvalidOperationException("The Member role must be a workspace role of the membership's workspace.");
+        }
+
+        var permission = await permissionRepository.GetByCodeAsync(PermissionCodes.WorkspaceRead, cancellationToken);
+
+        var permissionCreated = permission is null;
+
+        if (permission is null)
+        {
+            permission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.WorkspaceRead,
+                PermissionCodes.WorkspaceReadDescription);
+
+            await permissionRepository.AddAsync(permission, cancellationToken);
+        }
+
+        // A row added in this unit of work is invisible to a by-id query; a new role or permission cannot already
+        // be linked, so the lookup is skipped for them rather than relied on.
+        var permissionAttached = !roleCreated
+            && !permissionCreated
+            && await roleRepository.HasPermissionAsync(role.Id, permission.Id, cancellationToken);
+
+        if (!permissionAttached)
+        {
+            await roleRepository.AddPermissionAsync(new RolePermission(role.Id, permission.Id), cancellationToken);
+        }
+
+        var roleAssigned = !roleCreated
+            && await roleRepository.IsAssignedToMembershipAsync(membershipId, role.Id, cancellationToken);
+
+        if (!roleAssigned)
+        {
+            await roleRepository.AddMembershipAssignmentAsync(
+                new WorkspaceMembershipRole(membershipId, role.Id),
+                cancellationToken);
+        }
     }
 
     private static bool CanBeGrantedAccess(UserStatus status)

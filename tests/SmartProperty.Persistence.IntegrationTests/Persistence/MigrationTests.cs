@@ -13,6 +13,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string PlatformRoleInvariantMigration = "20260927143034_EnforceUniquePlatformRoleNames";
     private const string PropertyRegistryMigration = "20261001135125_AddPropertyRegistry";
     private const string PropertyStatusConcurrencyMigration = "20261013084401_SynchronizePropertyStatusConcurrency";
+    private const string WorkspaceRoleNameMigration = "20261015082753_EnforceUniqueWorkspaceRoleNames";
 
     [Fact]
     public async Task PlatformRoleInvariantMigration_AppliesFromPreviousMigration()
@@ -42,7 +43,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithThePropertyStatusConcurrency()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheWorkspaceRoleNameInvariant()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -55,7 +56,8 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(PropertyStatusConcurrencyMigration, applied[^1]);
+        Assert.Equal(WorkspaceRoleNameMigration, applied[^1]);
+        Assert.Contains(PropertyStatusConcurrencyMigration, applied);
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
         Assert.True(await PropertiesTableExistsAsync());
     }
@@ -95,6 +97,40 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
+    public async Task WorkspaceRoleNameMigration_AppliesFromPreviousMigrationAndRollsBack()
+    {
+        await using (var deleting = Host.CreateVerificationContext())
+        {
+            await deleting.Database.EnsureDeletedAsync();
+        }
+
+        await using (var previous = Host.CreateVerificationContext())
+        {
+            await previous.GetService<IMigrator>().MigrateAsync(PropertyStatusConcurrencyMigration);
+        }
+
+        Assert.False(await WorkspaceRoleIndexExistsAsync());
+
+        await using (var current = Host.CreateVerificationContext())
+        {
+            await current.Database.MigrateAsync();
+        }
+
+        Assert.True(await WorkspaceRoleIndexExistsAsync());
+
+        await using (var rollingBack = Host.CreateVerificationContext())
+        {
+            await rollingBack.GetService<IMigrator>().MigrateAsync(PropertyStatusConcurrencyMigration);
+
+            Assert.DoesNotContain(
+                WorkspaceRoleNameMigration,
+                await rollingBack.Database.GetAppliedMigrationsAsync());
+        }
+
+        Assert.False(await WorkspaceRoleIndexExistsAsync());
+    }
+
+    [Fact]
     public void TheModelSnapshotMapsPropertyAndMatchesTheCurrentModel()
     {
         using var context = Host.CreateVerificationContext();
@@ -117,7 +153,35 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         return (bool)(await command.ExecuteScalarAsync())!;
     }
 
-    private async Task<bool> PlatformRoleIndexExistsAsync()
+    private Task<bool> PlatformRoleIndexExistsAsync() => IdentityIndexExistsAsync("ux_identity_roles_platform_name");
+
+    private async Task<bool> WorkspaceRoleIndexExistsAsync()
+    {
+        await using var connection = new NpgsqlConnection(Host.ConnectionString);
+        await connection.OpenAsync();
+
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'identity'
+              AND indexname = 'ux_identity_roles_workspace_name';
+            """,
+            connection);
+
+        if (await command.ExecuteScalarAsync() is not string indexDefinition)
+        {
+            return false;
+        }
+
+        Assert.Contains("UNIQUE INDEX", indexDefinition);
+        Assert.Contains("(workspace_id, name)", indexDefinition);
+        Assert.Contains("WHERE ((scope)::text = 'Workspace'::text)", indexDefinition);
+
+        return true;
+    }
+
+    private async Task<bool> IdentityIndexExistsAsync(string indexName)
     {
         await using var connection = new NpgsqlConnection(Host.ConnectionString);
         await connection.OpenAsync();
@@ -128,9 +192,10 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
                 SELECT 1
                 FROM pg_indexes
                 WHERE schemaname = 'identity'
-                  AND indexname = 'ux_identity_roles_platform_name');
+                  AND indexname = @indexName);
             """,
             connection);
+        command.Parameters.AddWithValue("indexName", indexName);
 
         return (bool)(await command.ExecuteScalarAsync())!;
     }

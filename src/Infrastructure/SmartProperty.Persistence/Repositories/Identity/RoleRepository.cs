@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.Workspaces;
 using SmartProperty.Persistence.Context;
 
 namespace SmartProperty.Persistence.Repositories.Identity;
@@ -29,6 +30,29 @@ internal sealed class RoleRepository(ApplicationDbContext dbContext) : IRoleRepo
             role => role.Name == normalizedName
                 && role.Scope == RoleScope.Platform
                 && role.WorkspaceId == null,
+            cancellationToken);
+    }
+
+    public Task<Role?> GetWorkspaceRoleByNameAsync(
+        Guid workspaceId,
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateRequiredId(workspaceId, nameof(workspaceId));
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Role name must not be empty.", nameof(name));
+        }
+
+        // Trimmed to match how Role stores its name. Scope and workspace id are both constrained, so a platform
+        // role or another workspace's role sharing the name can never be returned.
+        var normalizedName = name.Trim();
+
+        return dbContext.Roles.FirstOrDefaultAsync(
+            role => role.Name == normalizedName
+                && role.Scope == RoleScope.Workspace
+                && role.WorkspaceId == workspaceId,
             cancellationToken);
     }
 
@@ -81,6 +105,28 @@ internal sealed class RoleRepository(ApplicationDbContext dbContext) : IRoleRepo
         ArgumentNullException.ThrowIfNull(userPlatformRole);
 
         await dbContext.UserPlatformRoles.AddAsync(userPlatformRole, cancellationToken);
+    }
+
+    public Task<bool> IsAssignedToMembershipAsync(
+        Guid workspaceMembershipId,
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateRequiredId(workspaceMembershipId, nameof(workspaceMembershipId));
+        ValidateRequiredId(roleId, nameof(roleId));
+
+        return dbContext.WorkspaceMembershipRoles.AnyAsync(
+            assignment => assignment.WorkspaceMembershipId == workspaceMembershipId && assignment.RoleId == roleId,
+            cancellationToken);
+    }
+
+    public async Task AddMembershipAssignmentAsync(
+        WorkspaceMembershipRole workspaceMembershipRole,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workspaceMembershipRole);
+
+        await dbContext.WorkspaceMembershipRoles.AddAsync(workspaceMembershipRole, cancellationToken);
     }
 
     private static void ValidateRequiredId(Guid id, string parameterName)

@@ -55,4 +55,12 @@ public static class PermissionCodes
     /// </summary>
     public const string WorkspaceAccessRequestsReviewDescription =
         "Approve or reject workspace access requests.";
+
+    /// <summary>
+    /// Read the workspace itself. Workspace-scoped: it is satisfied only by a workspace role held in that same
+    /// workspace, never by a platform role and never by membership of another workspace.
+    /// </summary>
+    public const string WorkspaceRead = "workspace.read";
+
+    public const string WorkspaceReadDescription = "Read the workspace itself.";
 }

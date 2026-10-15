@@ -6,6 +6,8 @@ namespace SmartProperty.Persistence.Configurations.Identity;
 
 internal sealed class PermissionConfiguration : IEntityTypeConfiguration<Permission>
 {
+    public const string CodeUniqueIndexName = "ux_identity_permissions_code";
+
     public void Configure(EntityTypeBuilder<Permission> builder)
     {
         builder.ToTable("permissions", "identity");
@@ -26,6 +28,6 @@ internal sealed class PermissionConfiguration : IEntityTypeConfiguration<Permiss
 
         builder.HasIndex(permission => permission.Code)
             .IsUnique()
-            .HasDatabaseName("ux_identity_permissions_code");
+            .HasDatabaseName(CodeUniqueIndexName);
     }
 }

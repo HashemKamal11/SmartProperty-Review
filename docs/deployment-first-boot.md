@@ -48,6 +48,43 @@ required before migration. The application and migrator deliberately do not dele
 For a completely blank database the `identity.roles` table does not exist yet, so this upgrade-only query is not
 applicable.
 
+## Before deploying P-008
+
+P-008 adds migration `20261015082753_EnforceUniqueWorkspaceRoleNames`, which creates the unique index
+`ux_identity_roles_workspace_name` on `identity.roles (workspace_id, name)` for rows where
+`scope = 'Workspace'`. Both queries below are read-only; run them with an appropriately restricted database
+client. They do not apply to a completely blank database, where `identity.roles` does not exist yet.
+
+**Pre-check. It must return zero rows, otherwise the migration will fail:**
+
+```sql
+SELECT workspace_id, name, count(*) AS duplicates
+FROM identity.roles
+WHERE scope = 'Workspace'
+GROUP BY workspace_id, name
+HAVING count(*) > 1;
+```
+
+If rows are returned, stop: operator review and explicit data correction are required before migration. The
+application and migrator deliberately do not delete, merge, or rename roles.
+
+**Known follow-up (informational only): workspace memberships that hold no role at all.** These are members
+approved before P-008, when approval assigned no role:
+
+```sql
+SELECT count(*) AS memberships_without_a_role
+FROM identity.workspace_memberships AS m
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM identity.workspace_membership_roles AS mr
+    WHERE mr.workspace_membership_id = m.id);
+```
+
+A non-zero count does not block the deployment. Such members receive `403` on workspace endpoints, such as
+`GET /api/workspaces/{workspaceId}`, until a backfill exists. **The backfill is deferred**: it is not part of
+P-008, and no tool or migration performs it yet. Operators must not insert `workspace_membership_roles`, `roles`,
+or `role_permissions` rows by hand to work around it.
+
 ## 3. First start: migrate and create the Workspace
 
 Start the stack:
