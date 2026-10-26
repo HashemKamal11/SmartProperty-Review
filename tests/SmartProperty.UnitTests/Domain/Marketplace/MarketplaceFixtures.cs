@@ -23,12 +23,41 @@ internal static class MarketplaceFixtures
 
         if (publish)
         {
-            listing.Publish(Guid.NewGuid(), PublishedAt);
+            Approve(listing, PublishedAt);
         }
 
         return listing;
     }
 
+    internal static ListingSubmission Pending(PropertyListing listing, DateTimeOffset at, ListingSubmission? predecessor = null)
+    {
+        var actor = Guid.NewGuid();
+        var authority = new ListingLegalAuthority(listing.PropertyId, listing.Purpose,
+            new ListingOwnerIdentity(ListingOwnerKind.Individual, Guid.NewGuid(), actor), actor,
+            ListingRepresentationKind.Owner, null, listing.CreatedAt, null);
+        var evidence = new ListingEvidenceReference(Guid.NewGuid(), Guid.NewGuid(), listing.PropertyId, listing.Purpose, new string('A', 64));
+        var content = new ListingSubmissionContent("Country", "Region", "City", "District", "Title", "Description",
+            SmartProperty.Domain.PropertyRegistry.PropertyType.Unit, listing.Purpose, 100m, "USD",
+            listing.Purpose == ListingPurpose.Rent ? RentPeriod.Monthly : null);
+        var submission = new ListingSubmission(Guid.NewGuid(), listing, content, authority, [evidence], at, predecessor);
+        submission.Submit(actor, null, at, Assessments(submission, at), true, null);
+        return submission;
+    }
+
+    internal static ListingReviewContext Reviewer(ListingSubmission submission) => new(Guid.NewGuid(),
+        submission.Authority.ActingUserId, submission.Authority.DeclaredOwner, submission.Authority.WorkspaceId,
+        true, true, submission.Authority.WorkspaceId.HasValue ? false : null, false);
+
+    internal static ListingEvidenceAssessment[] Assessments(ListingSubmission submission, DateTimeOffset at) =>
+        submission.Evidence.Select(e => new ListingEvidenceAssessment(Guid.NewGuid(), e, EvidenceScanStatus.Clean, at)).ToArray();
+
+    internal static ListingSubmission Approve(PropertyListing listing, DateTimeOffset at, ListingSubmission? predecessor = null)
+    {
+        var submission = Pending(listing, at, predecessor);
+        submission.ApproveAndPublish(Guid.NewGuid(), listing, predecessor, Reviewer(submission), at, true,
+            Assessments(submission, at), true, null);
+        return submission;
+    }
     internal static PurchaseRequest CreatePurchaseRequest(PropertyListing listing, Guid? id = null)
     {
         return new PurchaseRequest(id ?? Guid.NewGuid(), listing, Guid.NewGuid(), RequestedAt);

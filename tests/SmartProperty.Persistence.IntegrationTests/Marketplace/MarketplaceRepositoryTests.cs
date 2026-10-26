@@ -55,7 +55,7 @@ public sealed class MarketplaceRepositoryTests(PostgreSqlFixture fixture) : Data
         }
         // A second graph is constructible in Domain; PostgreSQL is the uniqueness authority.
         var listing = new PropertyListing(graph.Sale.Id, graph.Property.Id, ListingPurpose.Sale, MarketplaceGraph.Time);
-        listing.Publish(Guid.NewGuid(), MarketplaceGraph.Time.AddSeconds(1));
+        MarketplaceGraph.Approve(listing, MarketplaceGraph.Time.AddSeconds(1));
         var winner = new PurchaseRequest(graph.Purchase.Id, listing, graph.User.Id, MarketplaceGraph.Time.AddSeconds(2));
         var duplicate = PropertyMarketplaceReservation.AcceptPurchase(listing, null, winner, [], [], MarketplaceGraph.Time.AddSeconds(3));
         await using var context = Host.CreateVerificationContext();

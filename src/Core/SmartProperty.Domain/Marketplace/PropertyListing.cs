@@ -40,33 +40,32 @@ public sealed class PropertyListing
     public DateTimeOffset? PublishedAt { get; private set; }
     public DateTimeOffset? WithdrawnAt { get; private set; }
 
-    /// <summary>
-    /// Publishes the caller-validated submission reference. A nonempty identifier does not prove approval;
-    /// the Application/Persistence layer must verify that the immutable submission belongs to this listing and
-    /// purpose and has an approved independent review before invoking this method in the same transaction.
-    /// </summary>
-    public void Publish(Guid submissionId, DateTimeOffset publishedAt)
+    /// <summary>Monotonic local marker; authoritative property-wide availability must also be checked.</summary>
+    public bool ClosedByReservation { get; private set; }
+
+    internal void EnsureCanPublishApproved(ListingSubmission submission, DateTimeOffset at)
     {
-        ValidateRequiredId(submissionId, nameof(submissionId));
-
-        if (PublicationStatus != ListingPublicationStatus.Unpublished
-            || AvailabilityStatus != ListingAvailabilityStatus.Open)
-        {
-            throw new InvalidOperationException("Only an unpublished, open listing can be published.");
-        }
-
-        ValidateTransitionTime(publishedAt, nameof(publishedAt));
-
-        PublicationStatus = ListingPublicationStatus.Published;
-        PublishedSubmissionId = submissionId;
-        PublishedAt = publishedAt;
-        UpdatedAt = publishedAt;
+        if (ClosedByReservation || AvailabilityStatus == ListingAvailabilityStatus.Reserved
+            || (PublicationStatus == ListingPublicationStatus.Unpublished && AvailabilityStatus != ListingAvailabilityStatus.Open))
+            throw new InvalidOperationException("Reservation closure prevents publication.");
+        if (PublicationStatus == ListingPublicationStatus.Withdrawn
+            && (WithdrawnAt is null || submission.SubmittedAt is null || submission.SubmittedAt < WithdrawnAt
+                || submission.Id == PublishedSubmissionId))
+            throw new InvalidOperationException("Withdrawal requires a freshly submitted and approved version.");
+        ValidateTransitionTime(at, nameof(at));
     }
 
-    /// <summary>
-    /// Withdraws this purpose only. It creates no property-wide reservation and has no effect on another listing.
-    /// A withdrawn listing cannot be published again through <see cref="Publish"/>.
-    /// </summary>
+    // Called only after ListingSubmission has validated the entire review/publication graph.
+    internal void ApplyApprovedPublication(ListingSubmission submission, DateTimeOffset at)
+    {
+        PublicationStatus = ListingPublicationStatus.Published;
+        AvailabilityStatus = ListingAvailabilityStatus.Open;
+        PublishedSubmissionId = submission.Id;
+        PublishedAt = at;
+        UpdatedAt = at;
+    }
+
+    /// <summary>Purpose-local withdrawal; a fresh independent approval is required for republication.</summary>
     public void Withdraw(DateTimeOffset withdrawnAt)
     {
         if (!CanAcceptRequests)
@@ -112,6 +111,7 @@ public sealed class PropertyListing
 
         PublicationStatus = ListingPublicationStatus.Withdrawn;
         AvailabilityStatus = ListingAvailabilityStatus.Reserved;
+        ClosedByReservation = true;
         WithdrawnAt = reservedAt;
         UpdatedAt = reservedAt;
     }
@@ -123,7 +123,7 @@ public sealed class PropertyListing
             throw new InvalidOperationException("A reserved listing cannot be closed by another reservation.");
         }
 
-        if (AvailabilityStatus == ListingAvailabilityStatus.Open)
+        if (!ClosedByReservation)
         {
             ValidateTransitionTime(closedAt, nameof(closedAt));
         }
@@ -133,6 +133,7 @@ public sealed class PropertyListing
     {
         EnsureCanCloseForPropertyReservation(closedAt);
 
+        ClosedByReservation = true;
         if (AvailabilityStatus == ListingAvailabilityStatus.Closed)
         {
             return;
