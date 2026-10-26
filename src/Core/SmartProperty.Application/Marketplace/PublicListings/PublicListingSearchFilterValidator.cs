@@ -1,4 +1,6 @@
 using SmartProperty.Common.Results;
+using SmartProperty.Domain.Marketplace;
+using SmartProperty.Domain.PropertyRegistry;
 
 namespace SmartProperty.Application.Marketplace.PublicListings;
 
@@ -8,21 +10,44 @@ namespace SmartProperty.Application.Marketplace.PublicListings;
 /// <remarks>
 /// This is request validation only. Whether a listing is complete enough to be published, and whether it is
 /// visible, are decided elsewhere: completeness at submission and publication, visibility by the read query. A
-/// filter value that matches nothing simply returns an empty page; nothing here invents a default location, price
-/// or currency.
+/// filter value that matches nothing simply returns an empty page; nothing here invents a default location, price,
+/// currency or rent period.
+///
+/// Price rules (R1): a price filter or a price sort needs a purpose and a currency, and a Rent price comparison
+/// also needs a rent period, so a Sale price is never compared with a Rent price, amounts in different currencies
+/// are never compared, and a Monthly rent is never compared with a Yearly one. A rent period is valid only with the
+/// Rent purpose. A search without price filtering or sorting may span both purposes.
 /// </remarks>
 internal static class PublicListingSearchFilterValidator
 {
-    public static Result<PublicListingSearchFilters> Validate(
+    public static Result<PublicListingSearchCriteria> Validate(
+        ListingPurpose? purpose,
+        PropertyType? propertyType,
         string? countryCode,
-        string? city,
         string? region,
+        string? city,
         string? district,
         decimal? minPrice,
         decimal? maxPrice,
         string? currency,
+        RentPeriod? rentPeriod,
         PublicListingSortOrder? sort)
     {
+        if (purpose is { } listingPurpose && !Enum.IsDefined(listingPurpose))
+        {
+            return Fail("The listing purpose is not supported.");
+        }
+
+        if (propertyType is { } type && !Enum.IsDefined(type))
+        {
+            return Fail("The property type is not supported.");
+        }
+
+        if (rentPeriod is { } period && !Enum.IsDefined(period))
+        {
+            return Fail("The rent period is not supported.");
+        }
+
         var normalizedCountry = Normalize(countryCode);
 
         if (normalizedCountry is not null && !IsAsciiLetters(normalizedCountry, 2))
@@ -58,19 +83,37 @@ internal static class PublicListingSearchFilterValidator
             || maxPrice is not null
             || sortOrder is PublicListingSortOrder.PriceAsc or PublicListingSortOrder.PriceDesc;
 
+        if (comparesPrices && purpose is null)
+        {
+            return Fail("A listing purpose is required when filtering or sorting by price.");
+        }
+
         if (comparesPrices && normalizedCurrency is null)
         {
             return Fail("A currency is required when filtering or sorting by price.");
         }
 
-        return Result<PublicListingSearchFilters>.Success(new PublicListingSearchFilters(
+        if (rentPeriod is not null && purpose != ListingPurpose.Rent)
+        {
+            return Fail("A rent period is valid only for Rent listings.");
+        }
+
+        if (comparesPrices && purpose == ListingPurpose.Rent && rentPeriod is null)
+        {
+            return Fail("A rent period is required when filtering or sorting Rent listings by price.");
+        }
+
+        return Result<PublicListingSearchCriteria>.Success(new PublicListingSearchCriteria(
+            purpose,
+            propertyType,
             normalizedCountry?.ToUpperInvariant(),
-            Normalize(city),
             Normalize(region),
+            Normalize(city),
             Normalize(district),
             minPrice,
             maxPrice,
             normalizedCurrency?.ToUpperInvariant(),
+            rentPeriod,
             sortOrder));
     }
 
@@ -86,8 +129,8 @@ internal static class PublicListingSearchFilterValidator
         return value.Length == length && value.All(char.IsAsciiLetter);
     }
 
-    private static Result<PublicListingSearchFilters> Fail(string description)
+    private static Result<PublicListingSearchCriteria> Fail(string description)
     {
-        return Result<PublicListingSearchFilters>.Failure(PublicListingErrors.ValidationFailed(description));
+        return Result<PublicListingSearchCriteria>.Failure(PublicListingErrors.ValidationFailed(description));
     }
 }
