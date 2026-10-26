@@ -107,6 +107,19 @@ public sealed class ListingSubmissionTests
         Assert.Equal(ListingSubmissionStatus.Draft, previous.Status);
     }
 
+    [Fact]
+    public void ReviewedPredecessorCreatesNextVersionWithoutRewritingHistory()
+    {
+        var listing = MarketplaceFixtures.CreateListing(ListingPurpose.Sale, publish: false);
+        var first = MarketplaceFixtures.Pending(listing, MarketplaceFixtures.PublishedAt);
+        first.Reject(Guid.NewGuid(), MarketplaceFixtures.Reviewer(first), "Insufficient evidence", MarketplaceFixtures.PublishedAt);
+        var decision = first.ReviewDecision;
+        var next = MarketplaceFixtures.Pending(listing, MarketplaceFixtures.RequestedAt, first);
+        Assert.Equal(2, next.Version);
+        Assert.Equal(first.Id, next.PredecessorId);
+        Assert.Same(decision, first.ReviewDecision);
+        Assert.Equal(ListingSubmissionStatus.Rejected, first.Status);
+    }
     private static ListingSubmission Draft(PropertyListing listing, ListingLegalAuthority authority, IEnumerable<ListingEvidenceReference> evidence) =>
         new(Guid.NewGuid(), listing, Content(), authority, evidence, Time);
     private static ListingSubmissionContent Content() => new("Country", "Region", "City", "District", "Title", "Description",

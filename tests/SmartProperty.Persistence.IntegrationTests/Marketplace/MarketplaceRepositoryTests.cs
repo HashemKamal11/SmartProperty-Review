@@ -17,8 +17,7 @@ public sealed class MarketplaceRepositoryTests(PostgreSqlFixture fixture) : Data
         var graph = MarketplaceGraph.Create(sale);
         await using (var context = Host.CreateVerificationContext())
         {
-            graph.Track(context);
-            await context.SaveChangesAsync();
+            await graph.SeedPrincipalsAsync(context);
             context.ChangeTracker.Clear();
             Assert.Equal(2, await context.PropertyListings.CountAsync());
         }
@@ -50,12 +49,11 @@ public sealed class MarketplaceRepositoryTests(PostgreSqlFixture fixture) : Data
         var graph = MarketplaceGraph.Create();
         await using (var seed = Host.CreateVerificationContext())
         {
-            graph.Track(seed);
-            await seed.SaveChangesAsync();
+            await graph.SeedPrincipalsAsync(seed);
         }
         // A second graph is constructible in Domain; PostgreSQL is the uniqueness authority.
         var listing = new PropertyListing(graph.Sale.Id, graph.Property.Id, ListingPurpose.Sale, MarketplaceGraph.Time);
-        listing.Publish(Guid.NewGuid(), MarketplaceGraph.Time.AddSeconds(1));
+        MarketplaceGraph.Approve(listing, MarketplaceGraph.Time.AddSeconds(1));
         var winner = new PurchaseRequest(graph.Purchase.Id, listing, graph.User.Id, MarketplaceGraph.Time.AddSeconds(2));
         var duplicate = PropertyMarketplaceReservation.AcceptPurchase(listing, null, winner, [], [], MarketplaceGraph.Time.AddSeconds(3));
         await using var context = Host.CreateVerificationContext();

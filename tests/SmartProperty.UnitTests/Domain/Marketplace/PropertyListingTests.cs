@@ -51,36 +51,23 @@ public sealed class PropertyListingTests
     }
 
     [Fact]
-    public void Publish_RecordsTheCallerValidatedSubmissionReferenceAndMakesTheListingPubliclyAvailable()
+    public void Approval_RecordsExactSubmissionAndMakesListingAvailable()
     {
         var listing = MarketplaceFixtures.CreateListing(ListingPurpose.Sale, publish: false);
-        var submissionId = Guid.NewGuid();
-
-        listing.Publish(submissionId, MarketplaceFixtures.PublishedAt);
-
+        var submission = MarketplaceFixtures.Approve(listing, MarketplaceFixtures.PublishedAt);
+        Assert.Equal(submission.Id, listing.PublishedSubmissionId);
+        Assert.Equal(MarketplaceFixtures.PublishedAt, listing.PublishedAt);
         Assert.Equal(ListingPublicationStatus.Published, listing.PublicationStatus);
         Assert.Equal(ListingAvailabilityStatus.Open, listing.AvailabilityStatus);
-        Assert.Equal(submissionId, listing.PublishedSubmissionId);
-        Assert.Equal(MarketplaceFixtures.PublishedAt, listing.PublishedAt);
-        Assert.Equal(MarketplaceFixtures.PublishedAt, listing.UpdatedAt);
     }
 
     [Fact]
-    public void Publish_RejectsMissingSubmissionAndInvalidStateOrTime()
+    public void Publication_HasNoPublicGuidBypass()
     {
-        var missingSubmission = MarketplaceFixtures.CreateListing(ListingPurpose.Sale, publish: false);
-        Assert.Throws<ArgumentException>(() =>
-            missingSubmission.Publish(Guid.Empty, MarketplaceFixtures.PublishedAt));
-
-        var earlierTime = MarketplaceFixtures.CreateListing(ListingPurpose.Sale, publish: false);
-        Assert.Throws<ArgumentException>(() =>
-            earlierTime.Publish(Guid.NewGuid(), MarketplaceFixtures.CreatedAt.AddTicks(-1)));
-
-        var alreadyPublished = MarketplaceFixtures.CreateListing(ListingPurpose.Sale);
-        Assert.Throws<InvalidOperationException>(() =>
-            alreadyPublished.Publish(Guid.NewGuid(), MarketplaceFixtures.DecidedAt));
+        Assert.DoesNotContain(typeof(PropertyListing).GetMethods(), m => m.Name == "Publish");
+        var listing = MarketplaceFixtures.CreateListing(ListingPurpose.Sale, publish: false);
+        Assert.Throws<ArgumentException>(() => MarketplaceFixtures.Approve(listing, MarketplaceFixtures.CreatedAt.AddTicks(-1)));
     }
-
     [Fact]
     public void Withdraw_IsPurposeLocalAndProducesWithdrawnClosed()
     {
@@ -111,15 +98,15 @@ public sealed class PropertyListingTests
     }
 
     [Fact]
-    public void WithdrawnListing_CannotBeRepublishedDirectly()
+    public void WithdrawnListing_RequiresFreshApproval()
     {
-        var listing = MarketplaceFixtures.CreateListing(ListingPurpose.Sale);
+        var listing = MarketplaceFixtures.CreateListing(ListingPurpose.Sale, publish: false);
+        var old = MarketplaceFixtures.Approve(listing, MarketplaceFixtures.PublishedAt);
         listing.Withdraw(MarketplaceFixtures.DecidedAt);
-
-        Assert.Throws<InvalidOperationException>(() =>
-            listing.Publish(Guid.NewGuid(), MarketplaceFixtures.DecidedAt.AddHours(1)));
+        Assert.Throws<InvalidOperationException>(() => old.ApproveAndPublish(Guid.NewGuid(), listing, old,
+            MarketplaceFixtures.Reviewer(old), MarketplaceFixtures.DecidedAt.AddHours(1), true,
+            MarketplaceFixtures.Assessments(old, MarketplaceFixtures.DecidedAt), true, null));
     }
-
     [Theory]
     [InlineData(typeof(ListingPurpose), 2)]
     [InlineData(typeof(ListingSubmissionStatus), 5)]

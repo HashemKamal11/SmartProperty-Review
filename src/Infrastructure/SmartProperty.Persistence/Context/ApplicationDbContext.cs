@@ -23,6 +23,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<WorkspaceMembershipRole> WorkspaceMembershipRoles => Set<WorkspaceMembershipRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<Property> Properties => Set<Property>();
+    public DbSet<ListingSubmission> ListingSubmissions => Set<ListingSubmission>();
+    public DbSet<ListingReviewDecision> ListingReviewDecisions => Set<ListingReviewDecision>();
     public DbSet<PropertyListing> PropertyListings => Set<PropertyListing>();
     public DbSet<PurchaseRequest> PurchaseRequests => Set<PurchaseRequest>();
     public DbSet<RentalRequest> RentalRequests => Set<RentalRequest>();
@@ -32,6 +34,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        ValidateMarketplaceHistory();
         SynchronizeMarketplaceForeignKeys();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
@@ -41,6 +44,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        ValidateMarketplaceHistory();
         SynchronizeMarketplaceForeignKeys();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
@@ -122,6 +126,35 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             throw new InvalidOperationException("Marketplace foreign keys contradict the declared identity or purpose.");
     }
 
+    // EF save-boundary protection only: direct SQL/bulk updates require later database enforcement.
+    private void ValidateMarketplaceHistory()
+    {
+        ChangeTracker.DetectChanges();
+        foreach (var entry in ChangeTracker.Entries().ToArray())
+        {
+            if (entry.Entity is ListingReviewDecision && entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Historical review decisions are immutable.");
+            if (entry.Entity is ListingSubmission)
+            {
+                if (entry.State == EntityState.Deleted) throw new InvalidOperationException("Submission history cannot be deleted.");
+                if (entry.State == EntityState.Modified)
+                {
+                    foreach (var name in new[] { "Id", "ListingId", "PropertyId", "Purpose", "Version", "PredecessorId", "CreatedAt", "Content", "Authority", "Evidence" })
+                        if (entry.Property(name).IsModified) throw new InvalidOperationException("Submission snapshots are immutable.");
+                    var wasDraft = Equals(entry.Property("Status").OriginalValue, ListingSubmissionStatus.Draft);
+                    if (!wasDraft && (entry.Property("SubmittedAssessments").IsModified || entry.Property("SubmittedAt").IsModified))
+                        throw new InvalidOperationException("Submitted evidence history is immutable.");
+                    if (wasDraft && (entry.Property("SubmittedAssessments").IsModified || entry.Property("SubmittedAt").IsModified)
+                        && !Equals(entry.Property("Status").CurrentValue, ListingSubmissionStatus.PendingReview))
+                        throw new InvalidOperationException("Assessment assignment requires the submission transition.");
+                }
+            }
+            if (entry.Entity is PropertyListing && entry.State == EntityState.Modified
+                && Equals(entry.Property("ClosedByReservation").OriginalValue, true)
+                && !Equals(entry.Property("ClosedByReservation").CurrentValue, true))
+                throw new InvalidOperationException("Reservation closure is permanent.");
+        }
+    }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
