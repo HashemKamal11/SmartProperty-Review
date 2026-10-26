@@ -8,6 +8,7 @@ using SmartProperty.Persistence.Authorization;
 using SmartProperty.Persistence.Context;
 using SmartProperty.Persistence.Health;
 using SmartProperty.Persistence.Repositories.Identity;
+using SmartProperty.Persistence.Repositories.Marketplace;
 using SmartProperty.Persistence.Repositories.Platform;
 using SmartProperty.Persistence.Repositories.PropertyRegistry;
 
@@ -35,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
         services.AddScoped<IPropertyRepository, PropertyRepository>();
+        services.AddScoped<IPublicListingReadRepository, PublicListingReadRepository>();
         services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();
         services.AddScoped<IWorkspaceMembershipRepository, WorkspaceMembershipRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
