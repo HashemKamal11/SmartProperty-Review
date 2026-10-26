@@ -24,6 +24,9 @@ using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
 using SmartProperty.Application.Identity.Bootstrap;
+using SmartProperty.Application.Marketplace.PublicListings;
+using SmartProperty.Application.Marketplace.PublicListings.GetById;
+using SmartProperty.Application.Marketplace.PublicListings.Search;
 using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Archive;
 using SmartProperty.Application.PropertyRegistry.Create;
@@ -277,6 +280,15 @@ internal static class ServiceCollectionExtensions
             .AddScoped<IQueryHandler<GetRegistrationWorkspaceOptionsQuery, IReadOnlyList<RegistrationWorkspaceOption>>,
                 GetRegistrationWorkspaceOptionsQueryHandler>();
         services.AddScoped<IQueryHandler<GetWorkspaceQuery, WorkspaceDetails>, GetWorkspaceQueryHandler>();
+
+        // The anonymous public marketplace. Both handlers need IPublicListingReadRepository, which Persistence
+        // registers; a host without that registration does not start in Development.
+        services
+            .AddScoped<IQueryHandler<SearchPublicListingsQuery, PagedList<PublicListingSummary>>,
+                SearchPublicListingsQueryHandler>();
+        services
+            .AddScoped<IQueryHandler<GetPublicListingByIdQuery, PublicListingDetail>,
+                GetPublicListingByIdQueryHandler>();
 
         services
             .AddScoped<ICommandHandler<BootstrapPlatformAdminCommand, BootstrapPlatformAdminResult>,
