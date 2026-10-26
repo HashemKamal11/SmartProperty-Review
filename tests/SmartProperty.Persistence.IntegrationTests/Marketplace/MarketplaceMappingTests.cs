@@ -122,6 +122,90 @@ public sealed class MarketplaceMappingTests
         Assert.Null(context.Entry(graph.Reservation).Property<Guid?>("PurchaseWinnerId").CurrentValue);
     }
 
+    [Fact]
+    public void HistoryCheckRequiresNullWithdrawalOnlyForUnpublishedListings()
+    {
+        using var context = Create(new SuppressSave());
+        var model = Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<Microsoft.EntityFrameworkCore.Metadata.IDesignTimeModel>(context).Model;
+        var listing = model.FindEntityType(typeof(PropertyListing))!;
+        var check = Assert.Single(listing.GetCheckConstraints(), x => x.Name == "ck_marketplace_listings_history");
+        // Inspect the actual model, not an independently implemented SQL evaluator.
+        // PostgreSQL execution of TRUE/FALSE/UNKNOWN cases remains separately gated.
+        const string expected = "updated_at >= created_at AND ((publication_status = 'Unpublished' AND published_submission_id IS NULL AND published_at IS NULL AND withdrawn_at IS NULL) OR (publication_status = 'Published' AND published_submission_id IS NOT NULL AND published_at IS NOT NULL AND published_at >= created_at AND published_at <= updated_at AND (withdrawn_at IS NULL OR (withdrawn_at >= created_at AND withdrawn_at <= published_at))) OR (publication_status = 'Withdrawn' AND published_submission_id IS NOT NULL AND published_at IS NOT NULL AND withdrawn_at IS NOT NULL AND published_at >= created_at AND withdrawn_at >= published_at AND withdrawn_at <= updated_at))";
+        Assert.Equal(expected, check.Sql);
+        foreach (var name in new[] { nameof(PropertyListing.CreatedAt), nameof(PropertyListing.UpdatedAt), nameof(PropertyListing.PublicationStatus), nameof(PropertyListing.AvailabilityStatus) })
+            Assert.False(listing.FindProperty(name)!.IsNullable);
+    }
+
+    [Theory]
+    [InlineData("new")]
+    [InlineData("published")]
+    [InlineData("revision")]
+    [InlineData("withdrawn")]
+    [InlineData("republished")]
+    [InlineData("reserved")]
+    [InlineData("opposite-closed")]
+    [InlineData("unpublished-closed")]
+    public void DomainLifecycleRetainsValidHistoryShapes(string scenario)
+    {
+        var at = MarketplaceGraph.Time;
+        var listing = new PropertyListing(Guid.NewGuid(), Guid.NewGuid(), ListingPurpose.Sale, at);
+        if (scenario is "reserved" or "opposite-closed")
+        {
+            var graph = MarketplaceGraph.Create();
+            listing = scenario == "reserved" ? graph.Sale : graph.Rent;
+            Assert.True(listing.ClosedByReservation);
+            Assert.Equal(scenario == "reserved" ? ListingAvailabilityStatus.Reserved : ListingAvailabilityStatus.Closed, listing.AvailabilityStatus);
+        }
+        else if (scenario == "unpublished-closed")
+        {
+            var winner = new PropertyListing(Guid.NewGuid(), listing.PropertyId, ListingPurpose.Rent, at);
+            MarketplaceGraph.Approve(winner, at.AddSeconds(1));
+            var request = new RentalRequest(Guid.NewGuid(), winner, Guid.NewGuid(), at.AddSeconds(2));
+            PropertyMarketplaceReservation.AcceptRental(winner, listing, request, [], [], at.AddSeconds(3));
+            Assert.True(listing.ClosedByReservation);
+            Assert.Equal(ListingAvailabilityStatus.Closed, listing.AvailabilityStatus);
+        }
+        else if (scenario != "new")
+        {
+            var first = MarketplaceGraph.Approve(listing, at.AddSeconds(1));
+            if (scenario is "withdrawn" or "republished") listing.Withdraw(at.AddSeconds(2));
+            if (scenario is "revision" or "republished")
+            {
+                var next = MarketplaceGraph.Approve(listing, at.AddSeconds(3), first);
+                Assert.Equal(next.Id, listing.PublishedSubmissionId);
+            }
+            if (scenario == "republished") Assert.Equal(at.AddSeconds(2), listing.WithdrawnAt);
+        }
+
+        Assert.True(listing.UpdatedAt >= listing.CreatedAt);
+        if (listing.PublicationStatus == ListingPublicationStatus.Unpublished)
+        {
+            Assert.Null(listing.PublishedSubmissionId);
+            Assert.Null(listing.PublishedAt);
+            Assert.Null(listing.WithdrawnAt);
+        }
+        else
+        {
+            Assert.NotNull(listing.PublishedSubmissionId);
+            Assert.NotNull(listing.PublishedAt);
+            Assert.True(listing.PublishedAt >= listing.CreatedAt);
+            Assert.True(listing.PublishedAt <= listing.UpdatedAt);
+            if (listing.PublicationStatus == ListingPublicationStatus.Published)
+            {
+                Assert.Equal(ListingAvailabilityStatus.Open, listing.AvailabilityStatus);
+                if (listing.WithdrawnAt.HasValue)
+                    Assert.True(listing.WithdrawnAt >= listing.CreatedAt && listing.WithdrawnAt <= listing.PublishedAt);
+            }
+            else
+            {
+                Assert.Equal(ListingPublicationStatus.Withdrawn, listing.PublicationStatus);
+                Assert.NotNull(listing.WithdrawnAt);
+                Assert.True(listing.WithdrawnAt >= listing.PublishedAt && listing.WithdrawnAt <= listing.UpdatedAt);
+            }
+        }
+    }
+
     private static ApplicationDbContext Create(SuppressSave interceptor) => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql()
             .AddInterceptors(interceptor).Options);
