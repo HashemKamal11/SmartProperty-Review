@@ -146,6 +146,8 @@ public sealed class MarketplaceMappingTests
 internal sealed record MarketplaceGraph(Property Property, User User, PropertyListing Sale, PropertyListing Rent,
     PurchaseRequest Purchase, RentalRequest Rental, PropertyMarketplaceReservation Reservation)
 {
+    internal ListingSubmission SaleSubmission { get; private init; } = null!;
+    internal ListingSubmission RentSubmission { get; private init; } = null!;
     internal static readonly DateTimeOffset Time = new(2026, 10, 25, 12, 0, 0, TimeSpan.Zero);
 
     internal static MarketplaceGraph Create(bool sale = true)
@@ -154,14 +156,14 @@ internal sealed record MarketplaceGraph(Property Property, User User, PropertyLi
         var user = new User(Guid.NewGuid(), $"{Guid.NewGuid():N}@example.test", "Test", "User", Time);
         var saleListing = new PropertyListing(Guid.NewGuid(), property.Id, ListingPurpose.Sale, Time);
         var rentListing = new PropertyListing(Guid.NewGuid(), property.Id, ListingPurpose.Rent, Time);
-        Approve(saleListing, Time.AddSeconds(1));
-        Approve(rentListing, Time.AddSeconds(1));
+        var saleSubmission = Approve(saleListing, Time.AddSeconds(1));
+        var rentSubmission = Approve(rentListing, Time.AddSeconds(1));
         var purchase = new PurchaseRequest(Guid.NewGuid(), saleListing, user.Id, Time.AddSeconds(2));
         var rental = new RentalRequest(Guid.NewGuid(), rentListing, user.Id, Time.AddSeconds(2));
         var reservation = sale
             ? PropertyMarketplaceReservation.AcceptPurchase(saleListing, rentListing, purchase, [], [rental], Time.AddSeconds(3))
             : PropertyMarketplaceReservation.AcceptRental(rentListing, saleListing, rental, [], [purchase], Time.AddSeconds(3));
-        return new(property, user, saleListing, rentListing, purchase, rental, reservation);
+        return new(property, user, saleListing, rentListing, purchase, rental, reservation) { SaleSubmission = saleSubmission, RentSubmission = rentSubmission };
     }
 
     internal static ListingSubmission Pending(PropertyListing listing, DateTimeOffset at, ListingSubmission? predecessor = null)
@@ -193,9 +195,39 @@ internal sealed record MarketplaceGraph(Property Property, User User, PropertyLi
             Assessments(submission, at), true, null);
         return submission;
     }
+    internal async Task SeedPrincipalsAsync(ApplicationDbContext context)
+    {
+        context.Add(Property);
+        context.Add(User);
+        context.Add(new PropertyListing(Sale.Id, Property.Id, ListingPurpose.Sale, Time));
+        context.Add(new PropertyListing(Rent.Id, Property.Id, ListingPurpose.Rent, Time));
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        context.Add(SaleSubmission);
+        context.Add(RentSubmission);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        context.Attach(Property);
+        context.Attach(User);
+        context.Update(Sale);
+        context.Update(Rent);
+        // Concurrency predicates must describe the inserted unpublished principal rows.
+        foreach (var listing in new[] { Sale, Rent })
+        {
+            context.Entry(listing).Property(x => x.PublicationStatus).OriginalValue = ListingPublicationStatus.Unpublished;
+            context.Entry(listing).Property(x => x.AvailabilityStatus).OriginalValue = ListingAvailabilityStatus.Open;
+            context.Entry(listing).Property(x => x.ClosedByReservation).OriginalValue = false;
+        }
+        context.Add(Purchase);
+        context.Add(Rental);
+        context.Add(Reservation);
+        await context.SaveChangesAsync();
+    }
     internal void Track(ApplicationDbContext context)
     {
         // Deliberately add dependents first: EF must order SQL from the completed FK graph.
+        context.Add(SaleSubmission);
+        context.Add(RentSubmission);
         context.Add(Reservation);
         context.Add(Rental);
         context.Add(Purchase);

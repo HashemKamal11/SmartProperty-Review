@@ -7,6 +7,8 @@ namespace SmartProperty.Domain.Marketplace;
 /// </summary>
 public sealed class ListingSubmission
 {
+    private ListingSubmission() { }
+
     public ListingSubmission(Guid id, PropertyListing listing, ListingSubmissionContent content,
         ListingLegalAuthority authority, IEnumerable<ListingEvidenceReference> evidence,
         DateTimeOffset createdAt, ListingSubmission? predecessor = null)
@@ -50,18 +52,18 @@ public sealed class ListingSubmission
         Status = ListingSubmissionStatus.Draft;
     }
 
-    public Guid Id { get; }
-    public Guid ListingId { get; }
-    public Guid PropertyId { get; }
-    public ListingPurpose Purpose { get; }
-    public int Version { get; }
-    public Guid? PredecessorId { get; }
-    public ListingSubmissionContent Content { get; }
-    public ListingLegalAuthority Authority { get; }
-    public IReadOnlyList<ListingEvidenceReference> Evidence { get; }
+    public Guid Id { get; private set; }
+    public Guid ListingId { get; private set; }
+    public Guid PropertyId { get; private set; }
+    public ListingPurpose Purpose { get; private set; }
+    public int Version { get; private set; }
+    public Guid? PredecessorId { get; private set; }
+    public ListingSubmissionContent Content { get; private set; } = null!;
+    public ListingLegalAuthority Authority { get; private set; } = null!;
+    public IReadOnlyList<ListingEvidenceReference> Evidence { get; private set; } = null!;
     public IReadOnlyList<ListingEvidenceAssessment> SubmittedAssessments { get; private set; } = Array.Empty<ListingEvidenceAssessment>();
     public ListingSubmissionStatus Status { get; private set; }
-    public DateTimeOffset CreatedAt { get; }
+    public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? SubmittedAt { get; private set; }
 
