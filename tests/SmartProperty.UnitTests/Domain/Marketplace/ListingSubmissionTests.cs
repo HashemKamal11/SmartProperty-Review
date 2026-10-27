@@ -75,7 +75,6 @@ public sealed class ListingSubmissionTests
 
     [Theory]
     [InlineData("empty_id")]
-    [InlineData("empty_evidence")]
     [InlineData("duplicate")]
     [InlineData("null_entry")]
     [InlineData("wrong_property")]
@@ -89,7 +88,7 @@ public sealed class ListingSubmissionTests
             fault == "wrong_purpose" ? ListingPurpose.Rent : listing.Purpose, new string('A', 64));
         var references = fault switch
         {
-            "empty_evidence" => Array.Empty<ListingEvidenceReference>(), "duplicate" => new[] { evidence, evidence },
+            "duplicate" => new[] { evidence, evidence },
             "null_entry" => new ListingEvidenceReference[] { null! },
             "wrong_property" or "wrong_purpose" => new[] { wrong }, _ => new[] { evidence }
         };

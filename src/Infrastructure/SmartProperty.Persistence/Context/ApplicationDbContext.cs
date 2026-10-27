@@ -139,9 +139,20 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                 if (entry.State == EntityState.Deleted) throw new InvalidOperationException("Submission history cannot be deleted.");
                 if (entry.State == EntityState.Modified)
                 {
-                    foreach (var name in new[] { "Id", "ListingId", "PropertyId", "Purpose", "Version", "PredecessorId", "CreatedAt", "Content", "Authority", "Evidence" })
+                    foreach (var name in new[] { "Id", "ListingId", "PropertyId", "Purpose", "Version", "PredecessorId", "CreatedAt", "Authority" })
                         if (entry.Property(name).IsModified) throw new InvalidOperationException("Submission snapshots are immutable.");
                     var wasDraft = Equals(entry.Property("Status").OriginalValue, ListingSubmissionStatus.Draft);
+                    var isDraft = Equals(entry.Property("Status").CurrentValue, ListingSubmissionStatus.Draft);
+                    var snapshotChanged = entry.Property("Content").IsModified || entry.Property("Evidence").IsModified;
+                    if (snapshotChanged && (!wasDraft || !isDraft || entry.Property("SubmittedAt").OriginalValue is not null))
+                        throw new InvalidOperationException("Submitted snapshots are immutable.");
+                    if (snapshotChanged || entry.Property("Revision").IsModified)
+                    {
+                        var before = (int)entry.Property("Revision").OriginalValue!;
+                        var after = (int)entry.Property("Revision").CurrentValue!;
+                        if (!wasDraft || before < 1 || before == int.MaxValue || after != before + 1)
+                            throw new InvalidOperationException("A draft write requires the next revision.");
+                    }
                     if (!wasDraft && (entry.Property("SubmittedAssessments").IsModified || entry.Property("SubmittedAt").IsModified))
                         throw new InvalidOperationException("Submitted evidence history is immutable.");
                     if (wasDraft && (entry.Property("SubmittedAssessments").IsModified || entry.Property("SubmittedAt").IsModified)

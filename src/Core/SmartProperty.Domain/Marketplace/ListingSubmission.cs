@@ -31,8 +31,8 @@ public sealed class ListingSubmission
             if (createdAt < predecessor.UpdatedAt) throw new ArgumentException("Draft cannot precede its predecessor.", nameof(createdAt));
         }
         var snapshot = evidence.ToArray();
-        if (snapshot.Length == 0 || snapshot.Any(x => x is null))
-            throw new ArgumentException("Private evidence is required.", nameof(evidence));
+        if (snapshot.Any(x => x is null))
+            throw new ArgumentException("Evidence references cannot be null.", nameof(evidence));
         if (snapshot.Select(x => x.EvidenceId).Distinct().Count() != snapshot.Length)
             throw new ArgumentException("Duplicate evidence identity.", nameof(evidence));
         if (snapshot.Any(x => x.PropertyId != listing.PropertyId || x.Purpose != listing.Purpose))
@@ -57,6 +57,8 @@ public sealed class ListingSubmission
     public Guid PropertyId { get; private set; }
     public ListingPurpose Purpose { get; private set; }
     public int Version { get; private set; }
+    /// <summary>Optimistic write token, distinct from the immutable submission version lineage.</summary>
+    public int Revision { get; private set; } = 1;
     public Guid? PredecessorId { get; private set; }
     public ListingSubmissionContent Content { get; private set; } = null!;
     public ListingLegalAuthority Authority { get; private set; } = null!;
@@ -68,6 +70,50 @@ public sealed class ListingSubmission
     public DateTimeOffset? SubmittedAt { get; private set; }
 
     public ListingReviewDecision? ReviewDecision { get; private set; }
+
+    /// <summary>Checks eligibility only. Persistence must hard-delete and append the audit event atomically.</summary>
+    public void EnsureCanDiscard(int expectedRevision)
+    {
+        EnsureEditable(expectedRevision);
+    }
+
+    public void UpdateDraft(int expectedRevision, ListingSubmissionContent content,
+        IEnumerable<ListingEvidenceReference> evidence, DateTimeOffset at)
+    {
+        EnsureEditable(expectedRevision);
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(evidence);
+        if (at < UpdatedAt) throw new ArgumentException("Update cannot precede the draft.", nameof(at));
+        if (content.Purpose != Purpose) throw new ArgumentException("Draft purpose cannot change.", nameof(content));
+        var snapshot = evidence.ToArray();
+        if (snapshot.Any(x => x is null || x.PropertyId != PropertyId || x.Purpose != Purpose)
+            || snapshot.Select(x => x.EvidenceId).Distinct().Count() != snapshot.Length)
+            throw new ArgumentException("Evidence must uniquely cover this property and purpose.", nameof(evidence));
+        var nextRevision = checked(Revision + 1);
+        var immutableEvidence = Array.AsReadOnly(snapshot);
+        Content = content;
+        Evidence = immutableEvidence;
+        UpdatedAt = at;
+        Revision = nextRevision;
+    }
+
+    private void EnsureEditable(int expectedRevision)
+    {
+        if (expectedRevision < 1 || expectedRevision != Revision)
+            throw new InvalidOperationException("Submission revision conflict.");
+        if (Status != ListingSubmissionStatus.Draft || SubmittedAt is not null
+            || ReviewDecision is not null || SubmittedAssessments.Count != 0)
+            throw new InvalidOperationException("Only a never-submitted draft is editable or discardable.");
+    }
+
+    public void Submit(int expectedRevision, Guid actingUserId, Guid? workspaceId, DateTimeOffset at,
+        IEnumerable<ListingEvidenceAssessment> assessments, bool? legalAuthorityVerified,
+        bool? workspaceOperationAuthorized, bool? actingUserIsDeclaredOwnerVerified = null)
+    {
+        EnsureEditable(expectedRevision);
+        Submit(actingUserId, workspaceId, at, assessments, legalAuthorityVerified,
+            workspaceOperationAuthorized, actingUserIsDeclaredOwnerVerified);
+    }
 
     /// <summary>
     /// Applies one validated in-memory transition. The caller MUST obtain current trusted facts and load
@@ -101,7 +147,7 @@ public sealed class ListingSubmission
             throw new InvalidOperationException("Unexpected current publication.");
         Authority.EnsureApplicable(PropertyId, Purpose, Authority.ActingUserId, Authority.WorkspaceId, at,
             legalAuthorityVerified, workspaceOperationAuthorized, actingUserIsDeclaredOwnerVerified);
-        if (snapshot.Length != Evidence.Count || snapshot.Any(x => x is null)
+        if (Evidence.Count == 0 || snapshot.Length != Evidence.Count || snapshot.Any(x => x is null)
             || snapshot.Select(x => x.AssessmentId).Distinct().Count() != snapshot.Length
             || snapshot.Select(x => x.Evidence.EvidenceId).Distinct().Count() != snapshot.Length)
             throw new ArgumentException("Exact current assessments are required.", nameof(assessments));
@@ -153,11 +199,11 @@ public sealed class ListingSubmission
     {
         ArgumentNullException.ThrowIfNull(assessments);
         var snapshot = assessments.ToArray();
-        if (Status != ListingSubmissionStatus.Draft) throw new InvalidOperationException("Only a draft can be submitted.");
+        EnsureEditable(Revision);
         if (at < UpdatedAt) throw new ArgumentException("Submission cannot precede the draft.", nameof(at));
         Authority.EnsureApplicable(PropertyId, Purpose, actingUserId, workspaceId, at,
             legalAuthorityVerified, workspaceOperationAuthorized, actingUserIsDeclaredOwnerVerified);
-        if (snapshot.Length != Evidence.Count || snapshot.Any(x => x is null)
+        if (Evidence.Count == 0 || snapshot.Length != Evidence.Count || snapshot.Any(x => x is null)
             || snapshot.Select(x => x.AssessmentId).Distinct().Count() != snapshot.Length
             || snapshot.Select(x => x.Evidence.EvidenceId).Distinct().Count() != snapshot.Length)
             throw new ArgumentException("One unambiguous assessment per evidence reference is required.", nameof(assessments));
@@ -168,9 +214,11 @@ public sealed class ListingSubmission
             assessment.EnsureCleanFor(reference, at);
         }
         var immutableAssessments = Array.AsReadOnly(snapshot);
+        var nextRevision = checked(Revision + 1);
         SubmittedAssessments = immutableAssessments;
         SubmittedAt = at;
         UpdatedAt = at;
         Status = ListingSubmissionStatus.PendingReview;
+        Revision = nextRevision;
     }
 }
