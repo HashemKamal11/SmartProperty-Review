@@ -328,7 +328,27 @@ public sealed class WriteContractPrivacyTests
             Assert.Equal("A concurrent listing write took precedence.", exception.Message);
         }
 
-        Assert.Equal(new[] { "ListingSlot", "SubmissionVersion" }, Enum.GetNames<ListingWriteConflictKind>());
+        Assert.Equal(new[] { "ListingSlot", "SubmissionVersion", "StaleRevision" }, Enum.GetNames<ListingWriteConflictKind>());
+    }
+
+    [Fact]
+    public void TheConflictKindsKeepTheirNumericValuesAndTheStaleRevisionIsTheThird()
+    {
+        Assert.Equal(1, (int)ListingWriteConflictKind.ListingSlot);
+        Assert.Equal(2, (int)ListingWriteConflictKind.SubmissionVersion);
+        Assert.Equal(3, (int)ListingWriteConflictKind.StaleRevision);
+        Assert.Equal(new[] { 1, 2, 3 }, Enum.GetValues<ListingWriteConflictKind>().Select(kind => (int)kind).ToArray());
+    }
+
+    [Fact]
+    public void AStaleRevisionIsATypedConflictThatCarriesItsKindAndNothingElse()
+    {
+        var exception = new ListingWriteConflictException(ListingWriteConflictKind.StaleRevision);
+
+        Assert.Equal(ListingWriteConflictKind.StaleRevision, exception.Kind);
+        Assert.Equal("A concurrent listing write took precedence.", exception.Message);
+        Assert.Null(exception.InnerException);
+        Assert.Empty(exception.Data);
     }
 
     private static string[] ParametersOf(Type type)
