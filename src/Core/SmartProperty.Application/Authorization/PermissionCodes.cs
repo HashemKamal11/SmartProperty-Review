@@ -11,6 +11,12 @@ namespace SmartProperty.Application.Authorization;
 ///
 /// Codes are added only when an endpoint actually requires one. This is not a speculative catalog of everything
 /// the product might eventually authorize.
+///
+/// The one exception is the property authority codes (<c>marketplace.authority.*</c>). They are definitions
+/// only: the platform administrator bootstrap neither creates a row for them nor attaches them to any role, no
+/// endpoint uses them yet, and nobody holds them. They take effect only when an explicitly authorized assignment
+/// workflow provisions them, and until a user is explicitly assigned one, the check for it is a denial. Holding the
+/// Platform Admin role, any other permission, or a Workspace role never confers one.
 /// </remarks>
 public static class PermissionCodes
 {
@@ -75,6 +81,46 @@ public static class PermissionCodes
 
     public const string MarketplaceSubmissionsReviewDecideDescription =
         "Approve or reject marketplace listing submissions.";
+
+    /// <summary>
+    /// Record an independent legal review for a property authority grant. Platform-scoped and definition-only (see
+    /// the remarks on this class). It confers no authority to issue or revoke a grant, to read grants, or to review
+    /// listing submissions, and none of those permissions implies it.
+    /// </summary>
+    public const string MarketplaceAuthorityLegalReviewsRecord = "marketplace.authority.legal_reviews.record";
+
+    public const string MarketplaceAuthorityLegalReviewsRecordDescription =
+        "Record legal reviews for property authority grants.";
+
+    /// <summary>
+    /// Issue a property authority grant from an approved legal review. Platform-scoped and definition-only. It
+    /// confers no authority to record a legal review, to revoke or read grants, or to review listing submissions,
+    /// and none of those permissions implies it.
+    /// </summary>
+    public const string MarketplaceAuthorityGrantsIssue = "marketplace.authority.grants.issue";
+
+    public const string MarketplaceAuthorityGrantsIssueDescription =
+        "Issue property authority grants.";
+
+    /// <summary>
+    /// Revoke a property authority grant. Platform-scoped and definition-only. It confers no authority to record a
+    /// legal review, to issue or read grants, or to review listing submissions, and none of those permissions
+    /// implies it.
+    /// </summary>
+    public const string MarketplaceAuthorityGrantsRevoke = "marketplace.authority.grants.revoke";
+
+    public const string MarketplaceAuthorityGrantsRevokeDescription =
+        "Revoke property authority grants.";
+
+    /// <summary>
+    /// Read property authority grants and their legal reviews. Platform-scoped and definition-only. It confers no
+    /// authority to record, issue or revoke anything, or to review listing submissions, and none of those
+    /// permissions implies it.
+    /// </summary>
+    public const string MarketplaceAuthorityGrantsRead = "marketplace.authority.grants.read";
+
+    public const string MarketplaceAuthorityGrantsReadDescription =
+        "Read property authority grants and legal reviews.";
 
     /// <summary>
     /// Read the workspace itself. Workspace-scoped: it is satisfied only by a workspace role held in that same
