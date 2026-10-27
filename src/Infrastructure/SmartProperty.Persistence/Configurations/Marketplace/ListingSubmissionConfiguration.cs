@@ -15,7 +15,8 @@ internal sealed class ListingSubmissionConfiguration : IEntityTypeConfiguration<
             var fields = new[] { "Country", "Region", "City", "District", "Title", "Description", "Currency" };
             var required = string.Join(" AND ", fields.Select(f => $"jsonb_typeof(content_snapshot->'Payload'->'{f}') = 'string' AND length(btrim(content_snapshot->'Payload'->>'{f}')) > 0"));
             t.HasCheckConstraint("ck_marketplace_submissions_content", $"COALESCE((content_snapshot->>'FormatVersion' = '1' AND {required} AND jsonb_typeof(content_snapshot->'Payload'->'Amount') = 'number' AND content_snapshot->'Payload'->>'PropertyType' IN ('1','2','3') AND ((purpose = 'Sale' AND content_snapshot->'Payload'->>'Purpose' = '1' AND content_snapshot->'Payload'->'RentPeriod' = 'null'::jsonb) OR (purpose = 'Rent' AND content_snapshot->'Payload'->>'Purpose' = '2' AND content_snapshot->'Payload'->>'RentPeriod' IN ('1','2')))), false)");
-            t.HasCheckConstraint("ck_marketplace_submissions_evidence", "COALESCE((jsonb_typeof(evidence_snapshot->'Payload') = 'array' AND jsonb_array_length(evidence_snapshot->'Payload') > 0 AND evidence_snapshot->>'FormatVersion' = '1' AND authority_snapshot->>'FormatVersion' = '1' AND submitted_assessments_snapshot->>'FormatVersion' = '1'), false)");
+            t.HasCheckConstraint("ck_marketplace_submissions_evidence", "COALESCE((jsonb_typeof(evidence_snapshot->'Payload') = 'array' AND (status = 'Draft' OR jsonb_array_length(evidence_snapshot->'Payload') > 0) AND evidence_snapshot->>'FormatVersion' = '1' AND authority_snapshot->>'FormatVersion' = '1' AND submitted_assessments_snapshot->>'FormatVersion' = '1'), false)");
+            t.HasCheckConstraint("ck_marketplace_submissions_revision", "revision > 0");
         });
         b.HasKey(x => x.Id).HasName("pk_marketplace_submissions");
         b.HasAlternateKey(x => new { x.Id, x.ListingId, x.PropertyId, x.Purpose }).HasName("ak_marketplace_submissions_identity");
@@ -25,6 +26,7 @@ internal sealed class ListingSubmissionConfiguration : IEntityTypeConfiguration<
         b.Property(x => x.PropertyId).HasColumnName("property_id");
         b.Property(x => x.Purpose).HasColumnName("purpose").HasConversion<string>().HasMaxLength(16);
         b.Property(x => x.Version).HasColumnName("version");
+        b.Property(x => x.Revision).HasColumnName("revision").IsConcurrencyToken();
         b.Property(x => x.PredecessorId).HasColumnName("predecessor_id");
         b.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(16).IsConcurrencyToken();
         b.Property(x => x.CreatedAt).HasColumnName("created_at");
