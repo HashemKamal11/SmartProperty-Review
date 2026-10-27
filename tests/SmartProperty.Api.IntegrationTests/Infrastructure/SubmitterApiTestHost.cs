@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using SmartProperty.Api.Controllers;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
@@ -59,6 +60,9 @@ internal sealed class SubmitterApiTestHost : IDisposable
                 services.AddControllers().ConfigureApplicationPartManager(manager =>
                     manager.FeatureProviders.Add(new MountedControllerFeatureProvider(typeof(SubmitterListingSubmissionsController))));
 
+                // The account behind a token is read from the user repository on every request; tests control it here.
+                services.RemoveAll<IUserRepository>();
+                services.AddSingleton<IUserRepository>(Accounts);
                 services.AddSingleton<ISubmitterListingSubmissionReadRepository>(stub);
                 services.AddScoped<IQueryHandler<GetMyListingSubmissionsQuery, PagedList<SubmitterSubmissionSummary>>, GetMyListingSubmissionsQueryHandler>();
                 services.AddScoped<IQueryHandler<GetMyListingSubmissionByIdQuery, SubmitterSubmissionDetail>, GetMyListingSubmissionByIdQueryHandler>();
@@ -67,6 +71,9 @@ internal sealed class SubmitterApiTestHost : IDisposable
     }
 
     public StubSubmitterListingSubmissionReadRepository Stub { get; }
+
+    /// <summary>The persisted accounts behind the tokens. Any user is Active unless a test sets otherwise.</summary>
+    public StubUserRepository Accounts { get; } = new();
 
     public IServiceProvider Services => _host.Services;
 

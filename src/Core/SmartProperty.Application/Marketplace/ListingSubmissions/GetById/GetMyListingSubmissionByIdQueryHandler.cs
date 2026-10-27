@@ -1,12 +1,15 @@
 using SmartProperty.Application.Abstractions.Identity;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
+using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Common.Results;
+using SmartProperty.Domain.Identity;
 
 namespace SmartProperty.Application.Marketplace.ListingSubmissions.GetById;
 
 public sealed class GetMyListingSubmissionByIdQueryHandler(
     ICurrentUser currentUser,
+    IUserRepository users,
     ISubmitterListingSubmissionReadRepository submissions)
     : IQueryHandler<GetMyListingSubmissionByIdQuery, SubmitterSubmissionDetail>
 {
@@ -20,6 +23,22 @@ public sealed class GetMyListingSubmissionByIdQueryHandler(
         if (currentUser.UserId is not { } actingUserId || actingUserId == Guid.Empty)
         {
             return Result<SubmitterSubmissionDetail>.Failure(ListingSubmissionErrors.Unauthorized);
+        }
+
+        // A valid token proves who the caller was, not that the account is still in good standing, so the account is
+        // read from the persisted user on every request, before anything else is decided. A token can outlive the
+        // user it names: that is the same 401 as no token. Any non-active status is the one account-level error, so
+        // the exact status is not disclosed. Nothing is read from the submissions repository for either.
+        var account = await users.GetByIdAsync(actingUserId, cancellationToken);
+
+        if (account is null)
+        {
+            return Result<SubmitterSubmissionDetail>.Failure(ListingSubmissionErrors.Unauthorized);
+        }
+
+        if (account.Status != UserStatus.Active)
+        {
+            return Result<SubmitterSubmissionDetail>.Failure(MeErrors.AccountUnavailable);
         }
 
         // No submission can have the empty id, so asking the database would only confirm what is already known.

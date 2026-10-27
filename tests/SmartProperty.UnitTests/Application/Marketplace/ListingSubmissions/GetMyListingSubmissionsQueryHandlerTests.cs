@@ -1,8 +1,11 @@
+using SmartProperty.Application.Abstractions.Persistence.Repositories;
+using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Marketplace.ListingSubmissions;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Mine;
 using SmartProperty.Application.Marketplace.PublicListings;
 using SmartProperty.Common.Pagination;
 using SmartProperty.Common.Results;
+using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.Marketplace;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.UnitTests.TestDoubles;
@@ -17,6 +20,94 @@ public sealed class GetMyListingSubmissionsQueryHandlerTests
     private static readonly DateTimeOffset Created = new(2026, 10, 20, 8, 0, 0, TimeSpan.Zero);
 
     private readonly FakeSubmitterListingSubmissionReadRepository _submissions = new();
+    private readonly FakeUserRepository _users = new();
+
+    // ----- the account behind the token
+
+    [Fact]
+    public async Task AMissingAccountIsA401AndTheSubmissionsAreNeverRead()
+    {
+        var result = await CreateHandler(Me, accountStatus: null).Handle(Query());
+
+        AssertUnauthorized(result);
+        Assert.Equal(1, _users.GetByIdCallCount);
+        Assert.Equal(0, _submissions.ListCallCount);
+    }
+
+    [Theory]
+    [InlineData(UserStatus.Pending)]
+    [InlineData(UserStatus.Suspended)]
+    [InlineData(UserStatus.Deactivated)]
+    public async Task ANonActiveAccountIsA403AccountUnavailableAndTheSubmissionsAreNeverRead(UserStatus status)
+    {
+        _submissions.Add(Me, Detail("Mine", Created));
+
+        var result = await CreateHandler(Me, status).Handle(Query());
+
+        Assert.True(result.IsFailure);
+        Assert.Same(MeErrors.AccountUnavailable, result.Error);
+        Assert.Equal("authentication.account_unavailable", result.Error!.Code);
+        Assert.Equal(ErrorType.Forbidden, result.Error.Type);
+        Assert.Equal(0, _submissions.ListCallCount);
+    }
+
+    [Fact]
+    public async Task AnActiveAccountProceedsToTheRepositoryForTheAuthenticatedUser()
+    {
+        _submissions.Add(Me, Detail("Mine", Created));
+
+        var result = await CreateHandler(Me, UserStatus.Active).Handle(Query());
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value.Items);
+        Assert.Equal(1, _users.GetByIdCallCount);
+        Assert.Equal(Me, _submissions.LastListCall!.ActingUserId);
+    }
+
+    [Fact]
+    public async Task TheAccountIsCheckedBeforeTheQueryIsValidated()
+    {
+        var invalid = Query(purpose: (ListingPurpose)99);
+
+        var inactive = await CreateHandler(Me, UserStatus.Suspended).Handle(invalid);
+        var missing = await CreateHandler(SomeoneElse, accountStatus: null).Handle(invalid);
+
+        Assert.Same(MeErrors.AccountUnavailable, inactive.Error);
+        AssertUnauthorized(missing);
+        Assert.Equal(0, _submissions.ListCallCount);
+    }
+
+    [Fact]
+    public async Task NoAccountLookupIsMadeWithoutAUsableSubject()
+    {
+        await CreateHandler(userId: null).Handle(Query());
+        await CreateHandler(userId: Guid.Empty).Handle(Query());
+
+        Assert.Equal(0, _users.GetByIdCallCount);
+    }
+
+    [Fact]
+    public async Task TheAccountIsLookedUpForTheAuthenticatedUserWithTheCallersToken()
+    {
+        using var source = new CancellationTokenSource();
+        var accounts = new RecordingUserRepository(UserStatus.Active);
+
+        await CreateHandler(Me, users: accounts).Handle(Query(), source.Token);
+
+        Assert.Equal(Me, accounts.LastRequestedId);
+        Assert.Equal(source.Token, accounts.CancellationToken);
+    }
+
+    [Fact]
+    public async Task AFailedAccountLookupPropagatesAndNeverBecomesAccess()
+    {
+        var accounts = new RecordingUserRepository(UserStatus.Active) { ExceptionToThrow = new InvalidOperationException("identity unavailable") };
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => CreateHandler(Me, users: accounts).Handle(Query()));
+
+        Assert.Equal("identity unavailable", exception.Message);
+        Assert.Equal(0, _submissions.ListCallCount);
+    }
 
     [Fact]
     public async Task AnUnauthenticatedRequestIsRejectedWithoutCallingTheRepository()
@@ -227,9 +318,81 @@ public sealed class GetMyListingSubmissionsQueryHandlerTests
         await Assert.ThrowsAsync<ArgumentNullException>(() => CreateHandler(Me).Handle(null!));
     }
 
-    private GetMyListingSubmissionsQueryHandler CreateHandler(Guid? userId)
+    // By default the caller has an Active account, so the tests about submissions need not repeat it. Pass a status
+    // to test another account state, null for no account at all, or a user repository of your own.
+    private GetMyListingSubmissionsQueryHandler CreateHandler(
+        Guid? userId,
+        UserStatus? accountStatus = UserStatus.Active,
+        IUserRepository? users = null)
     {
-        return new GetMyListingSubmissionsQueryHandler(new FakeCurrentUser(userId), _submissions);
+        if (users is null && userId is { } id && id != Guid.Empty && accountStatus is { } status)
+        {
+            SeedAccount(id, status);
+        }
+
+        return new GetMyListingSubmissionsQueryHandler(new FakeCurrentUser(userId), users ?? _users, _submissions);
+    }
+
+    private void SeedAccount(Guid id, UserStatus status)
+    {
+        var user = new User(id, $"{id}@example.test", "Test", "User", Created);
+
+        switch (status)
+        {
+            case UserStatus.Active:
+                user.Activate(Created);
+                break;
+            case UserStatus.Suspended:
+                user.Suspend(Created);
+                break;
+            case UserStatus.Deactivated:
+                user.Deactivate(Created);
+                break;
+            case UserStatus.Pending:
+            default:
+                break;
+        }
+
+        _users.Seed(user);
+    }
+
+    private sealed class RecordingUserRepository(UserStatus status) : IUserRepository
+    {
+        public Exception? ExceptionToThrow { get; set; }
+
+        public Guid? LastRequestedId { get; private set; }
+
+        public CancellationToken CancellationToken { get; private set; }
+
+        public Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            LastRequestedId = id;
+            CancellationToken = cancellationToken;
+
+            if (ExceptionToThrow is not null)
+            {
+                throw ExceptionToThrow;
+            }
+
+            var user = new User(id, $"{id}@example.test", "Test", "User", Created);
+
+            if (status == UserStatus.Active)
+            {
+                user.Activate(Created);
+            }
+
+            return Task.FromResult<User?>(user);
+        }
+
+        public Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task AddAsync(User user, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private static GetMyListingSubmissionsQuery Query(

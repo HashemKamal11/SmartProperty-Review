@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SmartProperty.Api.IntegrationTests.Infrastructure;
 using SmartProperty.Application.Marketplace.ListingSubmissions;
 using SmartProperty.Application.Marketplace.PublicListings;
+using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.Marketplace;
 using SmartProperty.Domain.PropertyRegistry;
 using Xunit;
@@ -37,6 +38,126 @@ public sealed class SubmitterListingSubmissionsEndpointTests
         "propertyId", "legalParty", "linkedUser", "actingUser", "userId", "submitterId", "workspace", "evidence", "sha256",
         "digest", "assessment", "snapshot", "reviewer", "owner", "grant", "independ", "verif",
     ];
+
+    // ----- the account behind a valid token
+
+    [Theory]
+    [InlineData(UserStatus.Pending)]
+    [InlineData(UserStatus.Suspended)]
+    [InlineData(UserStatus.Deactivated)]
+    public async Task AValidTokenForANonActiveAccountIsA403AccountUnavailableOnBothRoutes(UserStatus status)
+    {
+        var id = Guid.NewGuid();
+        using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
+        host.Accounts.Set(Me, status);
+        host.Stub.Add(Me, Pending(id));
+        using var client = host.CreateClientFor(Me);
+
+        using var list = await client.GetAsync(ListRoute);
+        using var detail = await client.GetAsync($"{ListRoute}/{id}");
+
+        foreach (var response in new[] { list, detail })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            var body = await response.Content.ReadAsStringAsync();
+            using var document = JsonDocument.Parse(body);
+            Assert.Equal("authentication.account_unavailable", document.RootElement.GetProperty("code").GetString());
+            Assert.Equal(403, document.RootElement.GetProperty("status").GetInt32());
+
+            // One error for every non-active status: the exact status is not disclosed.
+            Assert.DoesNotContain(status.ToString(), body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Two bedroom apartment", body, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(0, host.Stub.ListCallCount);
+        Assert.Equal(0, host.Stub.GetCallCount);
+    }
+
+    [Fact]
+    public async Task AValidTokenForAnAccountThatNoLongerExistsIsA401OnBothRoutes()
+    {
+        using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
+        host.Accounts.Set(Me, null);
+        using var client = host.CreateClientFor(Me);
+
+        using var list = await client.GetAsync(ListRoute);
+        using var detail = await client.GetAsync($"{ListRoute}/{Guid.NewGuid()}");
+
+        foreach (var response in new[] { list, detail })
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("authentication.unauthorized", document.RootElement.GetProperty("code").GetString());
+            Assert.Equal(401, document.RootElement.GetProperty("status").GetInt32());
+        }
+
+        Assert.Equal(0, host.Stub.ListCallCount);
+        Assert.Equal(0, host.Stub.GetCallCount);
+    }
+
+    [Fact]
+    public async Task TheAccountStatusIsReadFromTheRecordOnEveryRequestAndNeverFromTheToken()
+    {
+        var id = Guid.NewGuid();
+        using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
+        host.Stub.Add(Me, Pending(id));
+        using var client = host.CreateClientFor(Me);
+
+        // One token, three requests, three different persisted states.
+        using var whileActive = await client.GetAsync($"{ListRoute}/{id}");
+        host.Accounts.Set(Me, UserStatus.Suspended);
+        using var afterSuspension = await client.GetAsync($"{ListRoute}/{id}");
+        host.Accounts.Set(Me, UserStatus.Active);
+        using var afterReactivation = await client.GetAsync($"{ListRoute}/{id}");
+
+        Assert.Equal(HttpStatusCode.OK, whileActive.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, afterSuspension.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, afterReactivation.StatusCode);
+        Assert.Equal(3, host.Accounts.GetByIdCallCount);
+        Assert.Equal(2, host.Stub.GetCallCount);
+    }
+
+    [Fact]
+    public async Task OneUsersStatusNeverAffectsAnotherUsersRequest()
+    {
+        using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
+        host.Stub.Add(Me, Pending(Guid.NewGuid()));
+        host.Accounts.Set(Other, UserStatus.Suspended);
+        using var mine = host.CreateClientFor(Me);
+        using var theirs = host.CreateClientFor(Other);
+
+        using var mineResponse = await mine.GetAsync(ListRoute);
+        using var theirsResponse = await theirs.GetAsync(ListRoute);
+
+        Assert.Equal(HttpStatusCode.OK, mineResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, theirsResponse.StatusCode);
+        Assert.Equal(Other, host.Accounts.LastRequestedId);
+    }
+
+    [Fact]
+    public async Task TheAccountIsLookedUpForTheAuthenticatedUserNeverAClientSuppliedOne()
+    {
+        using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
+        host.Accounts.Set(Other, UserStatus.Suspended);
+        using var client = host.CreateClientFor(Me);
+
+        using var response = await client.GetAsync($"{ListRoute}?userId={Other}&submitterId={Other}&actingUserId={Other}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(Me, host.Accounts.LastRequestedId);
+    }
+
+    [Fact]
+    public async Task AnUnauthenticatedRequestNeverReachesTheAccountLookup()
+    {
+        using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
+        using var client = host.CreateClient();
+
+        using var response = await client.GetAsync(ListRoute);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(0, host.Accounts.GetByIdCallCount);
+    }
 
     // ----- authentication
 
