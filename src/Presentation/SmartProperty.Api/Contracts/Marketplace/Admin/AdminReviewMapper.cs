@@ -2,6 +2,7 @@
 using SmartProperty.Api.Contracts.Marketplace.Public;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Review;
 using SmartProperty.Application.Marketplace.PublicListings;
+using SmartProperty.Common.Pagination;
 using SmartProperty.Domain.Marketplace;
 using SmartProperty.Domain.PropertyRegistry;
 
@@ -52,6 +53,22 @@ internal static class AdminReviewMapper
             item.SubmittedAt,
             item.EvidenceCount,
             item.AllEvidenceClean);
+    }
+
+    public static PagedResponse<ReviewQueueItemResponse> ToPagedResponse(PagedList<ReviewQueueItem> page)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        var items = page.Items.Select(ToQueueItemResponse).ToArray();
+
+        // Re-paged rather than hand-assembled, so the response's page metadata comes from the same
+        // PagedList/PagedResponse pair every other collection endpoint uses.
+        return PagedResponse<ReviewQueueItemResponse>.FromPagedList(
+            PagedList<ReviewQueueItemResponse>.Create(
+                items,
+                page.PageNumber,
+                page.PageSize,
+                page.TotalCount));
     }
 
     public static ReviewSubmissionDetailResponse ToDetailResponse(ReviewSubmissionDetail detail)
