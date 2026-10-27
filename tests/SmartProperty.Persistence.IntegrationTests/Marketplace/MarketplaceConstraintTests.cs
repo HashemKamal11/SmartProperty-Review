@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SmartProperty.Domain.Marketplace;
+using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.Persistence.IntegrationTests.Infrastructure;
 using Xunit;
 
@@ -17,10 +18,30 @@ public sealed class MarketplaceConstraintTests(PostgreSqlFixture fixture) : Data
     public async Task DirectSqlCannotBypassConsistency(string scenario, string sqlState, string constraint)
     {
         var graph = MarketplaceGraph.Create();
+        var targetRequestId = graph.Purchase.Id;
         await using (var context = Host.CreateVerificationContext())
         {
-            graph.Track(context);
-            await context.SaveChangesAsync();
+            await graph.SeedPrincipalsAsync(context);
+            if (scenario == "property")
+            {
+                // Isolate the request-to-listing FK from reservation winner FKs.
+                var at = MarketplaceGraph.Time;
+                var property = new Property(Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("SA"), at);
+                var listing = new PropertyListing(Guid.NewGuid(), property.Id, ListingPurpose.Sale, at);
+                context.Add(property);
+                context.Add(listing);
+                await context.SaveChangesAsync();
+                var submission = MarketplaceGraph.Pending(listing, at.AddSeconds(1));
+                context.Add(submission);
+                await context.SaveChangesAsync();
+                submission.ApproveAndPublish(Guid.NewGuid(), listing, null, MarketplaceGraph.Reviewer(submission),
+                    at.AddSeconds(2), true, MarketplaceGraph.Assessments(submission, at.AddSeconds(2)), true, null);
+                var independentRequest = new PurchaseRequest(Guid.NewGuid(), listing, graph.User.Id, at.AddSeconds(3));
+                context.Add(independentRequest);
+                await context.SaveChangesAsync();
+                targetRequestId = independentRequest.Id;
+                Assert.False(await context.PropertyMarketplaceReservations.AnyAsync(x => x.WinningRequestId == targetRequestId));
+            }
         }
         var sql = scenario switch
         {
@@ -32,7 +53,7 @@ public sealed class MarketplaceConstraintTests(PostgreSqlFixture fixture) : Data
         await using var connection = new NpgsqlConnection(Host.ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("id", graph.Purchase.Id);
+        command.Parameters.AddWithValue("id", targetRequestId);
         command.Parameters.AddWithValue("property", graph.Property.Id);
         command.Parameters.AddWithValue("other", Guid.NewGuid());
         var exception = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
@@ -45,8 +66,7 @@ public sealed class MarketplaceConstraintTests(PostgreSqlFixture fixture) : Data
     {
         var graph = MarketplaceGraph.Create();
         await using var context = Host.CreateVerificationContext();
-        graph.Track(context);
-        await context.SaveChangesAsync();
+        await graph.SeedPrincipalsAsync(context);
         await using var connection = new NpgsqlConnection(Host.ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("DELETE FROM registry.properties WHERE id = @id", connection);

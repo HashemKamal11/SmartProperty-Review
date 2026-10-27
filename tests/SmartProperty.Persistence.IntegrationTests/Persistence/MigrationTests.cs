@@ -14,6 +14,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string PropertyRegistryMigration = "20261001135125_AddPropertyRegistry";
     private const string PropertyStatusConcurrencyMigration = "20261013084401_SynchronizePropertyStatusConcurrency";
     private const string WorkspaceRoleNameMigration = "20261015082753_EnforceUniqueWorkspaceRoleNames";
+    private const string MarketplaceMigration = "20261026120751_AddMarketplacePersistence";
 
     [Fact]
     public async Task PlatformRoleInvariantMigration_AppliesFromPreviousMigration()
@@ -43,7 +44,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheWorkspaceRoleNameInvariant()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithMarketplacePersistence()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -56,7 +57,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(WorkspaceRoleNameMigration, applied[^1]);
+        Assert.Equal(MarketplaceMigration, applied[^1]);
         Assert.Contains(PropertyStatusConcurrencyMigration, applied);
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
         Assert.True(await PropertiesTableExistsAsync());
