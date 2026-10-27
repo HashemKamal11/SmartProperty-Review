@@ -10,7 +10,8 @@ namespace SmartProperty.UnitTests.Application.Marketplace.ListingSubmissions.Wri
 
 /// <summary>
 /// What must be true of a draft's evidence before a submission is attempted: it exists, every piece has exactly one
-/// matching Clean assessment from the trusted provider, and nothing short of that passes.
+/// matching Clean assessment from the trusted provider, and nothing short of that passes. Every failure is the same
+/// public conflict, while the internal reason keeps an unavailable provider apart from an unacceptable answer.
 /// </summary>
 public sealed class SubmissionEvidenceVerifierTests
 {
@@ -28,13 +29,14 @@ public sealed class SubmissionEvidenceVerifierTests
         var draft = DraftWithEvidence(3);
         _provider.Respond(draft.Evidence.Select(reference => Assessment(reference)).ToArray());
 
-        var result = await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now);
+        var verification = await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now);
 
-        Assert.True(result.IsSuccess);
-        Assert.Equal(3, result.Value.Count);
+        Assert.True(verification.Result.IsSuccess);
+        Assert.Null(verification.Failure);
+        Assert.Equal(3, verification.Result.Value.Count);
         Assert.Equal(
             draft.Evidence.Select(reference => reference.EvidenceId).Order(),
-            result.Value.Select(assessment => assessment.Evidence.EvidenceId).Order());
+            verification.Result.Value.Select(assessment => assessment.Evidence.EvidenceId).Order());
     }
 
     [Fact]
@@ -51,6 +53,8 @@ public sealed class SubmissionEvidenceVerifierTests
         Assert.Equal(source.Token, _provider.CancellationToken);
     }
 
+    // ----- NoEvidence
+
     [Fact]
     public async Task ADraftWithNoEvidenceIsRefusedWithoutAskingTheProvider()
     {
@@ -59,20 +63,24 @@ public sealed class SubmissionEvidenceVerifierTests
         var draft = DraftWithoutEvidence();
         _provider.Respond([]);
 
-        var result = await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now);
+        var verification = await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now);
 
-        AssertUnverified(result);
+        AssertUnverified(verification, EvidenceVerificationFailure.NoEvidence);
         Assert.Equal(0, _provider.CallCount);
     }
 
+    // ----- ProviderUnavailable
+
     [Fact]
-    public async Task AnUnavailableProviderIsNeverTreatedAsClean()
+    public async Task AnUnavailableProviderIsNeverTreatedAsCleanAndIsKeptApartFromAFailedVerification()
     {
         var draft = DraftWithEvidence(1);
         _provider.Unavailable();
 
-        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
+        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now), EvidenceVerificationFailure.ProviderUnavailable);
     }
+
+    // ----- AssessmentMissing
 
     [Fact]
     public async Task AMissingAssessmentIsRefused()
@@ -80,7 +88,7 @@ public sealed class SubmissionEvidenceVerifierTests
         var draft = DraftWithEvidence(3);
         _provider.Respond(draft.Evidence.Take(2).Select(reference => Assessment(reference)).ToArray());
 
-        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
+        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now), EvidenceVerificationFailure.AssessmentMissing);
     }
 
     [Fact]
@@ -90,7 +98,7 @@ public sealed class SubmissionEvidenceVerifierTests
         var stranger = Reference();
         _provider.Respond([Assessment(draft.Evidence[0]), Assessment(stranger)]);
 
-        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
+        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now), EvidenceVerificationFailure.AssessmentMissing);
     }
 
     [Fact]
@@ -99,8 +107,10 @@ public sealed class SubmissionEvidenceVerifierTests
         var draft = DraftWithEvidence(2);
         _provider.Respond([Assessment(draft.Evidence[0]), Assessment(draft.Evidence[0])]);
 
-        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
+        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now), EvidenceVerificationFailure.AssessmentMissing);
     }
+
+    // ----- AssessmentInvalidOrNotClean
 
     [Theory]
     [InlineData(EvidenceScanStatus.Unknown)]
@@ -112,7 +122,7 @@ public sealed class SubmissionEvidenceVerifierTests
         var draft = DraftWithEvidence(2);
         _provider.Respond([Assessment(draft.Evidence[0]), Assessment(draft.Evidence[1], status)]);
 
-        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
+        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now), EvidenceVerificationFailure.AssessmentInvalidOrNotClean);
     }
 
     [Fact]
@@ -121,7 +131,7 @@ public sealed class SubmissionEvidenceVerifierTests
         var draft = DraftWithEvidence(1);
         _provider.Respond([Assessment(draft.Evidence[0], assessedAt: Now.AddSeconds(1))]);
 
-        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
+        AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now), EvidenceVerificationFailure.AssessmentInvalidOrNotClean);
     }
 
     [Fact]
@@ -136,9 +146,92 @@ public sealed class SubmissionEvidenceVerifierTests
         {
             _provider.Respond([Assessment(wrong)]);
 
-            AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
+            AssertUnverified(await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now), EvidenceVerificationFailure.AssessmentInvalidOrNotClean);
         }
     }
+
+    // ----- the public contract and the internal reasons
+
+    [Fact]
+    public async Task EveryFailureIsTheSamePublicConflictWhateverTheInternalReason()
+    {
+        var results = new List<EvidenceVerification>();
+
+        var unavailable = DraftWithEvidence(1);
+        _provider.Unavailable();
+        results.Add(await SubmissionEvidenceVerifier.VerifyAsync(unavailable, _provider, Now));
+
+        results.Add(await SubmissionEvidenceVerifier.VerifyAsync(DraftWithoutEvidence(), _provider, Now));
+
+        var missing = DraftWithEvidence(2);
+        _provider.Respond([Assessment(missing.Evidence[0])]);
+        results.Add(await SubmissionEvidenceVerifier.VerifyAsync(missing, _provider, Now));
+
+        var dirty = DraftWithEvidence(1);
+        _provider.Respond([Assessment(dirty.Evidence[0], EvidenceScanStatus.Rejected)]);
+        results.Add(await SubmissionEvidenceVerifier.VerifyAsync(dirty, _provider, Now));
+
+        Assert.Equal(
+            new[]
+            {
+                EvidenceVerificationFailure.ProviderUnavailable,
+                EvidenceVerificationFailure.NoEvidence,
+                EvidenceVerificationFailure.AssessmentMissing,
+                EvidenceVerificationFailure.AssessmentInvalidOrNotClean,
+            },
+            results.Select(verification => verification.Failure!.Value).ToArray());
+        Assert.All(results, verification => Assert.Same(WriteErrors.PrerequisitesUnverified, verification.Result.Error));
+    }
+
+    [Fact]
+    public void ThePublicErrorSaysNothingAboutWhichPrerequisiteFailed()
+    {
+        var error = WriteErrors.PrerequisitesUnverified;
+
+        Assert.Equal("listing_submissions.prerequisites_unverified", error.Code);
+        Assert.Equal(ErrorType.Conflict, error.Type);
+
+        foreach (var word in new[] { "unavailable", "provider", "missing", "clean", "scan", "infected", "evidence", "assessment", "digest" })
+        {
+            Assert.DoesNotContain(word, error.Description, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void TheInternalReasonVocabularyIsExactlyTheFourApprovedCategories()
+    {
+        Assert.Equal(
+            new[] { "ProviderUnavailable", "NoEvidence", "AssessmentMissing", "AssessmentInvalidOrNotClean" },
+            Enum.GetNames<EvidenceVerificationFailure>());
+    }
+
+    [Fact]
+    public void TheVerificationCarriesOnlyAResultAndAFixedCategoryNeverTextOrIdentifiers()
+    {
+        var members = typeof(EvidenceVerification)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(property => property.Name != "EqualityContract")
+            .OrderBy(property => property.Name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "Failure", "Result" }, members.Select(property => property.Name).ToArray());
+        Assert.Equal(typeof(EvidenceVerificationFailure?), members[0].PropertyType);
+        Assert.DoesNotContain(members, property => property.PropertyType == typeof(string));
+    }
+
+    [Fact]
+    public async Task ASuccessHasNoFailureReason()
+    {
+        var draft = DraftWithEvidence(1);
+        _provider.Respond([Assessment(draft.Evidence[0])]);
+
+        var verification = await SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now);
+
+        Assert.Null(verification.Failure);
+        Assert.True(verification.Result.IsSuccess);
+    }
+
+    // ----- faults are not evidence failures
 
     [Fact]
     public async Task AProviderFailurePropagatesAndIsNeverAnAnswer()
@@ -149,6 +242,31 @@ public sealed class SubmissionEvidenceVerifierTests
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
 
         Assert.Equal("scanner unavailable", exception.Message);
+    }
+
+    [Fact]
+    public async Task CancellationIsNeverSwallowedOrTurnedIntoAFailureReason()
+    {
+        using var source = new CancellationTokenSource();
+        var draft = DraftWithEvidence(1);
+        _provider.ExceptionToThrow = new OperationCanceledException(source.Token);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now, source.Token));
+    }
+
+    [Fact]
+    public async Task AnyOtherProviderExceptionTypeAlsoPropagatesUnchanged()
+    {
+        var draft = DraftWithEvidence(1);
+
+        foreach (Exception fault in new Exception[] { new TimeoutException(), new HttpRequestException(), new IOException(), new NotSupportedException() })
+        {
+            _provider.ExceptionToThrow = fault;
+
+            var thrown = await Assert.ThrowsAnyAsync<Exception>(() => SubmissionEvidenceVerifier.VerifyAsync(draft, _provider, Now));
+
+            Assert.Same(fault, thrown);
+        }
     }
 
     [Fact]
@@ -169,12 +287,13 @@ public sealed class SubmissionEvidenceVerifierTests
         await Assert.ThrowsAsync<ArgumentNullException>(() => SubmissionEvidenceVerifier.VerifyAsync(DraftWithEvidence(1), null!, Now));
     }
 
-    private static void AssertUnverified(Result<IReadOnlyList<ListingEvidenceAssessment>> result)
+    private static void AssertUnverified(EvidenceVerification verification, EvidenceVerificationFailure expected)
     {
-        Assert.True(result.IsFailure);
-        Assert.Same(WriteErrors.PrerequisitesUnverified, result.Error);
-        Assert.Equal("listing_submissions.prerequisites_unverified", result.Error!.Code);
-        Assert.Equal(ErrorType.Conflict, result.Error.Type);
+        Assert.True(verification.Result.IsFailure);
+        Assert.Same(WriteErrors.PrerequisitesUnverified, verification.Result.Error);
+        Assert.Equal("listing_submissions.prerequisites_unverified", verification.Result.Error!.Code);
+        Assert.Equal(ErrorType.Conflict, verification.Result.Error.Type);
+        Assert.Equal(expected, verification.Failure);
     }
 
     private static ListingEvidenceReference Reference()
