@@ -32,4 +32,16 @@ internal static class WriteErrors
         "listing_submissions.prerequisites_unverified",
         "The submission prerequisites could not be verified.",
         ErrorType.Conflict);
+
+    // Archived, reserved, or without the location a listing needs. One error for all of them, so it says nothing
+    // about which; it is only ever given to a caller who has already been found eligible for the property.
+    public static readonly Error PropertyUnavailable = new(
+        "listing_submissions.property_unavailable",
+        "This property cannot be listed right now.",
+        ErrorType.Conflict);
+
+    public static readonly Error PropertyChanged = new(
+        "listing_submissions.property_changed",
+        "The property changed since this draft was written.",
+        ErrorType.Conflict);
 }
