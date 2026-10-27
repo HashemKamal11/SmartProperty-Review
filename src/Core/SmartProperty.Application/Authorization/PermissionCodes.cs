@@ -57,6 +57,26 @@ public static class PermissionCodes
         "Approve or reject workspace access requests.";
 
     /// <summary>
+    /// Read the marketplace listing submission review queue and submission details. Platform-scoped: reviewing
+    /// submissions is a platform administration act, so nothing held inside a workspace satisfies it. It grants
+    /// no authority to decide a submission, and <see cref="MarketplaceSubmissionsReviewDecide"/> does not imply it.
+    /// </summary>
+    public const string MarketplaceSubmissionsReviewRead = "marketplace.submissions.review.read";
+
+    public const string MarketplaceSubmissionsReviewReadDescription =
+        "Read the marketplace listing submission review queue and details.";
+
+    /// <summary>
+    /// Approve or reject a marketplace listing submission; approval and rejection share this one permission.
+    /// Platform-scoped for the same reason as <see cref="MarketplaceSubmissionsReviewRead"/>. It grants no
+    /// ability to read the queue, and <see cref="MarketplaceSubmissionsReviewRead"/> does not imply it.
+    /// </summary>
+    public const string MarketplaceSubmissionsReviewDecide = "marketplace.submissions.review.decide";
+
+    public const string MarketplaceSubmissionsReviewDecideDescription =
+        "Approve or reject marketplace listing submissions.";
+
+    /// <summary>
     /// Read the workspace itself. Workspace-scoped: it is satisfied only by a workspace role held in that same
     /// workspace, never by a platform role and never by membership of another workspace.
     /// </summary>

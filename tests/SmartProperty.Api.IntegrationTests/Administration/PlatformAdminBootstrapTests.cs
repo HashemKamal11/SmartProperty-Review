@@ -112,7 +112,7 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task RepeatedRunsAttachExactlyTheFiveDeclaredPlatformAdminPermissionsWithoutDuplicates()
+    public async Task RepeatedRunsAttachExactlyTheSevenDeclaredPlatformAdminPermissionsWithoutDuplicates()
     {
         var candidate = await RegisterCandidateAsync();
 
@@ -139,6 +139,8 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
 
         Assert.Equal(
             [
+                PermissionCodes.MarketplaceSubmissionsReviewDecide,
+                PermissionCodes.MarketplaceSubmissionsReviewRead,
                 PermissionCodes.PropertyArchive,
                 PermissionCodes.PropertyCreate,
                 PermissionCodes.PropertyRead,
@@ -151,6 +153,12 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
         // it rather than add a second.
         Assert.Equal(1, await context.Permissions.CountAsync(row => row.Code == PermissionCodes.PropertyUpdate));
         Assert.Equal(1, await context.Permissions.CountAsync(row => row.Code == PermissionCodes.PropertyArchive));
+        Assert.Equal(
+            1,
+            await context.Permissions.CountAsync(row => row.Code == PermissionCodes.MarketplaceSubmissionsReviewRead));
+        Assert.Equal(
+            1,
+            await context.Permissions.CountAsync(row => row.Code == PermissionCodes.MarketplaceSubmissionsReviewDecide));
     }
 
     [Fact]
