@@ -58,8 +58,8 @@ public sealed class SubmissionEvidenceVerifierTests
     [Fact]
     public async Task ADraftWithNoEvidenceIsRefusedWithoutAskingTheProvider()
     {
-        // The Domain cannot build a draft without evidence yet; when it can, the explicit check here is what stops a
-        // submission, because the Domain compares assessment and reference counts and zero equals zero.
+        // A draft may have no evidence, and a submission may not. The check here refuses it before the provider is
+        // asked, rather than leaving the refusal to the Domain's own submit.
         var draft = DraftWithoutEvidence();
         _provider.Respond([]);
 
@@ -328,14 +328,10 @@ public sealed class SubmissionEvidenceVerifierTests
         return new ListingSubmission(Guid.NewGuid(), listing, content, authority, evidence, Created);
     }
 
-    // Reaches the state the Domain will allow once a draft may be created without evidence, without changing the
-    // Domain: the persistence constructor, then the evidence list emptied.
+    // The Domain allows a draft with no evidence, so it is built through the normal constructor.
     private static ListingSubmission DraftWithoutEvidence()
     {
-        var draft = (ListingSubmission)Activator.CreateInstance(typeof(ListingSubmission), nonPublic: true)!;
-        typeof(ListingSubmission).GetProperty(nameof(ListingSubmission.Evidence))!.SetValue(draft, Array.AsReadOnly(Array.Empty<ListingEvidenceReference>()));
-
-        return draft;
+        return DraftWithEvidence(0);
     }
 
     private sealed class FakeEvidenceAssessmentProvider : IEvidenceAssessmentProvider
