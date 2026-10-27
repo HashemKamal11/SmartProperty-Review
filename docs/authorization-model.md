@@ -2,7 +2,7 @@
 
 This document records the authorization scope semantics, contracts, and rules, how permission resolution implements them, and how ASP.NET Core authorization reaches them. Step 05.6A established the model and contracts; Step 05.6B supplied the resolver that answers a permission question from the database; Step 05.6C added the reusable ASP.NET bridge; Step 05.7 put the first permission on real endpoints, added the code that names it, and added the bootstrap that provisions the first account able to hold it.
 
-**Platform enforcement is now live.** Six permission codes exist, each declared once in `PermissionCodes`: five platform permissions (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`) and one workspace permission (`workspace.read`). `RequirePermissionAttribute` attaches the platform ones to endpoints, and `PlatformAdminBootstrapService` is the configuration-gated, default-off way the first administrator comes to hold all five. `workspace.read` is a workspace permission held by the default "Member" role; the bootstrap never grants it.
+**Platform enforcement is now live.** Eight permission codes exist, each declared once in `PermissionCodes`: seven platform permissions (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`, `marketplace.submissions.review.read`, `marketplace.submissions.review.decide`) and one workspace permission (`workspace.read`). `RequirePermissionAttribute` attaches the platform ones to endpoints, and `PlatformAdminBootstrapService` is the configuration-gated, default-off way the first administrator comes to hold all seven. `workspace.read` is a workspace permission held by the default "Member" role; the bootstrap never grants it.
 
 **Workspace enforcement is now live too.** `RequireWorkspacePermissionAttribute` reads the `workspaceId` route value and checks the permission against `AuthorizationTarget.Workspace(id)`; its first user is `GET /api/workspaces/{workspaceId}` with `workspace.read` (see [Workspace Enforcement](#workspace-enforcement)). A named-policy catalog and caching remain deferred.
 
@@ -154,7 +154,7 @@ If Platform Admin is meant to hold every permission, that must be expressed as e
 
 Whether Platform Admin implies workspace-level access is **an open decision**, deferred. Until it is decided, no implicit platform-to-workspace bypass exists: a platform role holding the same permission code does not satisfy a workspace check.
 
-A `"Platform Admin"` role does now exist, created by the bootstrap described below, and it holds exactly the five platform permissions the bootstrap attaches (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`), never `workspace.read`. The name is a provisioning key — the string the bootstrap looks a role up by so that a second run finds the same row — and nothing else. No code branches on it, and holding it grants nothing beyond the permissions explicitly attached to it.
+A `"Platform Admin"` role does now exist, created by the bootstrap described below, and it holds exactly the seven platform permissions the bootstrap attaches (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`, `marketplace.submissions.review.read`, `marketplace.submissions.review.decide`), never `workspace.read`. The name is a provisioning key — the string the bootstrap looks a role up by so that a second run finds the same row — and nothing else. No code branches on it, and holding it grants nothing beyond the permissions explicitly attached to it.
 
 ## Permission Catalog
 
@@ -166,12 +166,16 @@ public const string PropertyRead = "property.read";                             
 public const string PropertyUpdate = "property.update";                                 // platform
 public const string PropertyArchive = "property.archive";                               // platform
 public const string WorkspaceAccessRequestsReview = "workspace.access_requests.review"; // platform
+public const string MarketplaceSubmissionsReviewRead = "marketplace.submissions.review.read";     // platform
+public const string MarketplaceSubmissionsReviewDecide = "marketplace.submissions.review.decide";   // platform
 public const string WorkspaceRead = "workspace.read";                                   // workspace
 ```
 
-The Platform Admin bootstrap grants the five platform permissions to the platform-scoped "Platform Admin" role. `workspace.read` is a workspace permission: it is held by each workspace's default "Member" role, which approval provisions, and the bootstrap never grants it.
+The Platform Admin bootstrap grants the seven platform permissions to the platform-scoped "Platform Admin" role. `workspace.read` is a workspace permission: it is held by each workspace's default "Member" role, which approval provisions, and the bootstrap never grants it.
 
-Endpoints, the bootstrap, and the tests all reference the constant, so the string that is *granted* and the string that is *demanded* cannot drift apart. It is not a speculative catalog: a code is added when an endpoint actually requires one, and there are six so far (see the list under [Permission Catalog](#permission-catalog)).
+**Marketplace review permissions.** `marketplace.submissions.review.read` and `marketplace.submissions.review.decide` are two separate Platform-scoped permissions. Neither implies the other: read never grants authority to approve or reject, and decide never grants access to the review queue or submission details. Approval and rejection share the decide permission. They are granted only by the existing operator-invoked bootstrap, to the platform-scoped "Platform Admin" role; no workspace role, including the default "Member" role (exactly `workspace.read`), ever carries them. They are defined and provisioned here, but no review endpoint or production authorizer uses them yet. A future decision path must verify decide authority itself, per request, through `IPermissionChecker`.
+
+Endpoints, the bootstrap, and the tests all reference the constant, so the string that is *granted* and the string that is *demanded* cannot drift apart. It is not a speculative catalog: a code is added when an endpoint actually requires one, and there are eight so far (see the list under [Permission Catalog](#permission-catalog)).
 
 A companion `…Description` constant supplies `Permission.Description` when the row is provisioned. It is human-readable text; nothing authorizes on it.
 
@@ -220,7 +224,7 @@ With `Enabled` true, `PlatformAdminBootstrapService` (an `IHostedService`) runs 
 
 1. normalizes the configured email the same way `User` normalizes a stored one, and finds the **existing** account
 2. activates it only if it is `Pending`; leaves an `Active` one untouched, including its `UpdatedAt`
-3. ensures the five platform permission rows, the platform-scoped `"Platform Admin"` role, its five role/permission rows, and the user/role row exist
+3. ensures the seven platform permission rows, the platform-scoped `"Platform Admin"` role, its seven role/permission rows, and the user/role row exist
 4. commits all of it through one `IUnitOfWork.SaveChangesAsync`
 
 What it cannot do is the point:
@@ -228,7 +232,7 @@ What it cannot do is the point:
 - it never creates a `User`, a `UserCredential`, or a password — it elevates an account that registered normally
 - no account is named in code; the email is deployment configuration
 - it refuses a `Suspended` or `Deactivated` account rather than reviving one, because reviving a disabled account and handing it platform authority is exactly the escalation a bootstrap must not offer
-- it grants five platform permissions (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`), not every permission, and never the workspace permission `workspace.read`
+- it grants seven platform permissions (`workspace.access_requests.review`, `property.create`, `property.read`, `property.update`, `property.archive`, `marketplace.submissions.review.read`, `marketplace.submissions.review.decide`), not every permission, and never the workspace permission `workspace.read`
 
 Every write is guarded by a lookup, so a second run creates no duplicate permission, role, role-permission, or platform-role row and reports `MadeNoChange`.
 
@@ -280,7 +284,7 @@ Rules:
 
 > Earlier examples in identity-access-model.md used a PascalCase form such as `Admin.Users.View`. Nothing persisted uses that spelling; the lowercase convention above is the one to follow, and `workspace.access_requests.review` follows it.
 
-There is still no migration that seeds permissions. The five platform permission rows are created by the bootstrap described above, on demand and idempotently, and the `workspace.read` row together with each workspace's "Member" role is created by the first approval into that workspace, rather than by migration data — so a fresh database contains no authorization rows at all until an operator provisions them or a request is approved.
+There is still no migration that seeds permissions. The seven platform permission rows are created by the bootstrap described above, on demand and idempotently, and the `workspace.read` row together with each workspace's "Member" role is created by the first approval into that workspace, rather than by migration data — so a fresh database contains no authorization rows at all until an operator provisions them or a request is approved.
 
 ## Platform Authorization Path
 

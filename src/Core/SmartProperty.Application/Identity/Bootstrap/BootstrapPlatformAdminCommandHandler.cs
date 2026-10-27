@@ -180,7 +180,39 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             await permissionRepository.AddAsync(propertyArchivePermission, cancellationToken);
         }
 
-        var role = await roleRepository.GetPlatformRoleByNameAsync(PlatformAdminRoleName, cancellationToken);
+        var reviewReadPermission = await permissionRepository.GetByCodeAsync(
+            PermissionCodes.MarketplaceSubmissionsReviewRead,
+            cancellationToken);
+
+        var reviewReadPermissionCreated = reviewReadPermission is null;
+
+        if (reviewReadPermission is null)
+        {
+            reviewReadPermission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.MarketplaceSubmissionsReviewRead,
+                PermissionCodes.MarketplaceSubmissionsReviewReadDescription);
+
+            await permissionRepository.AddAsync(reviewReadPermission, cancellationToken);
+        }
+
+        var reviewDecidePermission = await permissionRepository.GetByCodeAsync(
+            PermissionCodes.MarketplaceSubmissionsReviewDecide,
+            cancellationToken);
+
+        var reviewDecidePermissionCreated = reviewDecidePermission is null;
+
+        if (reviewDecidePermission is null)
+        {
+            reviewDecidePermission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.MarketplaceSubmissionsReviewDecide,
+                PermissionCodes.MarketplaceSubmissionsReviewDecideDescription);
+
+            await permissionRepository.AddAsync(reviewDecidePermission, cancellationToken);
+        }
+
+        var role =await roleRepository.GetPlatformRoleByNameAsync(PlatformAdminRoleName, cancellationToken);
 
         var roleCreated = role is null;
 
@@ -257,6 +289,30 @@ public sealed class BootstrapPlatformAdminCommandHandler(
                 cancellationToken);
         }
 
+        var reviewReadRolePermissionCreated = !await roleRepository.HasPermissionAsync(
+            role.Id,
+            reviewReadPermission.Id,
+            cancellationToken);
+
+        if (reviewReadRolePermissionCreated)
+        {
+            await roleRepository.AddPermissionAsync(
+                new RolePermission(role.Id, reviewReadPermission.Id),
+                cancellationToken);
+        }
+
+        var reviewDecideRolePermissionCreated = !await roleRepository.HasPermissionAsync(
+            role.Id,
+            reviewDecidePermission.Id,
+            cancellationToken);
+
+        if (reviewDecideRolePermissionCreated)
+        {
+            await roleRepository.AddPermissionAsync(
+                new RolePermission(role.Id, reviewDecidePermission.Id),
+                cancellationToken);
+        }
+
         var platformRoleAssigned = !await roleRepository.IsAssignedToUserAsync(
             user.Id,
             role.Id,
@@ -285,6 +341,10 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             propertyUpdatePermissionCreated,
             propertyArchivePermission.Id,
             propertyArchivePermissionCreated,
+            reviewReadPermission.Id,
+            reviewReadPermissionCreated,
+            reviewDecidePermission.Id,
+            reviewDecidePermissionCreated,
             role.Id,
             roleCreated,
             rolePermissionCreated,
@@ -292,6 +352,8 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             propertyReadRolePermissionCreated,
             propertyUpdateRolePermissionCreated,
             propertyArchiveRolePermissionCreated,
+            reviewReadRolePermissionCreated,
+            reviewDecideRolePermissionCreated,
             platformRoleAssigned));
     }
 }
