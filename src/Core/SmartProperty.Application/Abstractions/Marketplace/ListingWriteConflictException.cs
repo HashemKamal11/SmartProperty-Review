@@ -9,7 +9,10 @@ public enum ListingWriteConflictKind
     ListingSlot = 1,
 
     /// <summary>Another writer created the same submission version for the listing first.</summary>
-    SubmissionVersion = 2
+    SubmissionVersion = 2,
+
+    /// <summary>Another writer changed the draft first, so the revision the caller wrote against is stale.</summary>
+    StaleRevision = 3
 }
 
 /// <summary>
