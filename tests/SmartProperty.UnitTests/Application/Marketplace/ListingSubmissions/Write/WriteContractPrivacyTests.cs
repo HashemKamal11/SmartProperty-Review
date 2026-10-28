@@ -119,16 +119,68 @@ public sealed class WriteContractPrivacyTests
     // ----- nothing is wired up
 
     [Fact]
-    public void NoHandlerForAnyWriteCommandExists()
+    public void ExactlyTheFourApprovedWriteHandlersExistAndEachHandlesItsOwnCommand()
     {
-        var applicationTypes = typeof(ICommand<>).Assembly.GetTypes();
+        var expected = new Dictionary<Type, (Type Handler, Type Result)>
+        {
+            [typeof(CreateListingDraftCommand)] = (typeof(CreateListingDraftCommandHandler), typeof(ListingDraftResult)),
+            [typeof(UpdateListingDraftCommand)] = (typeof(UpdateListingDraftCommandHandler), typeof(ListingDraftResult)),
+            [typeof(DiscardListingDraftCommand)] = (typeof(DiscardListingDraftCommandHandler), typeof(DiscardListingDraftResult)),
+            [typeof(SubmitListingDraftCommand)] = (typeof(SubmitListingDraftCommandHandler), typeof(SubmitListingDraftResult)),
+        };
+        var applicationTypes = typeof(ICommand<>).Assembly.GetTypes().Where(type => !type.IsInterface && !type.IsAbstract).ToArray();
+
+        Assert.Equal(
+            expected.Keys.Select(key => key.Name).Order(StringComparer.Ordinal).ToArray(),
+            Commands.Select(command => command.Name).Order(StringComparer.Ordinal).ToArray());
 
         foreach (var command in Commands)
         {
             var resultType = command.GetInterfaces().Single(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(ICommand<>)).GetGenericArguments()[0];
-            var handlerType = typeof(ICommandHandler<,>).MakeGenericType(command, resultType);
+            var handlerInterface = typeof(ICommandHandler<,>).MakeGenericType(command, resultType);
 
-            Assert.DoesNotContain(applicationTypes, type => !type.IsInterface && handlerType.IsAssignableFrom(type));
+            Assert.Equal(expected[command].Result, resultType);
+
+            // One handler per command, the approved one, public and sealed, implementing exactly that interface.
+            var handler = Assert.Single(applicationTypes, type => handlerInterface.IsAssignableFrom(type));
+            Assert.Same(expected[command].Handler, handler);
+            Assert.True(handler.IsPublic && handler.IsSealed);
+            Assert.Contains(handlerInterface, handler.GetInterfaces());
+        }
+
+        // Nothing else that handles a command or a query lives with the write contracts.
+        var writeHandlers = applicationTypes
+            .Where(type => type.Namespace is { } ns && ns.StartsWith("SmartProperty.Application.Marketplace.ListingSubmissions.Write", StringComparison.Ordinal))
+            .Where(type => type.GetInterfaces().Any(i => i.IsGenericType
+                && (i.GetGenericTypeDefinition() == typeof(ICommandHandler<,>)
+                    || i.GetGenericTypeDefinition() == typeof(IQueryHandler<,>))))
+            .Select(type => type.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(expected.Values.Select(value => value.Handler.Name).Order(StringComparer.Ordinal).ToArray(), writeHandlers);
+    }
+
+    [Fact]
+    public void TheWriteHandlersTakeOnlyTrustedDependenciesAndNothingFromARequest()
+    {
+        var common = new[] { "ICurrentUser", "IUserRepository", "IListingSubmissionWriteRepository" };
+        var expected = new Dictionary<Type, string[]>
+        {
+            [typeof(CreateListingDraftCommandHandler)] = [.. common, "IEvidenceAssessmentProvider", "IDateTimeProvider"],
+            [typeof(UpdateListingDraftCommandHandler)] = [.. common, "IEvidenceAssessmentProvider", "IDateTimeProvider"],
+            [typeof(SubmitListingDraftCommandHandler)] = [.. common, "IEvidenceAssessmentProvider", "IDateTimeProvider"],
+            [typeof(DiscardListingDraftCommandHandler)] = [.. common, "IListingSubmissionAuditRecorder", "IDateTimeProvider"],
+        };
+
+        foreach (var (handler, dependencies) in expected)
+        {
+            var parameters = Assert.Single(handler.GetConstructors()).GetParameters().Select(parameter => parameter.ParameterType.Name).ToArray();
+
+            Assert.Equal(dependencies, parameters);
+            Assert.DoesNotContain(parameters, name => name.Contains("Http", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Claim", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Principal", StringComparison.OrdinalIgnoreCase));
         }
     }
 

@@ -7,11 +7,17 @@ using Microsoft.Extensions.DependencyInjection;
 using SmartProperty.Api.Contracts.Marketplace.Public;
 using SmartProperty.Api.Contracts.Marketplace.Submitter;
 using SmartProperty.Api.IntegrationTests.Infrastructure;
+using SmartProperty.Application.Abstractions.Marketplace;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Marketplace.ListingSubmissions;
 using SmartProperty.Application.Marketplace.ListingSubmissions.GetById;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Mine;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Discard;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Submit;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Update;
 using SmartProperty.Application.Marketplace.PublicListings;
 using SmartProperty.Common.Pagination;
 using SmartProperty.Domain.Marketplace;
@@ -347,6 +353,79 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         Assert.Null(provider.GetService<ISubmitterListingSubmissionReadRepository>());
         Assert.Null(provider.GetService<IQueryHandler<GetMyListingSubmissionsQuery, PagedList<SubmitterSubmissionSummary>>>());
         Assert.Null(provider.GetService<IQueryHandler<GetMyListingSubmissionByIdQuery, SubmitterSubmissionDetail>>());
+    }
+
+    [Fact]
+    public void TheProductionContainerRegistersNeitherTheListingWriteHandlersNorTheirSeams()
+    {
+        using var root = new SmartPropertyApiFactory(UnusedConnectionString);
+        using var host = root.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:Database", UnusedConnectionString);
+        });
+        using var scope = host.Services.CreateScope();
+        var provider = scope.ServiceProvider;
+
+        Assert.Null(provider.GetService<ICommandHandler<CreateListingDraftCommand, ListingDraftResult>>());
+        Assert.Null(provider.GetService<ICommandHandler<UpdateListingDraftCommand, ListingDraftResult>>());
+        Assert.Null(provider.GetService<ICommandHandler<DiscardListingDraftCommand, DiscardListingDraftResult>>());
+        Assert.Null(provider.GetService<ICommandHandler<SubmitListingDraftCommand, SubmitListingDraftResult>>());
+        Assert.Null(provider.GetService<IListingSubmissionWriteRepository>());
+        Assert.Null(provider.GetService<IEvidenceAssessmentProvider>());
+        Assert.Null(provider.GetService<IListingSubmissionAuditRecorder>());
+        Assert.Empty(host.Services.GetServices<CreateListingDraftCommandHandler>());
+        Assert.Empty(host.Services.GetServices<UpdateListingDraftCommandHandler>());
+        Assert.Empty(host.Services.GetServices<DiscardListingDraftCommandHandler>());
+        Assert.Empty(host.Services.GetServices<SubmitListingDraftCommandHandler>());
+    }
+
+    [Fact]
+    public void NoProductionRouteAcceptsAMarketplaceWrite()
+    {
+        using var root = new SmartPropertyApiFactory(UnusedConnectionString);
+        using var host = root.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:Database", UnusedConnectionString);
+        });
+        var endpoints = host.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().ToArray();
+        var writeVerbs = new[] { "POST", "PUT", "PATCH", "DELETE" };
+
+        var writeRoutes = endpoints
+            .Where(endpoint => (endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods ?? [])
+                .Any(method => writeVerbs.Contains(method, StringComparer.OrdinalIgnoreCase)))
+            .Select(endpoint => endpoint.RoutePattern.RawText ?? string.Empty)
+            .ToArray();
+
+        // The inventory is real: existing write routes (administration, authentication) are visible to it.
+        Assert.NotEmpty(writeRoutes);
+        Assert.DoesNotContain(writeRoutes, route => route.Contains("marketplace", StringComparison.OrdinalIgnoreCase)
+            || route.Contains("listing", StringComparison.OrdinalIgnoreCase)
+            || route.Contains("submission", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void NoControllerReferencesTheListingWriteCommandsOrHandlers()
+    {
+        var writeNamespace = typeof(CreateListingDraftCommand).Namespace!;
+        var writeRoot = writeNamespace[..writeNamespace.LastIndexOf('.')];
+        var controllers = typeof(Program).Assembly.GetTypes()
+            .Where(type => typeof(ControllerBase).IsAssignableFrom(type) && !type.IsAbstract)
+            .ToArray();
+
+        Assert.NotEmpty(controllers);
+
+        foreach (var controller in controllers)
+        {
+            var referenced = controller
+                .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType).Append(method.ReturnType))
+                .Concat(controller.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                    .SelectMany(constructor => constructor.GetParameters().Select(parameter => parameter.ParameterType)))
+                .SelectMany(Flatten)
+                .ToArray();
+
+            Assert.DoesNotContain(referenced, type => type.Namespace is { } ns && ns.StartsWith(writeRoot, StringComparison.Ordinal));
+        }
     }
 
     // ----- sample data
