@@ -871,6 +871,68 @@ namespace SmartProperty.Persistence.Migrations
                     b.ToTable("workspace_membership_roles", "identity");
                 });
 
+            modelBuilder.Entity("SmartProperty.Persistence.Entities.Marketplace.ListingDraftDiscardAudit", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<bool>("ListingDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("listing_deleted");
+
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("listing_id");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("purpose");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("EventId")
+                        .HasName("pk_marketplace_discard_audits");
+
+                    b.HasIndex("SubmissionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_discard_audits_submission");
+
+                    b.HasIndex("PropertyId", "OccurredAt")
+                        .HasDatabaseName("ix_marketplace_discard_audits_property_time");
+
+                    b.ToTable("draft_discard_audits", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_discard_audits_identity", "event_id <> '00000000-0000-0000-0000-000000000000'::uuid AND actor_user_id <> '00000000-0000-0000-0000-000000000000'::uuid AND submission_id <> '00000000-0000-0000-0000-000000000000'::uuid AND listing_id <> '00000000-0000-0000-0000-000000000000'::uuid AND property_id <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("ck_marketplace_discard_audits_values", "purpose IN ('Sale','Rent') AND version > 0 AND revision > 0 AND isfinite(occurred_at) AND occurred_at <> '0001-01-01 00:00:00+00'::timestamptz");
+                        });
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Identity.RefreshToken", b =>
                 {
                     b.HasOne("SmartProperty.Domain.Identity.User", null)
