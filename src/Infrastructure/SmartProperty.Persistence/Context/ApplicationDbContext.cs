@@ -5,6 +5,7 @@ using SmartProperty.Domain.Marketplace;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.Domain.Workspaces;
 using SmartProperty.Persistence.Configurations.Marketplace;
+using SmartProperty.Persistence.Entities.Marketplace;
 
 namespace SmartProperty.Persistence.Context;
 
@@ -132,6 +133,13 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         ChangeTracker.DetectChanges();
         foreach (var entry in ChangeTracker.Entries().ToArray())
         {
+            if (entry.Entity is ListingDraftDiscardAudit)
+            {
+                if (entry.State == EntityState.Added)
+                    throw new InvalidOperationException("Discard audit insertion requires the grant-checked atomic discard coordinator, which is not yet available.");
+                if (entry.State is EntityState.Modified or EntityState.Deleted)
+                    throw new InvalidOperationException("Draft discard audit history is append-only.");
+            }
             if (entry.Entity is ListingReviewDecision && entry.State is EntityState.Modified or EntityState.Deleted)
                 throw new InvalidOperationException("Historical review decisions are immutable.");
             if (entry.Entity is ListingSubmission)

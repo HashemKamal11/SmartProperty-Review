@@ -351,6 +351,11 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("purpose");
 
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -393,9 +398,11 @@ namespace SmartProperty.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_marketplace_submissions_content", "COALESCE((content_snapshot->>'FormatVersion' = '1' AND jsonb_typeof(content_snapshot->'Payload'->'Country') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Country')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Region') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Region')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'City') = 'string' AND length(btrim(content_snapshot->'Payload'->>'City')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'District') = 'string' AND length(btrim(content_snapshot->'Payload'->>'District')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Title') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Title')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Description') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Description')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Currency') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Currency')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Amount') = 'number' AND content_snapshot->'Payload'->>'PropertyType' IN ('1','2','3') AND ((purpose = 'Sale' AND content_snapshot->'Payload'->>'Purpose' = '1' AND content_snapshot->'Payload'->'RentPeriod' = 'null'::jsonb) OR (purpose = 'Rent' AND content_snapshot->'Payload'->>'Purpose' = '2' AND content_snapshot->'Payload'->>'RentPeriod' IN ('1','2')))), false)");
 
-                            t.HasCheckConstraint("ck_marketplace_submissions_evidence", "COALESCE((jsonb_typeof(evidence_snapshot->'Payload') = 'array' AND jsonb_array_length(evidence_snapshot->'Payload') > 0 AND evidence_snapshot->>'FormatVersion' = '1' AND authority_snapshot->>'FormatVersion' = '1' AND submitted_assessments_snapshot->>'FormatVersion' = '1'), false)");
+                            t.HasCheckConstraint("ck_marketplace_submissions_evidence", "COALESCE((jsonb_typeof(evidence_snapshot->'Payload') = 'array' AND (status = 'Draft' OR jsonb_array_length(evidence_snapshot->'Payload') > 0) AND evidence_snapshot->>'FormatVersion' = '1' AND authority_snapshot->>'FormatVersion' = '1' AND submitted_assessments_snapshot->>'FormatVersion' = '1'), false)");
 
                             t.HasCheckConstraint("ck_marketplace_submissions_identity", "id <> '00000000-0000-0000-0000-000000000000'::uuid AND version > 0 AND ((version = 1 AND predecessor_id IS NULL) OR (version > 1 AND predecessor_id IS NOT NULL AND predecessor_id <> id))");
+
+                            t.HasCheckConstraint("ck_marketplace_submissions_revision", "revision > 0");
 
                             t.HasCheckConstraint("ck_marketplace_submissions_state", "purpose IN ('Sale','Rent') AND status IN ('Draft','PendingReview','Approved','Rejected','Superseded') AND updated_at >= created_at AND ((status = 'Draft' AND submitted_at IS NULL) OR (status <> 'Draft' AND submitted_at IS NOT NULL AND submitted_at >= created_at AND submitted_at <= updated_at))");
                         });
@@ -862,6 +869,68 @@ namespace SmartProperty.Persistence.Migrations
                     b.HasIndex("RoleId");
 
                     b.ToTable("workspace_membership_roles", "identity");
+                });
+
+            modelBuilder.Entity("SmartProperty.Persistence.Entities.Marketplace.ListingDraftDiscardAudit", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("event_id");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<bool>("ListingDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("listing_deleted");
+
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("listing_id");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("purpose");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("EventId")
+                        .HasName("pk_marketplace_discard_audits");
+
+                    b.HasIndex("SubmissionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_discard_audits_submission");
+
+                    b.HasIndex("PropertyId", "OccurredAt")
+                        .HasDatabaseName("ix_marketplace_discard_audits_property_time");
+
+                    b.ToTable("draft_discard_audits", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_discard_audits_identity", "event_id <> '00000000-0000-0000-0000-000000000000'::uuid AND actor_user_id <> '00000000-0000-0000-0000-000000000000'::uuid AND submission_id <> '00000000-0000-0000-0000-000000000000'::uuid AND listing_id <> '00000000-0000-0000-0000-000000000000'::uuid AND property_id <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("ck_marketplace_discard_audits_values", "purpose IN ('Sale','Rent') AND version > 0 AND revision > 0 AND isfinite(occurred_at) AND occurred_at <> '0001-01-01 00:00:00+00'::timestamptz");
+                        });
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Identity.RefreshToken", b =>
