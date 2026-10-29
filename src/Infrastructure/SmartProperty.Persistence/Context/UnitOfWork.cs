@@ -81,6 +81,9 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
                 PersistenceConstraint.WorkspaceMembershipUserWorkspace,
             RoleConfiguration.WorkspaceNameUniqueIndexName => PersistenceConstraint.WorkspaceRoleName,
             PermissionConfiguration.CodeUniqueIndexName => PersistenceConstraint.PermissionCode,
+            RolePermissionConfiguration.PrimaryKeyName => PersistenceConstraint.RolePermissionKey,
+            WorkspaceMembershipRoleConfiguration.PrimaryKeyName =>
+                PersistenceConstraint.WorkspaceMembershipRoleKey,
             _ => null
         };
     }

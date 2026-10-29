@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(connectionString));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IPlatformAdminBootstrapCoordinator, PostgreSqlPlatformAdminBootstrapCoordinator>();
+        services.AddScoped<IWorkspaceApprovalCoordinator, PostgreSqlWorkspaceApprovalCoordinator>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IUserCredentialRepository, UserCredentialRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();

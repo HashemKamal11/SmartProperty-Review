@@ -23,5 +23,15 @@ public enum PersistenceConstraint
     /// <summary>
     /// A permission code must be unique.
     /// </summary>
-    PermissionCode = 4
+    PermissionCode = 4,
+
+    /// <summary>
+    /// A role can carry a given permission at most once (the role_permissions composite key).
+    /// </summary>
+    RolePermissionKey = 5,
+
+    /// <summary>
+    /// A workspace membership can hold a given role at most once (the workspace_membership_roles composite key).
+    /// </summary>
+    WorkspaceMembershipRoleKey = 6
 }

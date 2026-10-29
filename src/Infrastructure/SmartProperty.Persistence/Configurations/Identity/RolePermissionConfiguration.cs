@@ -6,6 +6,10 @@ namespace SmartProperty.Persistence.Configurations.Identity;
 
 internal sealed class RolePermissionConfiguration : IEntityTypeConfiguration<RolePermission>
 {
+    // The name EF already generates and InitialCreate already uses; stated so UnitOfWork can translate a
+    // violation of this key by exact name without changing the schema.
+    public const string PrimaryKeyName = "PK_role_permissions";
+
     public void Configure(EntityTypeBuilder<RolePermission> builder)
     {
         builder.ToTable("role_permissions", "identity");
@@ -14,7 +18,7 @@ internal sealed class RolePermissionConfiguration : IEntityTypeConfiguration<Rol
         {
             rolePermission.RoleId,
             rolePermission.PermissionId
-        });
+        }).HasName(PrimaryKeyName);
 
         builder.Property(rolePermission => rolePermission.RoleId)
             .HasColumnName("role_id");

@@ -91,6 +91,8 @@ public sealed class AuthContextEndpointTests
         Assert.Equal([BootstrapPlatformAdminCommandHandler.PlatformAdminRoleName], body.PlatformRoles);
         Assert.Equal(
             [
+                PermissionCodes.MarketplaceSubmissionsReviewDecide,
+                PermissionCodes.MarketplaceSubmissionsReviewRead,
                 PermissionCodes.PropertyArchive,
                 PermissionCodes.PropertyCreate,
                 PermissionCodes.PropertyRead,
@@ -237,6 +239,130 @@ public sealed class AuthContextEndpointTests
         using var document = JsonDocument.Parse(await client.GetStringAsync("/api/auth/me"));
 
         Assert.Equal(["email", "firstName", "lastName", "userId"], PropertyNames(document.RootElement));
+    }
+
+    [Fact]
+    public async Task AMisconfiguredMemberRole_IsReportedAsPersistedAndNotRepairedByARefusedApproval()
+    {
+        using var factory = new SmartPropertyApiFactory(_fixture, usePersistencePermissionChecker: true);
+        using var setup = factory.CreateClient();
+        var workspaceId = await _scenario.CreateWorkspaceAsync();
+        var holder = await _scenario.RegisterActiveUserAsync(setup);
+        var applicant = await _scenario.RegisterAsync(setup, workspaceId);
+        var reviewer = await _scenario.RegisterActiveUserAsync(setup);
+        await _scenario.GrantPlatformPermissionAsync(
+            reviewer.UserId,
+            PermissionCodes.WorkspaceAccessRequestsReview);
+
+        // An existing member already holds a Member role that carries more than workspace.read.
+        await using (var context = _fixture.CreateContext())
+        {
+            var role = new Role(Guid.NewGuid(), "Member", RoleScope.Workspace, workspaceId, DateTimeOffset.UtcNow);
+            var membership = new WorkspaceMembership(Guid.NewGuid(), holder.UserId, workspaceId, DateTimeOffset.UtcNow);
+            var workspaceRead = await FindOrAddPermissionAsync(context, PermissionCodes.WorkspaceRead);
+            var propertyRead = await FindOrAddPermissionAsync(context, PermissionCodes.PropertyRead);
+
+            context.Roles.Add(role);
+            context.WorkspaceMemberships.Add(membership);
+            context.RolePermissions.AddRange(
+                new RolePermission(role.Id, workspaceRead.Id),
+                new RolePermission(role.Id, propertyRead.Id));
+            context.WorkspaceMembershipRoles.Add(new WorkspaceMembershipRole(membership.Id, role.Id));
+            await context.SaveChangesAsync();
+        }
+
+        using var holderClient = factory.CreateAuthenticatedClient(holder.UserId);
+        var before = Assert.Single((await holderClient.GetFromJsonAsync<AuthContextResponse>(Route))!.Workspaces);
+
+        // The context reports what is persisted, nothing more and nothing less.
+        Assert.Equal(["Member"], before.Roles);
+        Assert.Equal([PermissionCodes.PropertyRead, PermissionCodes.WorkspaceRead], before.Permissions);
+
+        using (var reviewerClient = factory.CreateAuthenticatedClient(reviewer.UserId))
+        using (var approval = await reviewerClient.PostAsync(
+            $"/api/admin/workspace-access-requests/{applicant.WorkspaceAccessRequestId}/approve",
+            content: null))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, approval.StatusCode);
+        }
+
+        // The refused approval repaired nothing, revoked nothing and granted the applicant nothing.
+        var after = Assert.Single((await holderClient.GetFromJsonAsync<AuthContextResponse>(Route))!.Workspaces);
+        Assert.Equal(before.Roles, after.Roles);
+        Assert.Equal(before.Permissions, after.Permissions);
+
+        await using var verification = _fixture.CreateContext();
+        Assert.False(await verification.WorkspaceMemberships.AnyAsync(candidate => candidate.UserId == applicant.UserId));
+    }
+
+    [Fact]
+    public async Task ApprovalKeepsAnIndependentlyAssignedRole_AndTheContextShowsItAlongsideMember()
+    {
+        using var factory = new SmartPropertyApiFactory(_fixture, usePersistencePermissionChecker: true);
+        using var setup = factory.CreateClient();
+        var workspaceId = await _scenario.CreateWorkspaceAsync();
+        var applicant = await _scenario.RegisterAsync(setup, workspaceId);
+        var reviewer = await _scenario.RegisterActiveUserAsync(setup);
+        await _scenario.GrantPlatformPermissionAsync(
+            reviewer.UserId,
+            PermissionCodes.WorkspaceAccessRequestsReview);
+
+        // The applicant already has a membership holding an unrelated workspace role.
+        Guid editorRoleId;
+        await using (var context = _fixture.CreateContext())
+        {
+            var editor = new Role(Guid.NewGuid(), "Editor", RoleScope.Workspace, workspaceId, DateTimeOffset.UtcNow);
+            var membership = new WorkspaceMembership(Guid.NewGuid(), applicant.UserId, workspaceId, DateTimeOffset.UtcNow);
+            var propertyRead = await FindOrAddPermissionAsync(context, PermissionCodes.PropertyRead);
+            editorRoleId = editor.Id;
+
+            context.Roles.Add(editor);
+            context.WorkspaceMemberships.Add(membership);
+            context.RolePermissions.Add(new RolePermission(editor.Id, propertyRead.Id));
+            context.WorkspaceMembershipRoles.Add(new WorkspaceMembershipRole(membership.Id, editor.Id));
+            await context.SaveChangesAsync();
+        }
+
+        using (var reviewerClient = factory.CreateAuthenticatedClient(reviewer.UserId))
+        using (var approval = await reviewerClient.PostAsync(
+            $"/api/admin/workspace-access-requests/{applicant.WorkspaceAccessRequestId}/approve",
+            content: null))
+        {
+            Assert.Equal(HttpStatusCode.OK, approval.StatusCode);
+        }
+
+        using var client = factory.CreateAuthenticatedClient(applicant.UserId);
+        var body = (await client.GetFromJsonAsync<AuthContextResponse>(Route))!;
+
+        var workspace = Assert.Single(body.Workspaces);
+        Assert.Equal(workspaceId, workspace.Id);
+        Assert.Equal(["Editor", "Member"], workspace.Roles);
+        Assert.Equal([PermissionCodes.PropertyRead, PermissionCodes.WorkspaceRead], workspace.Permissions);
+        Assert.Empty(body.PlatformRoles);
+        Assert.Empty(body.PlatformPermissions);
+
+        // The independent role's own assignment and permission are exactly what they were.
+        await using var verification = _fixture.CreateContext();
+        Assert.Equal(1, await verification.WorkspaceMembershipRoles.CountAsync(candidate => candidate.RoleId == editorRoleId));
+        Assert.Equal(1, await verification.RolePermissions.CountAsync(candidate => candidate.RoleId == editorRoleId));
+    }
+
+    // The permission row for this code, created if the shared test database does not have it yet.
+    private static async Task<Permission> FindOrAddPermissionAsync(
+        SmartProperty.Persistence.Context.ApplicationDbContext context,
+        string code)
+    {
+        var existing = await context.Permissions.FirstOrDefaultAsync(candidate => candidate.Code == code);
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var permission = new Permission(Guid.NewGuid(), code);
+        context.Permissions.Add(permission);
+
+        return permission;
     }
 
     private static string[] PropertyNames(JsonElement element)

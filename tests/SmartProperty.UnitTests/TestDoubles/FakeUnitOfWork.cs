@@ -74,6 +74,20 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
             new InvalidOperationException("Simulated concurrent permission insert."));
     }
 
+    public static UniqueConstraintViolationException RolePermissionKeyUniqueConstraintViolation()
+    {
+        return new UniqueConstraintViolationException(
+            PersistenceConstraint.RolePermissionKey,
+            new InvalidOperationException("Simulated concurrent role permission insert."));
+    }
+
+    public static UniqueConstraintViolationException WorkspaceMembershipRoleKeyUniqueConstraintViolation()
+    {
+        return new UniqueConstraintViolationException(
+            PersistenceConstraint.WorkspaceMembershipRoleKey,
+            new InvalidOperationException("Simulated concurrent workspace membership role insert."));
+    }
+
     public static UniqueConstraintViolationException WorkspaceMembershipUniqueConstraintViolation()
     {
         return new UniqueConstraintViolationException(

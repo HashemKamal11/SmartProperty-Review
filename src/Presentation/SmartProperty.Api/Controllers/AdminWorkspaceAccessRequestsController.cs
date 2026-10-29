@@ -85,8 +85,9 @@ public sealed class AdminWorkspaceAccessRequestsController : ControllerBase
     }
 
     /// <summary>
-    /// Approves a pending request: records the decision, activates a Pending account, and creates the workspace
-    /// membership. Assigns no role.
+    /// Approves a pending request: records the decision, activates a Pending account, creates the workspace
+    /// membership, and assigns or reuses the workspace's default Member role (exactly workspace.read). Returns 409
+    /// when that role is misconfigured.
     /// </summary>
     /// <remarks>
     /// Returns <c>200</c> with the resulting state rather than <c>204</c>: the membership id and the two resulting

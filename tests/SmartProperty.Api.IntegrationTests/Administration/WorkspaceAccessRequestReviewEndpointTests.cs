@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
@@ -476,6 +477,275 @@ public sealed class WorkspaceAccessRequestReviewEndpointTests : IDisposable
         var request = await context.WorkspaceAccessRequests
             .SingleAsync(candidate => candidate.Id == applicant.WorkspaceAccessRequestId);
         Assert.Equal(WorkspaceAccessRequestStatus.Pending, request.Status);
+    }
+
+    // ---- P-008: the workspace's Member role must carry exactly workspace.read, or approval fails closed ----
+    //
+    // Approving into a happy workspace (Member created, correct Member reused) is already asserted above; these add
+    // the refusals and the initialization case. Each Member role is seeded in the applicant's own workspace, which
+    // is what keeps the shared database safe for the other tests in the collection.
+
+    [Theory]
+    [InlineData(PermissionCodes.PropertyRead, false)]
+    [InlineData(PermissionCodes.PropertyRead, true)]
+    [InlineData(PermissionCodes.WorkspaceAccessRequestsReview, false)]
+    public async Task AMemberRoleCarryingAnythingBesidesWorkspaceRead_Returns409AndChangesNothing(
+        string otherPermissionCode,
+        bool alsoCarriesWorkspaceRead)
+    {
+        AllowReview();
+        var applicant = await RegisterApplicantAsync();
+        var codes = alsoCarriesWorkspaceRead
+            ? new[] { PermissionCodes.WorkspaceRead, otherPermissionCode }
+            : new[] { otherPermissionCode };
+        var memberRoleId = await SeedMemberRoleAsync(applicant.WorkspaceId, codes);
+        using var client = await CreateReviewerClientAsync();
+
+        using var response = await client.PostAsync($"{BaseRoute}/{applicant.WorkspaceAccessRequestId}/approve", null);
+
+        await AssertMemberRoleMisconfiguredAsync(response);
+        await AssertUnreviewedAsync(applicant);
+
+        // Reported, never repaired: the role carries exactly what it carried, and nobody holds it.
+        Assert.Equal(codes.Order(StringComparer.Ordinal), await PermissionCodesOfAsync(memberRoleId));
+
+        await using var context = _fixture.CreateContext();
+        Assert.False(await context.WorkspaceMembershipRoles.AnyAsync(candidate => candidate.RoleId == memberRoleId));
+    }
+
+    [Fact]
+    public async Task AnEmptyMemberRoleAlreadyAssignedToAnotherMembership_Returns409AndChangesNothing()
+    {
+        AllowReview();
+        var applicant = await RegisterApplicantAsync();
+        var memberRoleId = await SeedMemberRoleAsync(applicant.WorkspaceId);
+        await SeedHolderAsync(applicant.WorkspaceId, memberRoleId);
+        using var client = await CreateReviewerClientAsync();
+
+        using var response = await client.PostAsync($"{BaseRoute}/{applicant.WorkspaceAccessRequestId}/approve", null);
+
+        await AssertMemberRoleMisconfiguredAsync(response);
+        await AssertUnreviewedAsync(applicant);
+
+        // An empty role that someone already holds is not quietly completed: it stays empty and held once.
+        Assert.Empty(await PermissionCodesOfAsync(memberRoleId));
+
+        await using var context = _fixture.CreateContext();
+        Assert.Equal(1, await context.WorkspaceMembershipRoles.CountAsync(candidate => candidate.RoleId == memberRoleId));
+    }
+
+    [Fact]
+    public async Task ARequestRefusedWithMemberRoleMisconfigured_StaysPendingAndCanThenBeRejectedNormally()
+    {
+        AllowReview();
+        var applicant = await RegisterApplicantAsync();
+        await SeedMemberRoleAsync(applicant.WorkspaceId, PermissionCodes.PropertyRead);
+        using var client = await CreateReviewerClientAsync();
+
+        using (var approval = await client.PostAsync($"{BaseRoute}/{applicant.WorkspaceAccessRequestId}/approve", null))
+        {
+            await AssertMemberRoleMisconfiguredAsync(approval);
+        }
+
+        await AssertUnreviewedAsync(applicant);
+
+        // The refusal decided nothing, so the ordinary reject path is unaffected by it.
+        using var rejection = await client.PostAsync($"{BaseRoute}/{applicant.WorkspaceAccessRequestId}/reject", null);
+
+        Assert.Equal(HttpStatusCode.OK, rejection.StatusCode);
+
+        var body = (await rejection.Content.ReadFromJsonAsync<RejectWorkspaceAccessRequestResponse>())!;
+        Assert.Equal(nameof(WorkspaceAccessRequestStatus.Rejected), body.RequestStatus);
+        Assert.Equal(nameof(UserStatus.Pending), body.UserStatus);
+
+        await using var context = _fixture.CreateContext();
+        var request = await context.WorkspaceAccessRequests
+            .SingleAsync(candidate => candidate.Id == applicant.WorkspaceAccessRequestId);
+        Assert.Equal(WorkspaceAccessRequestStatus.Rejected, request.Status);
+        Assert.NotNull(request.ReviewedByUserId);
+        Assert.False(await context.WorkspaceMemberships.AnyAsync(candidate => candidate.UserId == applicant.UserId));
+    }
+
+    [Fact]
+    public async Task AnEmptyUnassignedMemberRole_IsInitializedWithExactlyWorkspaceRead()
+    {
+        AllowReview();
+        var applicant = await RegisterApplicantAsync();
+        var memberRoleId = await SeedMemberRoleAsync(applicant.WorkspaceId);
+        using var client = await CreateReviewerClientAsync();
+
+        using var response = await client.PostAsync($"{BaseRoute}/{applicant.WorkspaceAccessRequestId}/approve", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = (await response.Content.ReadFromJsonAsync<ApproveWorkspaceAccessRequestResponse>())!;
+
+        // The existing role was completed and reused, not duplicated: exactly workspace.read, held once.
+        Assert.Equal([PermissionCodes.WorkspaceRead], await PermissionCodesOfAsync(memberRoleId));
+
+        await using var context = _fixture.CreateContext();
+        var assignment = await context.WorkspaceMembershipRoles
+            .SingleAsync(candidate => candidate.RoleId == memberRoleId);
+        Assert.Equal(body.MembershipId, assignment.WorkspaceMembershipId);
+        Assert.Equal(1, await context.Roles.CountAsync(candidate =>
+            candidate.WorkspaceId == applicant.WorkspaceId && candidate.Name == "Member"));
+    }
+
+    [Fact]
+    public async Task AnotherWorkspacesMisconfiguredMemberAndAPlatformRoleNamedMember_AreIsolatedFromAnApproval()
+    {
+        AllowReview();
+        var applicant = await RegisterApplicantAsync();
+
+        // Another workspace's Member role is misconfigured and held. It must neither block nor be touched.
+        var otherWorkspaceId = await _scenario.CreateWorkspaceAsync();
+        var otherRoleId = await SeedMemberRoleAsync(otherWorkspaceId, PermissionCodes.PropertyRead);
+        await SeedHolderAsync(otherWorkspaceId, otherRoleId);
+
+        // A PLATFORM role that happens to be named "Member", carrying a platform permission and held by a user.
+        Guid platformHolderId;
+
+        using (var setup = _factory.CreateClient())
+        {
+            platformHolderId = (await _scenario.RegisterActiveUserAsync(setup)).UserId;
+        }
+
+        var platformRole = new Role(Guid.NewGuid(), "Member", RoleScope.Platform, null, DateTimeOffset.UtcNow);
+
+        await using (var seeding = _fixture.CreateContext())
+        {
+            var reviewPermission = await seeding.Permissions.FirstOrDefaultAsync(candidate =>
+                candidate.Code == PermissionCodes.WorkspaceAccessRequestsReview);
+
+            if (reviewPermission is null)
+            {
+                reviewPermission = new Permission(Guid.NewGuid(), PermissionCodes.WorkspaceAccessRequestsReview);
+                seeding.Permissions.Add(reviewPermission);
+            }
+
+            seeding.Roles.Add(platformRole);
+            seeding.RolePermissions.Add(new RolePermission(platformRole.Id, reviewPermission.Id));
+            seeding.UserPlatformRoles.Add(new UserPlatformRole(platformHolderId, platformRole.Id));
+            await seeding.SaveChangesAsync();
+        }
+
+        using var client = await CreateReviewerClientAsync();
+
+        using var response = await client.PostAsync($"{BaseRoute}/{applicant.WorkspaceAccessRequestId}/approve", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var context = _fixture.CreateContext();
+
+        // The applicant got a Member role of its own workspace carrying exactly workspace.read.
+        var ownRole = await context.Roles.SingleAsync(candidate =>
+            candidate.WorkspaceId == applicant.WorkspaceId && candidate.Name == "Member");
+        Assert.NotEqual(otherRoleId, ownRole.Id);
+        Assert.Equal(RoleScope.Workspace, ownRole.Scope);
+        Assert.Equal([PermissionCodes.WorkspaceRead], await PermissionCodesOfAsync(ownRole.Id));
+
+        // The other workspace's role: same permission, same single holder.
+        Assert.Equal([PermissionCodes.PropertyRead], await PermissionCodesOfAsync(otherRoleId));
+        Assert.Equal(1, await context.WorkspaceMembershipRoles.CountAsync(candidate => candidate.RoleId == otherRoleId));
+
+        // The platform role: same platform permission, same single holder, and the applicant holds no platform role.
+        Assert.Equal([PermissionCodes.WorkspaceAccessRequestsReview], await PermissionCodesOfAsync(platformRole.Id));
+        Assert.Equal(
+            platformHolderId,
+            (await context.UserPlatformRoles.SingleAsync(candidate => candidate.RoleId == platformRole.Id)).UserId);
+        Assert.False(await context.UserPlatformRoles.AnyAsync(candidate => candidate.UserId == applicant.UserId));
+    }
+
+    private static async Task AssertMemberRoleMisconfiguredAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        var raw = await response.Content.ReadAsStringAsync();
+        var error = JsonSerializer.Deserialize<ApiErrorResponse>(raw, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        Assert.Equal("workspace_access_requests.member_role_misconfigured", error.Code);
+        Assert.Equal(StatusCodes.Status409Conflict, error.Status);
+
+        // Generic by design: the role's actual permission set is never exposed to the client.
+        foreach (var permissionCode in new[]
+                 {
+                     PermissionCodes.WorkspaceRead,
+                     PermissionCodes.PropertyRead,
+                     PermissionCodes.WorkspaceAccessRequestsReview
+                 })
+        {
+            Assert.DoesNotContain(permissionCode, raw, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    // A request that no part of an approval touched: still Pending, no reviewer, a Pending applicant, no membership.
+    private async Task AssertUnreviewedAsync(RegisteredUser applicant)
+    {
+        await using var context = _fixture.CreateContext();
+
+        var request = await context.WorkspaceAccessRequests
+            .SingleAsync(candidate => candidate.Id == applicant.WorkspaceAccessRequestId);
+        Assert.Equal(WorkspaceAccessRequestStatus.Pending, request.Status);
+        Assert.Null(request.ReviewedByUserId);
+        Assert.Null(request.ReviewedAt);
+
+        var user = await context.Users.SingleAsync(candidate => candidate.Id == applicant.UserId);
+        Assert.Equal(UserStatus.Pending, user.Status);
+        Assert.False(await context.WorkspaceMemberships.AnyAsync(candidate => candidate.UserId == applicant.UserId));
+    }
+
+    // Persists a workspace-scoped "Member" role carrying exactly the given permission codes (none for an empty one).
+    private async Task<Guid> SeedMemberRoleAsync(Guid workspaceId, params string[] permissionCodes)
+    {
+        var role = new Role(Guid.NewGuid(), "Member", RoleScope.Workspace, workspaceId, DateTimeOffset.UtcNow);
+
+        await using var context = _fixture.CreateContext();
+        context.Roles.Add(role);
+
+        foreach (var code in permissionCodes)
+        {
+            var permission = await context.Permissions.FirstOrDefaultAsync(candidate => candidate.Code == code);
+
+            if (permission is null)
+            {
+                permission = new Permission(Guid.NewGuid(), code);
+                context.Permissions.Add(permission);
+            }
+
+            context.RolePermissions.Add(new RolePermission(role.Id, permission.Id));
+        }
+
+        await context.SaveChangesAsync();
+
+        return role.Id;
+    }
+
+    // Another member of the workspace who already holds the role.
+    private async Task SeedHolderAsync(Guid workspaceId, Guid roleId)
+    {
+        using var client = _factory.CreateClient();
+        var holder = await _scenario.RegisterActiveUserAsync(client);
+        var membership = new WorkspaceMembership(Guid.NewGuid(), holder.UserId, workspaceId, DateTimeOffset.UtcNow);
+
+        await using var context = _fixture.CreateContext();
+        context.WorkspaceMemberships.Add(membership);
+        context.WorkspaceMembershipRoles.Add(new WorkspaceMembershipRole(membership.Id, roleId));
+        await context.SaveChangesAsync();
+    }
+
+    private async Task<List<string>> PermissionCodesOfAsync(Guid roleId)
+    {
+        await using var context = _fixture.CreateContext();
+
+        var codes = await context.RolePermissions
+            .Where(candidate => candidate.RoleId == roleId)
+            .Join(
+                context.Permissions,
+                rolePermission => rolePermission.PermissionId,
+                permission => permission.Id,
+                (_, permission) => permission.Code)
+            .ToListAsync();
+
+        return codes.Order(StringComparer.Ordinal).ToList();
     }
 
     private void AllowReview()

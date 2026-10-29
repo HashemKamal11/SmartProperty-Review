@@ -34,4 +34,12 @@ internal static class WorkspaceAccessRequestErrors
         "workspace_access_requests.target_account_unavailable",
         "The requesting account cannot be granted workspace access in its current state.",
         ErrorType.Conflict);
+
+    // The workspace's Member role is not in a state approval may build on: it carries a permission other than
+    // workspace.read, or it carries none but is already assigned. Deliberately generic — the actual permission set
+    // is never exposed — and a refusal rather than a repair: approval never edits or revokes an existing role.
+    public static readonly Error MemberRoleMisconfigured = new(
+        "workspace_access_requests.member_role_misconfigured",
+        "The workspace's default Member role is not configured correctly, so the request cannot be approved.",
+        ErrorType.Conflict);
 }
