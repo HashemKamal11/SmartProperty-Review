@@ -77,7 +77,7 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
     }
 
     /// <summary>
-    /// Registers a new user through the API and requires it to have succeeded. The phone number is marked verified
+    /// Registers a new user through the API and requires it to have succeeded. The phone number and email are marked verified
     /// through the domain model, like activation below, so a test that is not about phone verification is not
     /// blocked by it; pass <paramref name="verifyPhone"/> false to leave it unverified.
     /// </summary>
@@ -97,7 +97,11 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
 
         if (verifyPhone)
         {
-            await UpdateUserAsync(body.UserId, (candidate, now) => candidate.VerifyPhone(now));
+            await UpdateUserAsync(body.UserId, (candidate, now) =>
+            {
+                candidate.VerifyPhone(now);
+                candidate.VerifyEmail(now);
+            });
         }
 
         return new RegisteredUser(body.UserId, email, workspaceId, body.WorkspaceAccessRequestId, phoneNumber);

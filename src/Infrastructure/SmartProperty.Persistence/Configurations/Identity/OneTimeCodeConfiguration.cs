@@ -4,59 +4,65 @@ using SmartProperty.Domain.Identity;
 
 namespace SmartProperty.Persistence.Configurations.Identity;
 
-internal sealed class PhoneVerificationConfiguration : IEntityTypeConfiguration<PhoneVerification>
+internal sealed class OneTimeCodeConfiguration : IEntityTypeConfiguration<OneTimeCode>
 {
-    public void Configure(EntityTypeBuilder<PhoneVerification> builder)
+    public void Configure(EntityTypeBuilder<OneTimeCode> builder)
     {
-        builder.ToTable("phone_verifications", "identity", tableBuilder =>
+        builder.ToTable("one_time_codes", "identity", tableBuilder =>
         {
             tableBuilder.HasCheckConstraint(
-                "ck_identity_phone_verifications_expires_after_created",
+                "ck_identity_one_time_codes_expires_after_created",
                 "expires_at > created_at");
 
             tableBuilder.HasCheckConstraint(
-                "ck_identity_phone_verifications_failed_attempts_not_negative",
+                "ck_identity_one_time_codes_failed_attempts_not_negative",
                 "failed_attempts >= 0");
         });
 
-        builder.HasKey(verification => verification.Id);
+        builder.HasKey(code => code.Id);
 
-        builder.Property(verification => verification.Id)
+        builder.Property(code => code.Id)
             .HasColumnName("id");
 
-        builder.Property(verification => verification.UserId)
+        builder.Property(code => code.UserId)
             .HasColumnName("user_id")
             .IsRequired();
 
         builder.HasOne<User>()
             .WithMany()
-            .HasForeignKey(verification => verification.UserId)
+            .HasForeignKey(code => code.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        builder.Property(verification => verification.CodeHash)
+        builder.Property(code => code.Purpose)
+            .HasColumnName("purpose")
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .IsRequired();
+
+        builder.Property(code => code.CodeHash)
             .HasColumnName("code_hash")
             .HasMaxLength(128)
             .IsRequired();
 
-        builder.Property(verification => verification.CreatedAt)
+        builder.Property(code => code.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();
 
-        builder.Property(verification => verification.ExpiresAt)
+        builder.Property(code => code.ExpiresAt)
             .HasColumnName("expires_at")
             .IsRequired();
 
         // Optimistic concurrency, so two parallel wrong guesses cannot both read the same count and overwrite each
         // other: the second UPDATE affects zero rows and fails instead of earning a free attempt.
-        builder.Property(verification => verification.FailedAttempts)
+        builder.Property(code => code.FailedAttempts)
             .HasColumnName("failed_attempts")
             .HasDefaultValue(0)
             .IsConcurrencyToken();
 
-        builder.Property(verification => verification.ConsumedAt)
+        builder.Property(code => code.ConsumedAt)
             .HasColumnName("consumed_at");
 
-        builder.HasIndex(verification => new { verification.UserId, verification.CreatedAt })
-            .HasDatabaseName("ix_identity_phone_verifications_user_id_created_at");
+        builder.HasIndex(code => new { code.UserId, code.Purpose, code.CreatedAt })
+            .HasDatabaseName("ix_identity_one_time_codes_user_id_purpose_created_at");
     }
 }

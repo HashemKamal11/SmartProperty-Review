@@ -15,7 +15,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<User> Users => Set<User>();
     public DbSet<UserCredential> UserCredentials => Set<UserCredential>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
-    public DbSet<PhoneVerification> PhoneVerifications => Set<PhoneVerification>();
+    public DbSet<OneTimeCode> OneTimeCodes => Set<OneTimeCode>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceAccessRequest> WorkspaceAccessRequests => Set<WorkspaceAccessRequest>();
     public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();

@@ -51,6 +51,14 @@ services:
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in your shell before running Docker Compose}
       Bootstrap__Enabled: ${BOOTSTRAP_ENABLED:-false}
       Bootstrap__PlatformAdminEmail: ${BOOTSTRAP_PLATFORM_ADMIN_EMAIL:-}
+      # Email through SMTP. Leave SMTP_HOST empty to use the logging stand-in that sends nothing.
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__EnableSsl: ${SMTP_ENABLE_SSL:-true}
+      Smtp__UserName: ${SMTP_USERNAME:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__FromAddress: ${SMTP_FROM_ADDRESS:-}
+      Smtp__FromName: ${SMTP_FROM_NAME:-SmartProperty}
       Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN_0:-}
       Cors__AllowedOrigins__1: ${CORS_ALLOWED_ORIGIN_1:-}
     ports:

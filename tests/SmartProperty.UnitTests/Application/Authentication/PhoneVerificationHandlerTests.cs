@@ -1,3 +1,4 @@
+using SmartProperty.Application.Authentication.OneTimeCodes;
 using SmartProperty.Application.Authentication.PhoneVerifications;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Identity;
@@ -18,7 +19,7 @@ public sealed class PhoneVerificationHandlerTests
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
     private readonly FakeUserRepository _users = new();
-    private readonly FakePhoneVerificationRepository _verifications = new();
+    private readonly FakeOneTimeCodeRepository _verifications = new();
     private readonly FakeSmsSender _sms = new();
     private readonly FakeDateTimeProvider _clock = new(Now);
     private readonly FakeUnitOfWork _unitOfWork = new();
@@ -62,7 +63,7 @@ public sealed class PhoneVerificationHandlerTests
     {
         SeedCode(RightCode);
 
-        for (var attempt = 1; attempt < PhoneVerification.MaxFailedAttempts; attempt++)
+        for (var attempt = 1; attempt < OneTimeCode.MaxFailedAttempts; attempt++)
         {
             Assert.Equal("phone_verification.invalid_code", (await Verify("000000")).Error!.Code);
         }
@@ -175,9 +176,9 @@ public sealed class PhoneVerificationHandlerTests
         Assert.Empty(_sms.Sent);
     }
 
-    private PhoneVerification SeedCode(string code)
+    private OneTimeCode SeedCode(string code)
     {
-        var verification = PhoneVerificationPolicy.Issue(_user.Id, code, Now);
+        var verification = OneTimeCodePolicy.Issue(_user.Id, OneTimeCodePurpose.PhoneVerification, code, Now);
         _verifications.Seed(verification);
 
         return verification;

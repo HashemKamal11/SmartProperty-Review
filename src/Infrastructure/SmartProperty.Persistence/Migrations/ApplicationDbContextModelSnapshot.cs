@@ -23,34 +23,7 @@ namespace SmartProperty.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("SmartProperty.Domain.Identity.Permission", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("code");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("description");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("ux_identity_permissions_code");
-
-                    b.ToTable("permissions", "identity");
-                });
-
-            modelBuilder.Entity("SmartProperty.Domain.Identity.PhoneVerification", b =>
+            modelBuilder.Entity("SmartProperty.Domain.Identity.OneTimeCode", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -82,21 +55,54 @@ namespace SmartProperty.Persistence.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("failed_attempts");
 
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("purpose");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "CreatedAt")
-                        .HasDatabaseName("ix_identity_phone_verifications_user_id_created_at");
+                    b.HasIndex("UserId", "Purpose", "CreatedAt")
+                        .HasDatabaseName("ix_identity_one_time_codes_user_id_purpose_created_at");
 
-                    b.ToTable("phone_verifications", "identity", t =>
+                    b.ToTable("one_time_codes", "identity", t =>
                         {
-                            t.HasCheckConstraint("ck_identity_phone_verifications_expires_after_created", "expires_at > created_at");
+                            t.HasCheckConstraint("ck_identity_one_time_codes_expires_after_created", "expires_at > created_at");
 
-                            t.HasCheckConstraint("ck_identity_phone_verifications_failed_attempts_not_negative", "failed_attempts >= 0");
+                            t.HasCheckConstraint("ck_identity_one_time_codes_failed_attempts_not_negative", "failed_attempts >= 0");
                         });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Identity.Permission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ux_identity_permissions_code");
+
+                    b.ToTable("permissions", "identity");
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Identity.RefreshToken", b =>
@@ -231,6 +237,10 @@ namespace SmartProperty.Persistence.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)")
                         .HasColumnName("email");
+
+                    b.Property<DateTimeOffset?>("EmailVerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("email_verified_at");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -995,7 +1005,7 @@ namespace SmartProperty.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("SmartProperty.Domain.Identity.PhoneVerification", b =>
+            modelBuilder.Entity("SmartProperty.Domain.Identity.OneTimeCode", b =>
                 {
                     b.HasOne("SmartProperty.Domain.Identity.User", null)
                         .WithMany()

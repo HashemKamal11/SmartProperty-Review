@@ -40,7 +40,12 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.PhoneVerifiedAt)
             .HasColumnName("phone_verified_at");
 
+        builder.Property(user => user.EmailVerifiedAt)
+            .HasColumnName("email_verified_at");
+
         builder.Ignore(user => user.IsPhoneVerified);
+        builder.Ignore(user => user.IsEmailVerified);
+        builder.Ignore(user => user.IsContactVerificationComplete);
 
         builder.Property(user => user.FirstName)
             .HasColumnName("first_name")

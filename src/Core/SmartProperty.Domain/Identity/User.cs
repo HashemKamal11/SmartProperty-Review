@@ -42,6 +42,14 @@ public sealed class User
     public string? PhoneNumber { get; private set; }
     public DateTimeOffset? PhoneVerifiedAt { get; private set; }
     public bool IsPhoneVerified => PhoneVerifiedAt is not null;
+    public DateTimeOffset? EmailVerifiedAt { get; private set; }
+    public bool IsEmailVerified => EmailVerifiedAt is not null;
+
+    /// <summary>
+    /// True when the account has proved every contact it registered with: the phone number and the email. Accounts
+    /// that predate phone numbers have none and are treated as complete, so they are not held back.
+    /// </summary>
+    public bool IsContactVerificationComplete => PhoneNumber is null || (IsPhoneVerified && IsEmailVerified);
     public UserStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -56,6 +64,14 @@ public sealed class User
         ValidateUpdatedAt(verifiedAt);
 
         PhoneVerifiedAt = verifiedAt;
+        UpdatedAt = verifiedAt;
+    }
+
+    public void VerifyEmail(DateTimeOffset verifiedAt)
+    {
+        ValidateUpdatedAt(verifiedAt);
+
+        EmailVerifiedAt = verifiedAt;
         UpdatedAt = verifiedAt;
     }
 

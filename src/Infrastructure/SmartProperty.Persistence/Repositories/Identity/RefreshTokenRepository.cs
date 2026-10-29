@@ -19,6 +19,23 @@ internal sealed class RefreshTokenRepository(ApplicationDbContext dbContext) : I
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<RefreshToken>> GetActiveByUserIdAsync(
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("User id must not be empty.", nameof(userId));
+        }
+
+        return await dbContext.RefreshTokens
+            .Where(refreshToken => refreshToken.UserId == userId
+                && refreshToken.RevokedAt == null
+                && refreshToken.ExpiresAt > now)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task AddAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(refreshToken);

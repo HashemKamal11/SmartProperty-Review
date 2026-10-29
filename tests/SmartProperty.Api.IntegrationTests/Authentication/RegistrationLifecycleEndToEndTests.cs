@@ -106,14 +106,14 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
         Assert.Null(queued.ReviewedAt);
         Assert.Null(queued.ReviewedByUserId);
 
-        // 6. The request cannot be approved while the phone number is unverified.
+        // 6. The request cannot be approved while the phone number and email are unverified.
         using (var earlyApprove = await admin.PostAsync(
             $"/api/admin/workspace-access-requests/{queued.RequestId}/approve",
             content: null))
         {
             Assert.Equal(HttpStatusCode.Conflict, earlyApprove.StatusCode);
             var error = (await earlyApprove.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
-            Assert.Equal("workspace_access_requests.phone_not_verified", error.Code);
+            Assert.Equal("workspace_access_requests.contact_not_verified", error.Code);
         }
 
         // 7. The applicant proves the phone number with the code that was texted to it.
@@ -128,7 +128,24 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
             Assert.Equal(nameof(UserStatus.Pending), verified.Status);
         }
 
-        // 8. Approve.
+        // 8. Phone alone is not enough: the email must be proved too.
+        using (var halfApprove = await admin.PostAsync(
+            $"/api/admin/workspace-access-requests/{queued.RequestId}/approve",
+            content: null))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, halfApprove.StatusCode);
+        }
+
+        using (var verifyEmailResponse = await anonymous.PostAsJsonAsync(
+            "/api/auth/verify-email",
+            new VerifyEmailRequest(registered.UserId, _factory.EmailSender.LatestCodeFor(email))))
+        {
+            Assert.Equal(HttpStatusCode.OK, verifyEmailResponse.StatusCode);
+            var emailVerified = (await verifyEmailResponse.Content.ReadFromJsonAsync<VerifyEmailResponse>())!;
+            Assert.True(emailVerified.EmailVerified);
+        }
+
+        // 9. Approve.
         using var approveResponse = await admin.PostAsync(
             $"/api/admin/workspace-access-requests/{queued.RequestId}/approve",
             content: null);
@@ -138,7 +155,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
         Assert.Equal(nameof(WorkspaceAccessRequestStatus.Approved), approval.RequestStatus);
         Assert.Equal(nameof(UserStatus.Active), approval.UserStatus);
 
-        // 9. Stored state: Approved, Active, one membership, and the workspace's Member role.
+        // 10. Stored state: Approved, Active, one membership, and the workspace's Member role.
         await using (var context = _fixture.CreateContext())
         {
             var request = await context.WorkspaceAccessRequests
@@ -162,7 +179,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
             Assert.Equal(workspaceId, memberRole.WorkspaceId);
         }
 
-        // 10. The same credentials now sign in.
+        // 11. The same credentials now sign in.
         using var loginResponse = await anonymous.PostAsJsonAsync(
             "/api/auth/login",
             new LoginRequest(email, AuthScenario.Password));
@@ -171,7 +188,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(login.AccessToken));
         Assert.False(string.IsNullOrWhiteSpace(login.RefreshToken));
 
-        // 11. /me answers with the registered profile.
+        // 12. /me answers with the registered profile.
         using (var authenticated = AuthScenario.Authenticate(_factory.CreateClient(), login.AccessToken))
         {
             using var meResponse = await authenticated.GetAsync("/api/auth/me");
@@ -191,7 +208,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
             Assert.Empty(context.PlatformPermissions);
         }
 
-        // 12. Refresh rotates the token: a new pair is issued and the presented token is spent.
+        // 13. Refresh rotates the token: a new pair is issued and the presented token is spent.
         using var refreshResponse = await AuthScenario.PostRefreshAsync(anonymous, login.RefreshToken);
         Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
         var refreshed = (await refreshResponse.Content.ReadFromJsonAsync<RefreshResponse>())!;
@@ -202,7 +219,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
             Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
         }
 
-        // 13. Logout revokes the current refresh token, which then cannot be used.
+        // 14. Logout revokes the current refresh token, which then cannot be used.
         using (var logout = await AuthScenario.PostLogoutAsync(anonymous, refreshed.RefreshToken))
         {
             Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);

@@ -57,9 +57,9 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
             return PersistenceResource.WorkspaceAccessRequest;
         }
 
-        if (entityType == typeof(PhoneVerification))
+        if (entityType == typeof(OneTimeCode))
         {
-            return PersistenceResource.PhoneVerification;
+            return PersistenceResource.OneTimeCode;
         }
 
         return entityType == typeof(Property)

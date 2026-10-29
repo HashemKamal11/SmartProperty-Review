@@ -9,11 +9,11 @@ namespace SmartProperty.Application.Authentication.Register;
 internal static class RegisterCommandValidator
 {
     // Match the identity.users column lengths so over-long values fail validation instead of the database write.
-    private const int EmailMaxLength = 320;
+    internal const int EmailMaxLength = 320;
     private const int NameMaxLength = 100;
 
     // Defensive bound on input passed to the password hasher. Not a strength policy; none is approved yet.
-    private const int PasswordMaxLength = 128;
+    internal const int PasswordMaxLength = 128;
 
     public static Error? Validate(RegisterCommand command)
     {
@@ -92,7 +92,7 @@ internal static class RegisterCommandValidator
 
     // Structure only: one '@' between a non-empty local part and domain, and no whitespace or control characters.
     // It does not prove that the address exists or belongs to the caller.
-    private static bool HasEmailStructure(string email)
+    internal static bool HasEmailStructure(string email)
     {
         var atIndex = email.IndexOf('@');
 

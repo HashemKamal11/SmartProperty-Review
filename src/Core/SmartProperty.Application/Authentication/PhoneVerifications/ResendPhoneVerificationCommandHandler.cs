@@ -3,24 +3,28 @@ using SmartProperty.Application.Abstractions.Notifications;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.Authentication.OneTimeCodes;
 using SmartProperty.Common.Results;
+using SmartProperty.Domain.Identity;
 
 namespace SmartProperty.Application.Authentication.PhoneVerifications;
 
 /// <summary>
 /// Sends a fresh verification code to a user whose phone number is not verified yet. Earlier unused codes are
 /// retired so only the newest one works, and a new code cannot be requested within
-/// <see cref="PhoneVerificationPolicy.ResendCooldown"/> of the previous one.
+/// <see cref="OneTimeCodePolicy.ResendCooldown"/> of the previous one.
 /// </summary>
 public sealed class ResendPhoneVerificationCommandHandler(
     IUserRepository userRepository,
-    IPhoneVerificationRepository phoneVerificationRepository,
+    IOneTimeCodeRepository oneTimeCodeRepository,
     ISmsSender smsSender,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
-    : ICommandHandler<ResendPhoneVerificationCommand, PhoneVerificationIssued>
+    : ICommandHandler<ResendPhoneVerificationCommand, OneTimeCodeIssued>
 {
-    public async Task<Result<PhoneVerificationIssued>> Handle(
+    private const OneTimeCodePurpose Purpose = OneTimeCodePurpose.PhoneVerification;
+
+    public async Task<Result<OneTimeCodeIssued>> Handle(
         ResendPhoneVerificationCommand command,
         CancellationToken cancellationToken = default)
     {
@@ -28,42 +32,41 @@ public sealed class ResendPhoneVerificationCommandHandler(
 
         if (command.UserId == Guid.Empty)
         {
-            return Result<PhoneVerificationIssued>.Failure(PhoneVerificationErrors.ValidationFailed("User is required."));
+            return Result<OneTimeCodeIssued>.Failure(OneTimeCodeErrors.ValidationFailed("User is required."));
         }
 
         var user = await userRepository.GetByIdAsync(command.UserId, cancellationToken);
 
         if (user is null || user.PhoneNumber is null)
         {
-            return Result<PhoneVerificationIssued>.Failure(PhoneVerificationErrors.UserNotFound);
+            return Result<OneTimeCodeIssued>.Failure(OneTimeCodeErrors.UserNotFound(Purpose));
         }
 
         if (user.IsPhoneVerified)
         {
-            return Result<PhoneVerificationIssued>.Failure(PhoneVerificationErrors.AlreadyVerified);
+            return Result<OneTimeCodeIssued>.Failure(OneTimeCodeErrors.AlreadyVerified(Purpose));
         }
 
-        var now = dateTimeProvider.UtcNow;
-        var latest = await phoneVerificationRepository.GetLatestByUserIdAsync(user.Id, cancellationToken);
+        var issued = await OneTimeCodeFlow.IssueAsync(
+            oneTimeCodeRepository,
+            user.Id,
+            Purpose,
+            dateTimeProvider.UtcNow,
+            enforceCooldown: true,
+            cancellationToken);
 
-        if (latest is not null && now < latest.CreatedAt.Add(PhoneVerificationPolicy.ResendCooldown))
+        if (issued.IsFailure)
         {
-            return Result<PhoneVerificationIssued>.Failure(PhoneVerificationErrors.ResendTooSoon);
+            return Result<OneTimeCodeIssued>.Failure(issued.Error!);
         }
 
-        foreach (var previous in await phoneVerificationRepository.GetUnconsumedByUserIdAsync(user.Id, cancellationToken))
-        {
-            previous.Consume(now);
-        }
-
-        var code = PhoneVerificationPolicy.GenerateCode();
-        var verification = PhoneVerificationPolicy.Issue(user.Id, code, now);
-
-        await phoneVerificationRepository.AddAsync(verification, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        await smsSender.SendAsync(user.PhoneNumber, PhoneVerificationPolicy.BuildMessage(code), cancellationToken);
+        await smsSender.SendAsync(
+            user.PhoneNumber,
+            OneTimeCodePolicy.BuildPhoneMessage(issued.Value.Code),
+            cancellationToken);
 
-        return Result<PhoneVerificationIssued>.Success(new PhoneVerificationIssued(verification.ExpiresAt));
+        return Result<OneTimeCodeIssued>.Success(new OneTimeCodeIssued(issued.Value.ExpiresAt));
     }
 }

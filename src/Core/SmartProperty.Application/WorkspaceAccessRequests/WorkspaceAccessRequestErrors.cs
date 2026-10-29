@@ -27,11 +27,11 @@ internal static class WorkspaceAccessRequestErrors
         "This workspace access request has already been reviewed.",
         ErrorType.Conflict);
 
-    // The requester has not verified the phone number they registered with yet. Approval waits for them rather
+    // The requester has not verified the phone number and email they registered with yet. Approval waits for them rather
     // than skipping the check.
-    public static readonly Error PhoneNotVerified = new(
-        "workspace_access_requests.phone_not_verified",
-        "The requesting account has not verified its phone number yet.",
+    public static readonly Error ContactNotVerified = new(
+        "workspace_access_requests.contact_not_verified",
+        "The requesting account has not verified its phone number and email yet.",
         ErrorType.Conflict);
 
     // Returned when the account named by the request cannot be granted access: it is Suspended or Deactivated,

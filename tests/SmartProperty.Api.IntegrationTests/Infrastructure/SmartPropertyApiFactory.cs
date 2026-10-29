@@ -91,6 +91,9 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
     /// <summary>Every SMS the host tried to send, instead of a real provider.</summary>
     public CapturingSmsSender SmsSender { get; } = new();
 
+    /// <summary>Every email the host tried to send, instead of a real SMTP server.</summary>
+    public CapturingEmailSender EmailSender { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -154,6 +157,8 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<ISmsSender>();
             services.AddSingleton<ISmsSender>(SmsSender);
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton<IEmailSender>(EmailSender);
 
             // Makes the test-only route discoverable in this host. It is declared in the test assembly and
             // reaches MVC only here, so it cannot exist in the production application.

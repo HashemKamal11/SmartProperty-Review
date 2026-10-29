@@ -31,6 +31,18 @@ internal sealed class FakeRefreshTokenRepository : IRefreshTokenRepository
         return Task.FromResult(_tokensByHash.GetValueOrDefault(tokenHash));
     }
 
+    public Task<IReadOnlyList<RefreshToken>> GetActiveByUserIdAsync(
+        Guid userId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<RefreshToken> active = _tokensByHash.Values
+            .Where(token => token.UserId == userId && token.IsActive(now))
+            .ToList();
+
+        return Task.FromResult(active);
+    }
+
     public Task AddAsync(RefreshToken refreshToken, CancellationToken cancellationToken = default)
     {
         _added.Add(refreshToken);

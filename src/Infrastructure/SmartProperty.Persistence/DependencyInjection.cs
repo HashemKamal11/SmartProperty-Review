@@ -34,7 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IUserCredentialRepository, UserCredentialRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-        services.AddScoped<IPhoneVerificationRepository, PhoneVerificationRepository>();
+        services.AddScoped<IOneTimeCodeRepository, OneTimeCodeRepository>();
         services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
         services.AddScoped<IPropertyRepository, PropertyRepository>();
         services.AddScoped<IPublicListingReadRepository, PublicListingReadRepository>();

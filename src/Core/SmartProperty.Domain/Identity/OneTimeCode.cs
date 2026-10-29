@@ -1,33 +1,40 @@
 namespace SmartProperty.Domain.Identity;
 
 /// <summary>
-/// One phone verification code issued to a user. Stores only a hash of the code, never the code itself.
-/// A code is usable until it expires, is consumed, or reaches <see cref="MaxFailedAttempts"/> wrong guesses.
+/// One six-digit code issued to a user for one <see cref="OneTimeCodePurpose"/>. Stores only a hash of the code,
+/// never the code itself. A code is usable until it expires, is consumed, or reaches
+/// <see cref="MaxFailedAttempts"/> wrong guesses.
 /// </summary>
-public sealed class PhoneVerification
+public sealed class OneTimeCode
 {
     public const int MaxFailedAttempts = 5;
 
-    private PhoneVerification()
+    private OneTimeCode()
     {
         CodeHash = string.Empty;
     }
 
-    public PhoneVerification(
+    public OneTimeCode(
         Guid id,
         Guid userId,
+        OneTimeCodePurpose purpose,
         string codeHash,
         DateTimeOffset createdAt,
         DateTimeOffset expiresAt)
     {
         if (id == Guid.Empty)
         {
-            throw new ArgumentException("Phone verification id must not be empty.", nameof(id));
+            throw new ArgumentException("One-time code id must not be empty.", nameof(id));
         }
 
         if (userId == Guid.Empty)
         {
             throw new ArgumentException("User id must not be empty.", nameof(userId));
+        }
+
+        if (!Enum.IsDefined(purpose))
+        {
+            throw new ArgumentException("One-time code purpose is not recognized.", nameof(purpose));
         }
 
         if (string.IsNullOrWhiteSpace(codeHash))
@@ -42,6 +49,7 @@ public sealed class PhoneVerification
 
         Id = id;
         UserId = userId;
+        Purpose = purpose;
         CodeHash = codeHash;
         CreatedAt = createdAt;
         ExpiresAt = expiresAt;
@@ -49,6 +57,7 @@ public sealed class PhoneVerification
 
     public Guid Id { get; private set; }
     public Guid UserId { get; private set; }
+    public OneTimeCodePurpose Purpose { get; private set; }
     public string CodeHash { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset ExpiresAt { get; private set; }
@@ -69,7 +78,7 @@ public sealed class PhoneVerification
     {
         if (ConsumedAt is not null)
         {
-            throw new InvalidOperationException("Phone verification is already consumed.");
+            throw new InvalidOperationException("One-time code is already consumed.");
         }
 
         if (consumedAt < CreatedAt)

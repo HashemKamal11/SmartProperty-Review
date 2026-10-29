@@ -532,9 +532,9 @@ They share the `ApiErrorResponse` contract but keep distinct codes and messages,
 - Authorization follow-ups. Platform enforcement is live — `RequirePermission` declares a platform permission code on protected endpoints, producing the standardized `authorization.forbidden` response (see Protected Endpoint Responses). Workspace enforcement is implemented too: `RequireWorkspacePermissionAttribute` takes the workspace id from the `workspaceId` route value and turns it into a workspace target (see the Workspace Enforcement section of [authorization-model.md](authorization-model.md)). What remains is Platform Admin semantics and caching. See [authorization-model.md](authorization-model.md).
 - `415 Unsupported Media Type` and `405 Method Not Allowed` response bodies. Controllers currently return the framework `ProblemDetails` body for 415 and an empty body for 405, not `ApiErrorResponse`.
 - Structured `fieldErrors` for Application validation failures.
-- Email verification.
 - MFA.
-- Password reset.
+- A real SMS provider. The phone code is sent through ISmsSender, which today is a logging stand-in.
+- Rate limiting of the anonymous registration, verification, forgot-password, and reset endpoints. Only the per-account resend cooldown and the five-attempt limit exist.
 - Account lockout and failed login tracking.
 - Expired or revoked refresh token cleanup.
 - Additional role/permission catalog provisioning beyond the narrow Platform Admin bootstrap.

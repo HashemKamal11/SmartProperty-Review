@@ -23,7 +23,7 @@ public enum PersistenceResource
     Property = 3,
 
     /// <summary>
-    /// A phone verification whose failed-attempt count changed between loading it and saving a guess.
+    /// A one-time code whose failed-attempt count or state changed between loading it and saving a guess.
     /// </summary>
-    PhoneVerification = 4
+    OneTimeCode = 4
 }
