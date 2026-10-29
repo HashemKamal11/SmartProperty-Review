@@ -183,7 +183,7 @@ public sealed class PhoneVerificationHandlerTests
         return verification;
     }
 
-    private Task<Result> Verify(string code)
+    private Task<Result<PhoneVerified>> Verify(string code)
     {
         return CreateVerifyHandler().Handle(new VerifyPhoneCommand(_user.Id, code));
     }

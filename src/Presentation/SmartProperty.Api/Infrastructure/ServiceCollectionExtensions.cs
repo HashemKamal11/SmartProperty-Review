@@ -259,7 +259,7 @@ internal static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddScoped<ICommandHandler<RegisterCommand, RegisterResult>, RegisterCommandHandler>();
-        services.AddScoped<ICommandHandler<VerifyPhoneCommand>, VerifyPhoneCommandHandler>();
+        services.AddScoped<ICommandHandler<VerifyPhoneCommand, PhoneVerified>, VerifyPhoneCommandHandler>();
         services.AddScoped<ICommandHandler<ResendPhoneVerificationCommand, PhoneVerificationIssued>, ResendPhoneVerificationCommandHandler>();
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<RefreshCommand, RefreshResult>, RefreshCommandHandler>();

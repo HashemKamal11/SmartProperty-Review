@@ -17,9 +17,9 @@ public sealed class VerifyPhoneCommandHandler(
     IPhoneVerificationRepository phoneVerificationRepository,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
-    : ICommandHandler<VerifyPhoneCommand>
+    : ICommandHandler<VerifyPhoneCommand, PhoneVerified>
 {
-    public async Task<Result> Handle(
+    public async Task<Result<PhoneVerified>> Handle(
         VerifyPhoneCommand command,
         CancellationToken cancellationToken = default)
     {
@@ -27,25 +27,25 @@ public sealed class VerifyPhoneCommandHandler(
 
         if (command.UserId == Guid.Empty)
         {
-            return Result.Failure(PhoneVerificationErrors.ValidationFailed("User is required."));
+            return Result<PhoneVerified>.Failure(PhoneVerificationErrors.ValidationFailed("User is required."));
         }
 
         // A malformed code cannot match, so it is refused without spending one of the code's attempts.
         if (!PhoneVerificationPolicy.IsWellFormedCode(command.Code))
         {
-            return Result.Failure(PhoneVerificationErrors.InvalidOrExpiredCode);
+            return Result<PhoneVerified>.Failure(PhoneVerificationErrors.InvalidOrExpiredCode);
         }
 
         var user = await userRepository.GetByIdAsync(command.UserId, cancellationToken);
 
         if (user is null || user.PhoneNumber is null)
         {
-            return Result.Failure(PhoneVerificationErrors.UserNotFound);
+            return Result<PhoneVerified>.Failure(PhoneVerificationErrors.UserNotFound);
         }
 
         if (user.IsPhoneVerified)
         {
-            return Result.Failure(PhoneVerificationErrors.AlreadyVerified);
+            return Result<PhoneVerified>.Failure(PhoneVerificationErrors.AlreadyVerified);
         }
 
         var now = dateTimeProvider.UtcNow;
@@ -53,12 +53,12 @@ public sealed class VerifyPhoneCommandHandler(
 
         if (verification is null || verification.ConsumedAt is not null || now >= verification.ExpiresAt)
         {
-            return Result.Failure(PhoneVerificationErrors.InvalidOrExpiredCode);
+            return Result<PhoneVerified>.Failure(PhoneVerificationErrors.InvalidOrExpiredCode);
         }
 
         if (!verification.IsActive(now))
         {
-            return Result.Failure(PhoneVerificationErrors.TooManyAttempts);
+            return Result<PhoneVerified>.Failure(PhoneVerificationErrors.TooManyAttempts);
         }
 
         if (!PhoneVerificationPolicy.CodeMatches(user.Id, command.Code, verification.CodeHash))
@@ -73,10 +73,10 @@ public sealed class VerifyPhoneCommandHandler(
                 when (exception.Resource == PersistenceResource.PhoneVerification)
             {
                 // A concurrent guess counted first; this one is refused like any other wrong code.
-                return Result.Failure(PhoneVerificationErrors.InvalidOrExpiredCode);
+                return Result<PhoneVerified>.Failure(PhoneVerificationErrors.InvalidOrExpiredCode);
             }
 
-            return Result.Failure(verification.IsActive(now)
+            return Result<PhoneVerified>.Failure(verification.IsActive(now)
                 ? PhoneVerificationErrors.InvalidOrExpiredCode
                 : PhoneVerificationErrors.TooManyAttempts);
         }
@@ -91,9 +91,9 @@ public sealed class VerifyPhoneCommandHandler(
         catch (ConcurrencyConflictException exception)
             when (exception.Resource == PersistenceResource.PhoneVerification)
         {
-            return Result.Failure(PhoneVerificationErrors.InvalidOrExpiredCode);
+            return Result<PhoneVerified>.Failure(PhoneVerificationErrors.InvalidOrExpiredCode);
         }
 
-        return Result.Success();
+        return Result<PhoneVerified>.Success(new PhoneVerified(user.Id, now, user.Status));
     }
 }

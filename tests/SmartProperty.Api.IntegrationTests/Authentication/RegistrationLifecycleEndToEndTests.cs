@@ -121,7 +121,11 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
             "/api/auth/verify-phone",
             new VerifyPhoneRequest(registered.UserId, _factory.SmsSender.LatestCodeFor(phoneNumber))))
         {
-            Assert.Equal(HttpStatusCode.NoContent, verifyResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, verifyResponse.StatusCode);
+            var verified = (await verifyResponse.Content.ReadFromJsonAsync<VerifyPhoneResponse>())!;
+            Assert.True(verified.PhoneVerified);
+            Assert.Equal(registered.UserId, verified.UserId);
+            Assert.Equal(nameof(UserStatus.Pending), verified.Status);
         }
 
         // 8. Approve.

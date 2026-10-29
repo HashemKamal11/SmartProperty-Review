@@ -62,7 +62,7 @@ public sealed class AuthController : ControllerBase
     [HttpPost("verify-phone")]
     public async Task<IActionResult> VerifyPhone(
         [FromBody] VerifyPhoneRequest request,
-        [FromServices] ICommandHandler<VerifyPhoneCommand> handler,
+        [FromServices] ICommandHandler<VerifyPhoneCommand, PhoneVerified> handler,
         CancellationToken cancellationToken)
     {
         var command = new VerifyPhoneCommand(
@@ -78,7 +78,14 @@ public sealed class AuthController : ControllerBase
             return StatusCode(errorResponse.Status, errorResponse);
         }
 
-        return NoContent();
+        var verified = result.Value;
+
+        return Ok(new VerifyPhoneResponse(
+            verified.UserId,
+            PhoneVerified: true,
+            verified.VerifiedAt,
+            verified.UserStatus.ToString(),
+            "Phone number verified. Your account is awaiting administrator approval."));
     }
 
     [AllowAnonymous]
