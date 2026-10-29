@@ -23,5 +23,10 @@ public enum PersistenceConstraint
     /// <summary>
     /// A permission code must be unique.
     /// </summary>
-    PermissionCode = 4
+    PermissionCode = 4,
+
+    /// <summary>
+    /// A user's normalized phone number must be unique.
+    /// </summary>
+    UserPhoneNumber = 5
 }

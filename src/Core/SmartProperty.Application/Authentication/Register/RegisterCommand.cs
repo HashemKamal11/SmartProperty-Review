@@ -7,6 +7,7 @@ public sealed record RegisterCommand(
     string Password,
     string FirstName,
     string LastName,
+    string PhoneNumber,
     Guid WorkspaceId) : ICommand<RegisterResult>
 {
     // Keeps the plaintext password and personal data out of logs and debugger displays of the record.

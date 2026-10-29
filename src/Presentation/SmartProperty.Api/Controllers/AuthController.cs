@@ -10,6 +10,7 @@ using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
+using SmartProperty.Application.Authentication.PhoneVerifications;
 using SmartProperty.Application.Authentication.Register;
 
 namespace SmartProperty.Api.Controllers;
@@ -30,6 +31,7 @@ public sealed class AuthController : ControllerBase
             request.Password ?? string.Empty,
             request.FirstName ?? string.Empty,
             request.LastName ?? string.Empty,
+            request.PhoneNumber ?? string.Empty,
             request.WorkspaceId ?? Guid.Empty);
 
         var result = await handler.Handle(command, cancellationToken);
@@ -47,10 +49,57 @@ public sealed class AuthController : ControllerBase
             registration.UserStatus.ToString(),
             registration.WorkspaceId,
             registration.WorkspaceAccessRequestId,
-            registration.WorkspaceAccessRequestStatus.ToString());
+            registration.WorkspaceAccessRequestStatus.ToString(),
+            registration.PhoneVerificationExpiresAt);
 
         // No endpoint can read a registration back yet, so the response has no Location header.
         return StatusCode(StatusCodes.Status201Created, response);
+    }
+
+    // The user id returned by registration is the only thing identifying the account: the caller has no token
+    // yet, and the one-time code is the proof.
+    [AllowAnonymous]
+    [HttpPost("verify-phone")]
+    public async Task<IActionResult> VerifyPhone(
+        [FromBody] VerifyPhoneRequest request,
+        [FromServices] ICommandHandler<VerifyPhoneCommand> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new VerifyPhoneCommand(
+            request.UserId ?? Guid.Empty,
+            request.Code ?? string.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return NoContent();
+    }
+
+    [AllowAnonymous]
+    [HttpPost("resend-phone-code")]
+    public async Task<IActionResult> ResendPhoneCode(
+        [FromBody] ResendPhoneVerificationRequest request,
+        [FromServices] ICommandHandler<ResendPhoneVerificationCommand, PhoneVerificationIssued> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new ResendPhoneVerificationCommand(request.UserId ?? Guid.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(new PhoneVerificationCodeSentResponse(result.Value.ExpiresAt));
     }
 
     [AllowAnonymous]

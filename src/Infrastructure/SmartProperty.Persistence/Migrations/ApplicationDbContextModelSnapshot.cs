@@ -50,6 +50,55 @@ namespace SmartProperty.Persistence.Migrations
                     b.ToTable("permissions", "identity");
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.Identity.PhoneVerification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int>("FailedAttempts")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("failed_attempts");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("ix_identity_phone_verifications_user_id_created_at");
+
+                    b.ToTable("phone_verifications", "identity", t =>
+                        {
+                            t.HasCheckConstraint("ck_identity_phone_verifications_expires_after_created", "expires_at > created_at");
+
+                            t.HasCheckConstraint("ck_identity_phone_verifications_failed_attempts_not_negative", "failed_attempts >= 0");
+                        });
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Identity.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -195,6 +244,15 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("last_name");
 
+                    b.Property<string>("PhoneNumber")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("phone_number");
+
+                    b.Property<DateTimeOffset?>("PhoneVerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("phone_verified_at");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -210,6 +268,10 @@ namespace SmartProperty.Persistence.Migrations
                     b.HasIndex("Email")
                         .IsUnique()
                         .HasDatabaseName("ux_identity_users_email");
+
+                    b.HasIndex("PhoneNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_identity_users_phone_number");
 
                     b.ToTable("users", "identity");
                 });
@@ -931,6 +993,15 @@ namespace SmartProperty.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_marketplace_discard_audits_values", "purpose IN ('Sale','Rent') AND version > 0 AND revision > 0 AND isfinite(occurred_at) AND occurred_at <> '0001-01-01 00:00:00+00'::timestamptz");
                         });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Identity.PhoneVerification", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Identity.RefreshToken", b =>

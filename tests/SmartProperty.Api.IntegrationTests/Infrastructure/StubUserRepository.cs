@@ -67,6 +67,11 @@ internal sealed class StubUserRepository : IUserRepository
         throw new NotSupportedException("Only lookup by id is needed here.");
     }
 
+    public Task<User?> GetByPhoneNumberAsync(string phoneNumber, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException("Only lookup by id is needed here.");
+    }
+
     public Task AddAsync(User user, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException("Nothing here creates users.");

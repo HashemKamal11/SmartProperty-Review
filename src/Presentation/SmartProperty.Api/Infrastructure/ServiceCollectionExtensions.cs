@@ -22,7 +22,10 @@ using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
+using SmartProperty.Application.Authentication.PhoneVerifications;
 using SmartProperty.Application.Authentication.Register;
+using SmartProperty.Application.Abstractions.Notifications;
+using SmartProperty.Api.Infrastructure.Notifications;
 using SmartProperty.Application.Identity.Bootstrap;
 using SmartProperty.Application.Marketplace.PublicListings;
 using SmartProperty.Application.Marketplace.PublicListings.GetById;
@@ -140,6 +143,7 @@ internal static class ServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddSingleton<ISmsSender, LoggingSmsSender>();
         services.AddSingleton<ITokenProvider, TokenProvider>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -255,6 +259,8 @@ internal static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddScoped<ICommandHandler<RegisterCommand, RegisterResult>, RegisterCommandHandler>();
+        services.AddScoped<ICommandHandler<VerifyPhoneCommand>, VerifyPhoneCommandHandler>();
+        services.AddScoped<ICommandHandler<ResendPhoneVerificationCommand, PhoneVerificationIssued>, ResendPhoneVerificationCommandHandler>();
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<RefreshCommand, RefreshResult>, RefreshCommandHandler>();
         services.AddScoped<ICommandHandler<LogoutCommand>, LogoutCommandHandler>();

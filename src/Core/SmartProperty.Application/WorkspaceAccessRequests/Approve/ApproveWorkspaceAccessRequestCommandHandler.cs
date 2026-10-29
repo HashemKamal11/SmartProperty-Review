@@ -90,6 +90,14 @@ public sealed class ApproveWorkspaceAccessRequestCommandHandler(
                 WorkspaceAccessRequestErrors.TargetAccountUnavailable);
         }
 
+        // A user who registered with a phone number must prove they own it before being let into a workspace.
+        // Accounts that predate phone numbers have none and are not held back.
+        if (user.PhoneNumber is not null && !user.IsPhoneVerified)
+        {
+            return Result<ApproveWorkspaceAccessRequestResult>.Failure(
+                WorkspaceAccessRequestErrors.PhoneNotVerified);
+        }
+
         var reviewedAt = dateTimeProvider.UtcNow;
 
         accessRequest.Approve(reviewerUserId, reviewedAt);

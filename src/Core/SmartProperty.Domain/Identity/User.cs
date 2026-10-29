@@ -14,7 +14,8 @@ public sealed class User
         string email,
         string firstName,
         string lastName,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        string? phoneNumber = null)
     {
         if (id == Guid.Empty)
         {
@@ -25,6 +26,7 @@ public sealed class User
         Email = NormalizeEmail(email);
         FirstName = TrimRequired(firstName, nameof(firstName));
         LastName = TrimRequired(lastName, nameof(lastName));
+        PhoneNumber = phoneNumber is null ? null : PhoneNumberFormat.Normalize(phoneNumber);
         Status = UserStatus.Pending;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
@@ -34,9 +36,28 @@ public sealed class User
     public string Email { get; private set; }
     public string FirstName { get; private set; }
     public string LastName { get; private set; }
+    /// <summary>
+    /// E.164 phone number. Null only for accounts created before phone numbers were collected.
+    /// </summary>
+    public string? PhoneNumber { get; private set; }
+    public DateTimeOffset? PhoneVerifiedAt { get; private set; }
+    public bool IsPhoneVerified => PhoneVerifiedAt is not null;
     public UserStatus Status { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
+
+    public void VerifyPhone(DateTimeOffset verifiedAt)
+    {
+        if (PhoneNumber is null)
+        {
+            throw new InvalidOperationException("User has no phone number to verify.");
+        }
+
+        ValidateUpdatedAt(verifiedAt);
+
+        PhoneVerifiedAt = verifiedAt;
+        UpdatedAt = verifiedAt;
+    }
 
     public void Activate(DateTimeOffset updatedAt)
     {

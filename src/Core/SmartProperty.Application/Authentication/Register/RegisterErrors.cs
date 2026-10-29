@@ -9,6 +9,11 @@ internal static class RegisterErrors
         "A user with this email already exists.",
         ErrorType.Conflict);
 
+    public static readonly Error PhoneNumberAlreadyExists = new(
+        "users.phone_number_already_exists",
+        "A user with this phone number already exists.",
+        ErrorType.Conflict);
+
     public static readonly Error WorkspaceNotFound = new(
         "workspaces.not_found",
         "The selected workspace was not found.",

@@ -1,4 +1,5 @@
 using SmartProperty.Common.Results;
+using SmartProperty.Domain.Identity;
 
 namespace SmartProperty.Application.Authentication.Register;
 
@@ -53,6 +54,17 @@ internal static class RegisterCommandValidator
         if (ValidateName(command.LastName, "Last name") is { } lastNameError)
         {
             return lastNameError;
+        }
+
+        if (string.IsNullOrWhiteSpace(command.PhoneNumber))
+        {
+            return RegisterErrors.ValidationFailed("Phone number is required.");
+        }
+
+        if (!PhoneNumberFormat.TryNormalize(command.PhoneNumber, out _))
+        {
+            return RegisterErrors.ValidationFailed(
+                "Phone number must be in international format, for example +201012345678.");
         }
 
         if (command.WorkspaceId == Guid.Empty)

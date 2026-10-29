@@ -330,6 +330,11 @@ public sealed class GetMyListingSubmissionByIdQueryHandlerTests
             throw new NotSupportedException();
         }
 
+        public Task<User?> GetByPhoneNumberAsync(string phoneNumber, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task AddAsync(User user, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException();
