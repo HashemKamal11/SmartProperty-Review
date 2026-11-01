@@ -29,6 +29,16 @@ internal sealed class UserRepository(ApplicationDbContext dbContext) : IUserRepo
         return dbContext.Users.FirstOrDefaultAsync(user => user.Email == normalizedEmail, cancellationToken);
     }
 
+    public Task<User?> GetByPhoneNumberAsync(string phoneNumber, CancellationToken cancellationToken = default)
+    {
+        if (!PhoneNumberFormat.TryNormalize(phoneNumber, out var normalizedPhoneNumber))
+        {
+            throw new ArgumentException("Phone number must be in international format.", nameof(phoneNumber));
+        }
+
+        return dbContext.Users.FirstOrDefaultAsync(user => user.PhoneNumber == normalizedPhoneNumber, cancellationToken);
+    }
+
     public async Task AddAsync(User user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);

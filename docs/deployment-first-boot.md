@@ -151,6 +151,15 @@ configuration-gated Platform Admin bootstrap finds the registered user, activate
 the Platform Admin role and its explicit permission, and assigns that role. It refuses unknown, suspended, or
 deactivated accounts and never creates credentials.
 
+### Existing installations: new Platform Admin permissions
+
+Bootstrap is additive and idempotent. Re-running it with the existing administrator's email adds any newly declared
+platform permission (currently including `marketplace.submissions.review.read` and
+`marketplace.submissions.review.decide`) to the existing "Platform Admin" role and changes nothing already present.
+Permissions are attached to the role, so every user who holds the "Platform Admin" role gains them. **Before such a
+re-run, review the current Platform Admin role assignments** and confirm that each holder should receive the new
+permissions. Until bootstrap is re-run the permissions do not exist and the checks deny, which fails closed.
+
 Verify that the user can log in and reach the intended administration operation.
 
 ## 6. Disable bootstrap after success

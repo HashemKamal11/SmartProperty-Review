@@ -20,5 +20,10 @@ public enum PersistenceResource
     /// <summary>
     /// A canonical property whose lifecycle status changed between loading it and saving an archive or an update.
     /// </summary>
-    Property = 3
+    Property = 3,
+
+    /// <summary>
+    /// A one-time code whose failed-attempt count or state changed between loading it and saving a guess.
+    /// </summary>
+    OneTimeCode = 4
 }

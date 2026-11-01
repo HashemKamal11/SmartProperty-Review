@@ -31,6 +31,12 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
         return $"{prefix}-{Guid.NewGuid():n}@smartproperty.invalid";
     }
 
+    /// <summary>A syntactically valid, unique international number. Digits are random, so it is not a real line.</summary>
+    public static string UniquePhone()
+    {
+        return $"+1555{RandomNumberGenerator.GetInt32(0, 10_000_000):D7}";
+    }
+
     /// <summary>An opaque value shaped like a refresh token that was never issued by this host.</summary>
     public static string UniqueRefreshToken()
     {
@@ -59,24 +65,46 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
     }
 
     /// <summary>Posts a registration and hands back the raw response, for tests that assert a failure.</summary>
-    public static Task<HttpResponseMessage> PostRegisterAsync(HttpClient client, string email, Guid workspaceId)
+    public static Task<HttpResponseMessage> PostRegisterAsync(
+        HttpClient client,
+        string email,
+        Guid workspaceId,
+        string? phoneNumber = null)
     {
         return client.PostAsJsonAsync(
             "/api/auth/register",
-            new RegisterRequest(email, Password, "Test", "User", workspaceId));
+            new RegisterRequest(email, Password, "Test", "User", phoneNumber ?? UniquePhone(), workspaceId));
     }
 
-    /// <summary>Registers a new user through the API and requires it to have succeeded.</summary>
-    public async Task<RegisteredUser> RegisterAsync(HttpClient client, Guid workspaceId, string? email = null)
+    /// <summary>
+    /// Registers a new user through the API and requires it to have succeeded. The phone number and email are marked verified
+    /// through the domain model, like activation below, so a test that is not about phone verification is not
+    /// blocked by it; pass <paramref name="verifyPhone"/> false to leave it unverified.
+    /// </summary>
+    public async Task<RegisteredUser> RegisterAsync(
+        HttpClient client,
+        Guid workspaceId,
+        string? email = null,
+        bool verifyPhone = true)
     {
         email ??= UniqueEmail("user");
+        var phoneNumber = UniquePhone();
 
-        using var response = await PostRegisterAsync(client, email, workspaceId);
+        using var response = await PostRegisterAsync(client, email, workspaceId, phoneNumber);
         response.EnsureSuccessStatusCode();
 
         var body = (await response.Content.ReadFromJsonAsync<RegisterResponse>())!;
 
-        return new RegisteredUser(body.UserId, email, workspaceId, body.WorkspaceAccessRequestId);
+        if (verifyPhone)
+        {
+            await UpdateUserAsync(body.UserId, (candidate, now) =>
+            {
+                candidate.VerifyPhone(now);
+                candidate.VerifyEmail(now);
+            });
+        }
+
+        return new RegisteredUser(body.UserId, email, workspaceId, body.WorkspaceAccessRequestId, phoneNumber);
     }
 
     /// <summary>
@@ -230,6 +258,7 @@ internal sealed record RegisteredUser(
     Guid UserId,
     string Email,
     Guid WorkspaceId,
-    Guid WorkspaceAccessRequestId);
+    Guid WorkspaceAccessRequestId,
+    string PhoneNumber);
 
 internal sealed record SignedInUser(RegisteredUser User, LoginResponse Tokens);

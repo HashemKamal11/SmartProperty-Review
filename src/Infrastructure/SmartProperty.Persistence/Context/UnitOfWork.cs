@@ -57,6 +57,11 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
             return PersistenceResource.WorkspaceAccessRequest;
         }
 
+        if (entityType == typeof(OneTimeCode))
+        {
+            return PersistenceResource.OneTimeCode;
+        }
+
         return entityType == typeof(Property)
             ? PersistenceResource.Property
             : null;
@@ -77,6 +82,7 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
         return postgresException.ConstraintName switch
         {
             UserConfiguration.EmailUniqueIndexName => PersistenceConstraint.UserEmail,
+            UserConfiguration.PhoneNumberUniqueIndexName => PersistenceConstraint.UserPhoneNumber,
             WorkspaceMembershipConfiguration.UserWorkspaceUniqueIndexName =>
                 PersistenceConstraint.WorkspaceMembershipUserWorkspace,
             RoleConfiguration.WorkspaceNameUniqueIndexName => PersistenceConstraint.WorkspaceRoleName,

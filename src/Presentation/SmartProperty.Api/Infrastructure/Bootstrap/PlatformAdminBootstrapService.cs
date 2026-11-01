@@ -93,6 +93,10 @@ internal sealed class PlatformAdminBootstrapService(
             + "Property permissions attached (create/read/update/archive): "
             + "{PropertyCreateRolePermissionCreated}/{PropertyReadRolePermissionCreated}/"
             + "{PropertyUpdateRolePermissionCreated}/{PropertyArchiveRolePermissionCreated}. "
+            + "Marketplace review permissions created (read/decide): "
+            + "{ReviewReadPermissionCreated}/{ReviewDecidePermissionCreated}. "
+            + "Marketplace review permissions attached (read/decide): "
+            + "{ReviewReadRolePermissionCreated}/{ReviewDecideRolePermissionCreated}. "
             + "Role assigned: {PlatformRoleAssigned}. "
             + "Set Bootstrap__Enabled=false now that provisioning has succeeded.",
             bootstrap.UserId,
@@ -110,6 +114,10 @@ internal sealed class PlatformAdminBootstrapService(
             bootstrap.PropertyReadRolePermissionCreated,
             bootstrap.PropertyUpdateRolePermissionCreated,
             bootstrap.PropertyArchiveRolePermissionCreated,
+            bootstrap.MarketplaceSubmissionsReviewReadPermissionCreated,
+            bootstrap.MarketplaceSubmissionsReviewDecidePermissionCreated,
+            bootstrap.MarketplaceSubmissionsReviewReadRolePermissionCreated,
+            bootstrap.MarketplaceSubmissionsReviewDecideRolePermissionCreated,
             bootstrap.PlatformRoleAssigned);
     }
 

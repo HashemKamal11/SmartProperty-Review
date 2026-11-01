@@ -22,9 +22,18 @@ using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
+using SmartProperty.Application.Authentication.EmailVerifications;
+using SmartProperty.Application.Authentication.OneTimeCodes;
+using SmartProperty.Application.Authentication.PasswordReset;
+using SmartProperty.Application.Authentication.PhoneVerifications;
 using SmartProperty.Application.Authentication.Register;
+using SmartProperty.Application.Abstractions.Notifications;
+using SmartProperty.Api.Infrastructure.Notifications;
 using SmartProperty.Application.Identity.Bootstrap;
 using SmartProperty.Application.PropertyMatching.Record;
+using SmartProperty.Application.Marketplace.PublicListings;
+using SmartProperty.Application.Marketplace.PublicListings.GetById;
+using SmartProperty.Application.Marketplace.PublicListings.Search;
 using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Archive;
 using SmartProperty.Application.PropertyRegistry.Create;
@@ -141,6 +150,19 @@ internal static class ServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddSingleton<ISmsSender, LoggingSmsSender>();
+
+        // Real SMTP when Smtp:Host is set, otherwise the logging stand-in, so a developer can run without a mail server.
+        services.AddOptions<SmtpOptions>()
+            .BindConfiguration(SmtpOptions.SectionName)
+            .Validate(
+                smtp => !smtp.IsConfigured || !string.IsNullOrWhiteSpace(smtp.FromAddress),
+                "Smtp:FromAddress is required when Smtp:Host is set.")
+            .ValidateOnStart();
+        services.AddSingleton<IEmailSender>(provider =>
+            provider.GetRequiredService<IOptions<SmtpOptions>>().Value.IsConfigured
+                ? ActivatorUtilities.CreateInstance<SmtpEmailSender>(provider)
+                : ActivatorUtilities.CreateInstance<LoggingEmailSender>(provider));
         services.AddSingleton<ITokenProvider, TokenProvider>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -256,6 +278,12 @@ internal static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddScoped<ICommandHandler<RegisterCommand, RegisterResult>, RegisterCommandHandler>();
+        services.AddScoped<ICommandHandler<VerifyPhoneCommand, PhoneVerified>, VerifyPhoneCommandHandler>();
+        services.AddScoped<ICommandHandler<ResendPhoneVerificationCommand>, ResendPhoneVerificationCommandHandler>();
+        services.AddScoped<ICommandHandler<VerifyEmailCommand, EmailVerified>, VerifyEmailCommandHandler>();
+        services.AddScoped<ICommandHandler<ResendEmailVerificationCommand>, ResendEmailVerificationCommandHandler>();
+        services.AddScoped<ICommandHandler<ForgotPasswordCommand>, ForgotPasswordCommandHandler>();
+        services.AddScoped<ICommandHandler<ResetPasswordCommand>, ResetPasswordCommandHandler>();
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<RefreshCommand, RefreshResult>, RefreshCommandHandler>();
         services.AddScoped<ICommandHandler<LogoutCommand>, LogoutCommandHandler>();
@@ -282,6 +310,15 @@ internal static class ServiceCollectionExtensions
             .AddScoped<IQueryHandler<GetRegistrationWorkspaceOptionsQuery, IReadOnlyList<RegistrationWorkspaceOption>>,
                 GetRegistrationWorkspaceOptionsQueryHandler>();
         services.AddScoped<IQueryHandler<GetWorkspaceQuery, WorkspaceDetails>, GetWorkspaceQueryHandler>();
+
+        // The anonymous public marketplace. Both handlers need IPublicListingReadRepository, which Persistence
+        // registers; a host without that registration does not start in Development.
+        services
+            .AddScoped<IQueryHandler<SearchPublicListingsQuery, PagedList<PublicListingSummary>>,
+                SearchPublicListingsQueryHandler>();
+        services
+            .AddScoped<IQueryHandler<GetPublicListingByIdQuery, PublicListingDetail>,
+                GetPublicListingByIdQueryHandler>();
 
         services
             .AddScoped<ICommandHandler<BootstrapPlatformAdminCommand, BootstrapPlatformAdminResult>,

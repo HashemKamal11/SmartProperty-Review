@@ -37,6 +37,12 @@ internal sealed class FakeUserRepository : IUserRepository
             _usersById.Values.FirstOrDefault(user => user.Email == normalizedEmail));
     }
 
+    public Task<User?> GetByPhoneNumberAsync(string phoneNumber, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(
+            _usersById.Values.FirstOrDefault(user => user.PhoneNumber == phoneNumber));
+    }
+
     public Task AddAsync(User user, CancellationToken cancellationToken = default)
     {
         Seed(user);

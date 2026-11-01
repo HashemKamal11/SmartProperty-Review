@@ -6,4 +6,6 @@ public sealed record RegisterResponse(
     string Status,
     Guid WorkspaceId,
     Guid WorkspaceAccessRequestId,
-    string WorkspaceAccessStatus);
+    string WorkspaceAccessStatus,
+    DateTimeOffset PhoneVerificationExpiresAt,
+    DateTimeOffset EmailVerificationExpiresAt);

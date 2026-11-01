@@ -10,6 +10,10 @@ using SmartProperty.Application.Authentication.Logout;
 using SmartProperty.Application.Authentication.Me;
 using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
+using SmartProperty.Application.Authentication.EmailVerifications;
+using SmartProperty.Application.Authentication.OneTimeCodes;
+using SmartProperty.Application.Authentication.PasswordReset;
+using SmartProperty.Application.Authentication.PhoneVerifications;
 using SmartProperty.Application.Authentication.Register;
 
 namespace SmartProperty.Api.Controllers;
@@ -30,6 +34,7 @@ public sealed class AuthController : ControllerBase
             request.Password ?? string.Empty,
             request.FirstName ?? string.Empty,
             request.LastName ?? string.Empty,
+            request.PhoneNumber ?? string.Empty,
             request.WorkspaceId ?? Guid.Empty);
 
         var result = await handler.Handle(command, cancellationToken);
@@ -47,10 +52,162 @@ public sealed class AuthController : ControllerBase
             registration.UserStatus.ToString(),
             registration.WorkspaceId,
             registration.WorkspaceAccessRequestId,
-            registration.WorkspaceAccessRequestStatus.ToString());
+            registration.WorkspaceAccessRequestStatus.ToString(),
+            registration.PhoneVerificationExpiresAt,
+            registration.EmailVerificationExpiresAt);
 
         // No endpoint can read a registration back yet, so the response has no Location header.
         return StatusCode(StatusCodes.Status201Created, response);
+    }
+
+    // The account is identified by its email: the caller has no token yet, and the one-time code is the proof.
+    [AllowAnonymous]
+    [HttpPost("verify-phone")]
+    public async Task<IActionResult> VerifyPhone(
+        [FromBody] VerifyPhoneRequest request,
+        [FromServices] ICommandHandler<VerifyPhoneCommand, PhoneVerified> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new VerifyPhoneCommand(
+            request.PhoneNumber ?? string.Empty,
+            request.Code ?? string.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        var verified = result.Value;
+
+        return Ok(new VerifyPhoneResponse(
+            verified.UserId,
+            PhoneVerified: true,
+            verified.VerifiedAt,
+            verified.UserStatus.ToString(),
+            "Phone number verified. Your account is awaiting administrator approval."));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("resend-phone-code")]
+    public async Task<IActionResult> ResendPhoneCode(
+        [FromBody] ResendPhoneVerificationRequest request,
+        [FromServices] ICommandHandler<ResendPhoneVerificationCommand> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new ResendPhoneVerificationCommand(request.PhoneNumber ?? string.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(new ResendCodeResponse(
+            "If this phone number needs verifying, a new verification code has been sent to it."));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("verify-email")]
+    public async Task<IActionResult> VerifyEmail(
+        [FromBody] VerifyEmailRequest request,
+        [FromServices] ICommandHandler<VerifyEmailCommand, EmailVerified> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new VerifyEmailCommand(
+            request.Email ?? string.Empty,
+            request.Code ?? string.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        var verified = result.Value;
+
+        return Ok(new VerifyEmailResponse(
+            verified.UserId,
+            EmailVerified: true,
+            verified.VerifiedAt,
+            verified.UserStatus.ToString(),
+            "Email verified. Your account is awaiting administrator approval."));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("resend-email-code")]
+    public async Task<IActionResult> ResendEmailCode(
+        [FromBody] ResendEmailVerificationRequest request,
+        [FromServices] ICommandHandler<ResendEmailVerificationCommand> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new ResendEmailVerificationCommand(request.Email ?? string.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(new ResendCodeResponse(
+            "If this email needs verifying, a new verification code has been sent to it."));
+    }
+
+    // Answers the same for every well-formed email, whether or not an account uses it.
+    [AllowAnonymous]
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword(
+        [FromBody] ForgotPasswordRequest request,
+        [FromServices] ICommandHandler<ForgotPasswordCommand> handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(new ForgotPasswordCommand(request.Email ?? string.Empty), cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(new ForgotPasswordResponse(
+            "If an account uses this email, a password reset code has been sent to it."));
+    }
+
+    [AllowAnonymous]
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(
+        [FromBody] ResetPasswordRequest request,
+        [FromServices] ICommandHandler<ResetPasswordCommand> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new ResetPasswordCommand(
+            request.Email ?? string.Empty,
+            request.Code ?? string.Empty,
+            request.NewPassword ?? string.Empty);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(new ResetPasswordResponse("Password changed. Sign in with your new password."));
     }
 
     [AllowAnonymous]
