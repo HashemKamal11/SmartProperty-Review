@@ -4,7 +4,6 @@ using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
 using SmartProperty.Application.Authentication.OneTimeCodes;
-using SmartProperty.Application.Authentication.Register;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Identity;
 
@@ -35,14 +34,14 @@ public sealed class ForgotPasswordCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (ValidateEmail(command.Email) is { } validationError)
+        if (CodeRecipient.ValidateEmail(command.Email) is { } validationError)
         {
             return Result.Failure(validationError);
         }
 
         var user = await userRepository.GetByEmailAsync(command.Email, cancellationToken);
 
-        if (user is null || !CanSignInAgain(user))
+        if (user is null || !CodeRecipient.CanReceiveCodes(user))
         {
             return Result.Success();
         }
@@ -66,28 +65,5 @@ public sealed class ForgotPasswordCommandHandler(
         await emailSender.SendAsync(user.Email, subject, body, cancellationToken);
 
         return Result.Success();
-    }
-
-    internal static bool CanSignInAgain(User user)
-    {
-        return user.Status is UserStatus.Pending or UserStatus.Active;
-    }
-
-    internal static Error? ValidateEmail(string email)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return OneTimeCodeErrors.ValidationFailed("Email is required.");
-        }
-
-        var trimmed = email.Trim();
-
-        if (trimmed.Length > RegisterCommandValidator.EmailMaxLength
-            || !RegisterCommandValidator.HasEmailStructure(trimmed))
-        {
-            return OneTimeCodeErrors.ValidationFailed("Email must be a valid email address.");
-        }
-
-        return null;
     }
 }

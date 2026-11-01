@@ -9,10 +9,14 @@ using SmartProperty.Domain.Identity;
 namespace SmartProperty.Application.Authentication.PhoneVerifications;
 
 /// <summary>
-/// Checks a submitted code against the latest phone verification code of the user and marks the phone number
-/// verified. A code allows <see cref="OneTimeCode.MaxFailedAttempts"/> wrong guesses, then is locked.
+/// Checks a submitted code against the latest phone verification code of the account with this phone number and marks
+/// it verified. A code allows <see cref="OneTimeCode.MaxFailedAttempts"/> wrong guesses, then is locked.
 /// Verifying a phone grants no workspace access and issues no tokens.
 /// </summary>
+/// <remarks>
+/// The account is found by phone number, which anyone can type, so an unknown number, an account with nothing left to
+/// verify, and a wrong code all return the same error.
+/// </remarks>
 public sealed class VerifyPhoneCommandHandler(
     IUserRepository userRepository,
     IOneTimeCodeRepository oneTimeCodeRepository,
@@ -28,21 +32,18 @@ public sealed class VerifyPhoneCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (command.UserId == Guid.Empty)
+        if (CodeRecipient.ValidatePhoneNumber(command.PhoneNumber, out var phoneNumber) is { } validationError)
         {
-            return Result<PhoneVerified>.Failure(OneTimeCodeErrors.ValidationFailed("User is required."));
+            return Result<PhoneVerified>.Failure(validationError);
         }
 
-        var user = await userRepository.GetByIdAsync(command.UserId, cancellationToken);
+        var user = await userRepository.GetByPhoneNumberAsync(phoneNumber, cancellationToken);
 
-        if (user is null || user.PhoneNumber is null)
+        if (user is null
+            || !CodeRecipient.CanReceiveCodes(user)
+            || user.IsPhoneVerified)
         {
-            return Result<PhoneVerified>.Failure(OneTimeCodeErrors.UserNotFound(Purpose));
-        }
-
-        if (user.IsPhoneVerified)
-        {
-            return Result<PhoneVerified>.Failure(OneTimeCodeErrors.AlreadyVerified(Purpose));
+            return Result<PhoneVerified>.Failure(OneTimeCodeErrors.InvalidOrExpired(Purpose));
         }
 
         var now = dateTimeProvider.UtcNow;

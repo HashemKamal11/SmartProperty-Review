@@ -14,10 +14,12 @@ The shared logic lives in `Application/Authentication/OneTimeCodes` (`OneTimeCod
 
 | Endpoint | Body | Success | Errors |
 |---|---|---|---|
-| `POST /api/auth/verify-phone` | `userId`, `code` | `200` with `phoneVerified`, `verifiedAt`, `status`, `message` | `422 phone_verification.invalid_code`, `409 phone_verification.too_many_attempts`, `409 phone_verification.already_verified`, `404 phone_verification.user_not_found` |
-| `POST /api/auth/resend-phone-code` | `userId` | `200` with `expiresAt` | `409 phone_verification.resend_too_soon`, `409 phone_verification.already_verified` |
-| `POST /api/auth/verify-email` | `userId`, `code` | `200` with `emailVerified`, `verifiedAt`, `status`, `message` | the same codes with the `email_verification.` prefix |
-| `POST /api/auth/resend-email-code` | `userId` | `200` with `expiresAt` | the same codes with the `email_verification.` prefix |
+| `POST /api/auth/verify-phone` | `phoneNumber`, `code` | `200` with `userId`, `phoneVerified`, `verifiedAt`, `status`, `message` | `422 phone_verification.invalid_code`, `409 phone_verification.too_many_attempts` |
+| `POST /api/auth/resend-phone-code` | `phoneNumber` | `200` with the same message for every well-formed number | `422 validation.failed` for a number not in international format |
+| `POST /api/auth/verify-email` | `email`, `code` | `200` with `userId`, `emailVerified`, `verifiedAt`, `status`, `message` | the same codes with the `email_verification.` prefix |
+| `POST /api/auth/resend-email-code` | `email` | `200` with the same message for every well-formed email | `422 validation.failed` for a malformed email |
+
+Each code is identified by where it was sent: the phone endpoints take the phone number and the email endpoints take the email, so an applicant whose code expired can ask for a new one without the `userId` from registration. Resend works like forgot-password: an unknown email or number, an already verified phone or email, a disabled account, and a request inside the 60-second cooldown all get the same `200` and send nothing, so the endpoints cannot be used to find registered emails or numbers. Verify returns one error (`invalid_code`) for an unknown email or number, an already verified contact, a wrong code, and an expired code. Pending and Active accounts can use these endpoints; Suspended and Deactivated ones cannot.
 
 Approval of a workspace access request fails with `409 workspace_access_requests.contact_not_verified` until the user's phone and email are both verified. Accounts that have no phone number (created before this feature, or by the bootstrap) are not held back.
 

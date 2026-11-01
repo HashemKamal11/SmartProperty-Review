@@ -13,18 +13,6 @@ internal static class OneTimeCodeErrors
         return new Error("validation.failed", description, ErrorType.Validation);
     }
 
-    public static Error UserNotFound(OneTimeCodePurpose purpose)
-    {
-        return new Error($"{Prefix(purpose)}.user_not_found", "The account was not found.", ErrorType.NotFound);
-    }
-
-    public static Error AlreadyVerified(OneTimeCodePurpose purpose)
-    {
-        var what = purpose == OneTimeCodePurpose.PhoneVerification ? "phone number" : "email";
-
-        return new Error($"{Prefix(purpose)}.already_verified", $"This {what} is already verified.", ErrorType.Conflict);
-    }
-
     // One answer for a wrong code, an expired code, and a missing code, so the response does not say which.
     public static Error InvalidOrExpired(OneTimeCodePurpose purpose)
     {

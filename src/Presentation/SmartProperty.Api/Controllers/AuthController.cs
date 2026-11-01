@@ -60,8 +60,7 @@ public sealed class AuthController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, response);
     }
 
-    // The user id returned by registration is the only thing identifying the account: the caller has no token
-    // yet, and the one-time code is the proof.
+    // The account is identified by its email: the caller has no token yet, and the one-time code is the proof.
     [AllowAnonymous]
     [HttpPost("verify-phone")]
     public async Task<IActionResult> VerifyPhone(
@@ -70,7 +69,7 @@ public sealed class AuthController : ControllerBase
         CancellationToken cancellationToken)
     {
         var command = new VerifyPhoneCommand(
-            request.UserId ?? Guid.Empty,
+            request.PhoneNumber ?? string.Empty,
             request.Code ?? string.Empty);
 
         var result = await handler.Handle(command, cancellationToken);
@@ -96,10 +95,10 @@ public sealed class AuthController : ControllerBase
     [HttpPost("resend-phone-code")]
     public async Task<IActionResult> ResendPhoneCode(
         [FromBody] ResendPhoneVerificationRequest request,
-        [FromServices] ICommandHandler<ResendPhoneVerificationCommand, OneTimeCodeIssued> handler,
+        [FromServices] ICommandHandler<ResendPhoneVerificationCommand> handler,
         CancellationToken cancellationToken)
     {
-        var command = new ResendPhoneVerificationCommand(request.UserId ?? Guid.Empty);
+        var command = new ResendPhoneVerificationCommand(request.PhoneNumber ?? string.Empty);
 
         var result = await handler.Handle(command, cancellationToken);
 
@@ -110,7 +109,8 @@ public sealed class AuthController : ControllerBase
             return StatusCode(errorResponse.Status, errorResponse);
         }
 
-        return Ok(new VerificationCodeSentResponse(result.Value.ExpiresAt));
+        return Ok(new ResendCodeResponse(
+            "If this phone number needs verifying, a new verification code has been sent to it."));
     }
 
     [AllowAnonymous]
@@ -121,7 +121,7 @@ public sealed class AuthController : ControllerBase
         CancellationToken cancellationToken)
     {
         var command = new VerifyEmailCommand(
-            request.UserId ?? Guid.Empty,
+            request.Email ?? string.Empty,
             request.Code ?? string.Empty);
 
         var result = await handler.Handle(command, cancellationToken);
@@ -147,10 +147,10 @@ public sealed class AuthController : ControllerBase
     [HttpPost("resend-email-code")]
     public async Task<IActionResult> ResendEmailCode(
         [FromBody] ResendEmailVerificationRequest request,
-        [FromServices] ICommandHandler<ResendEmailVerificationCommand, OneTimeCodeIssued> handler,
+        [FromServices] ICommandHandler<ResendEmailVerificationCommand> handler,
         CancellationToken cancellationToken)
     {
-        var command = new ResendEmailVerificationCommand(request.UserId ?? Guid.Empty);
+        var command = new ResendEmailVerificationCommand(request.Email ?? string.Empty);
 
         var result = await handler.Handle(command, cancellationToken);
 
@@ -161,7 +161,8 @@ public sealed class AuthController : ControllerBase
             return StatusCode(errorResponse.Status, errorResponse);
         }
 
-        return Ok(new VerificationCodeSentResponse(result.Value.ExpiresAt));
+        return Ok(new ResendCodeResponse(
+            "If this email needs verifying, a new verification code has been sent to it."));
     }
 
     // Answers the same for every well-formed email, whether or not an account uses it.

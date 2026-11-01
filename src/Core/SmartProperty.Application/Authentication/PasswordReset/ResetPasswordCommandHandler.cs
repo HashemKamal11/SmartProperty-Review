@@ -43,7 +43,7 @@ public sealed class ResetPasswordCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (ForgotPasswordCommandHandler.ValidateEmail(command.Email) is { } emailError)
+        if (CodeRecipient.ValidateEmail(command.Email) is { } emailError)
         {
             return Result.Failure(emailError);
         }
@@ -62,7 +62,7 @@ public sealed class ResetPasswordCommandHandler(
 
         var user = await userRepository.GetByEmailAsync(command.Email, cancellationToken);
 
-        if (user is null || !ForgotPasswordCommandHandler.CanSignInAgain(user))
+        if (user is null || !CodeRecipient.CanReceiveCodes(user))
         {
             // Pays the same hashing cost as a real reset, so response time does not reveal an unknown email.
             passwordHasher.PerformDummyVerification(command.NewPassword);

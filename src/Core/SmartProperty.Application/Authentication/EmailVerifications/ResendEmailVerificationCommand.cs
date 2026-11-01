@@ -1,6 +1,12 @@
 using SmartProperty.Application.Abstractions.Messaging;
-using SmartProperty.Application.Authentication.OneTimeCodes;
 
 namespace SmartProperty.Application.Authentication.EmailVerifications;
 
-public sealed record ResendEmailVerificationCommand(Guid UserId) : ICommand<OneTimeCodeIssued>;
+public sealed record ResendEmailVerificationCommand(string Email) : ICommand
+{
+    // Keeps the email out of logs and debugger displays of the record.
+    public override string ToString()
+    {
+        return nameof(ResendEmailVerificationCommand);
+    }
+}

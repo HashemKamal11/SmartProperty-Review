@@ -119,7 +119,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
         // 7. The applicant proves the phone number with the code that was texted to it.
         using (var verifyResponse = await anonymous.PostAsJsonAsync(
             "/api/auth/verify-phone",
-            new VerifyPhoneRequest(registered.UserId, _factory.SmsSender.LatestCodeFor(phoneNumber))))
+            new VerifyPhoneRequest(phoneNumber, _factory.SmsSender.LatestCodeFor(phoneNumber))))
         {
             Assert.Equal(HttpStatusCode.OK, verifyResponse.StatusCode);
             var verified = (await verifyResponse.Content.ReadFromJsonAsync<VerifyPhoneResponse>())!;
@@ -138,7 +138,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
 
         using (var verifyEmailResponse = await anonymous.PostAsJsonAsync(
             "/api/auth/verify-email",
-            new VerifyEmailRequest(registered.UserId, _factory.EmailSender.LatestCodeFor(email))))
+            new VerifyEmailRequest(email, _factory.EmailSender.LatestCodeFor(email))))
         {
             Assert.Equal(HttpStatusCode.OK, verifyEmailResponse.StatusCode);
             var emailVerified = (await verifyEmailResponse.Content.ReadFromJsonAsync<VerifyEmailResponse>())!;

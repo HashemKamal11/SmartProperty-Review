@@ -24,5 +24,8 @@ public sealed class SmtpOptions
 
     public string FromName { get; set; } = "SmartProperty";
 
+    /// <summary>How long one send may take before it fails. Raise it on a slow connection to the mail server.</summary>
+    public int TimeoutSeconds { get; set; } = 60;
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Host);
 }

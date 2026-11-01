@@ -10,41 +10,43 @@ using SmartProperty.Domain.Identity;
 namespace SmartProperty.Application.Authentication.PhoneVerifications;
 
 /// <summary>
-/// Sends a fresh verification code to a user whose phone number is not verified yet. Earlier unused codes are
-/// retired so only the newest one works, and a new code cannot be requested within
-/// <see cref="OneTimeCodePolicy.ResendCooldown"/> of the previous one.
+/// Sends a fresh verification code by SMS to the account with this phone number, when it is not verified
+/// yet. This is how an applicant whose earlier code expired asks for another one. Earlier unused codes are retired
+/// so only the newest one works.
 /// </summary>
+/// <remarks>
+/// The answer never depends on the account: an unknown number, an account with a verified phone, a disabled
+/// account, and a request inside the <see cref="OneTimeCodePolicy.ResendCooldown"/> all succeed silently, so the
+/// endpoint cannot be used to find out which numbers are registered. Only a malformed number is refused.
+/// </remarks>
 public sealed class ResendPhoneVerificationCommandHandler(
     IUserRepository userRepository,
     IOneTimeCodeRepository oneTimeCodeRepository,
     ISmsSender smsSender,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
-    : ICommandHandler<ResendPhoneVerificationCommand, OneTimeCodeIssued>
+    : ICommandHandler<ResendPhoneVerificationCommand>
 {
     private const OneTimeCodePurpose Purpose = OneTimeCodePurpose.PhoneVerification;
 
-    public async Task<Result<OneTimeCodeIssued>> Handle(
+    public async Task<Result> Handle(
         ResendPhoneVerificationCommand command,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (command.UserId == Guid.Empty)
+        if (CodeRecipient.ValidatePhoneNumber(command.PhoneNumber, out var phoneNumber) is { } validationError)
         {
-            return Result<OneTimeCodeIssued>.Failure(OneTimeCodeErrors.ValidationFailed("User is required."));
+            return Result.Failure(validationError);
         }
 
-        var user = await userRepository.GetByIdAsync(command.UserId, cancellationToken);
+        var user = await userRepository.GetByPhoneNumberAsync(phoneNumber, cancellationToken);
 
-        if (user is null || user.PhoneNumber is null)
+        if (user is null
+            || !CodeRecipient.CanReceiveCodes(user)
+            || user.IsPhoneVerified)
         {
-            return Result<OneTimeCodeIssued>.Failure(OneTimeCodeErrors.UserNotFound(Purpose));
-        }
-
-        if (user.IsPhoneVerified)
-        {
-            return Result<OneTimeCodeIssued>.Failure(OneTimeCodeErrors.AlreadyVerified(Purpose));
+            return Result.Success();
         }
 
         var issued = await OneTimeCodeFlow.IssueAsync(
@@ -57,16 +59,16 @@ public sealed class ResendPhoneVerificationCommandHandler(
 
         if (issued.IsFailure)
         {
-            return Result<OneTimeCodeIssued>.Failure(issued.Error!);
+            return Result.Success();
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         await smsSender.SendAsync(
-            user.PhoneNumber,
+            phoneNumber,
             OneTimeCodePolicy.BuildPhoneMessage(issued.Value.Code),
             cancellationToken);
 
-        return Result<OneTimeCodeIssued>.Success(new OneTimeCodeIssued(issued.Value.ExpiresAt));
+        return Result.Success();
     }
 }

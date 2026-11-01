@@ -8,11 +8,12 @@ using Xunit;
 namespace SmartProperty.UnitTests.Application.Authentication;
 
 /// <summary>
-/// Exercises the real email verify and resend handlers. They follow the same rules as phone verification, and a
-/// code issued for one purpose must never satisfy another.
+/// Exercises the real email verify and resend handlers. Resend works like forgot-password: it answers the same for
+/// every email. A code issued for one purpose must never satisfy another.
 /// </summary>
 public sealed class EmailVerificationHandlerTests
 {
+    private const string Email = "user@example.test";
     private const string RightCode = "123456";
 
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
@@ -26,7 +27,7 @@ public sealed class EmailVerificationHandlerTests
 
     public EmailVerificationHandlerTests()
     {
-        _user = new User(Guid.NewGuid(), "user@example.test", "Test", "User", Now, "+201012345678");
+        _user = new User(Guid.NewGuid(), Email, "Test", "User", Now, "+201012345678");
         _users.Seed(_user);
     }
 
@@ -79,41 +80,81 @@ public sealed class EmailVerificationHandlerTests
     }
 
     [Fact]
-    public async Task Resend_EmailsANewCode_AndRetiresTheOldOne()
+    public async Task UnknownEmail_GivesTheSameErrorAsAWrongCode()
+    {
+        var result = await new VerifyEmailCommandHandler(_users, _codes, _clock, _unitOfWork)
+            .Handle(new VerifyEmailCommand("nobody@example.test", RightCode));
+
+        Assert.Equal("email_verification.invalid_code", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task AlreadyVerifiedEmail_GivesTheSameErrorAsAWrongCode()
+    {
+        SeedCode(OneTimeCodePurpose.EmailVerification, RightCode);
+        _user.VerifyEmail(Now);
+
+        var result = await Verify(RightCode);
+
+        Assert.Equal("email_verification.invalid_code", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Resend_AfterTheOldCodeExpired_EmailsANewCode_AndRetiresTheOldOne()
     {
         var old = SeedCode(OneTimeCodePurpose.EmailVerification, RightCode);
-        _clock.UtcNow = Now.AddSeconds(60);
+        _clock.UtcNow = Now.AddMinutes(6);
 
-        var result = await CreateResendHandler().Handle(new ResendEmailVerificationCommand(_user.Id));
+        var result = await Resend(Email);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(Now.AddSeconds(60), old.ConsumedAt);
+        Assert.Equal(Now.AddMinutes(6), old.ConsumedAt);
         var sent = Assert.Single(_email.Sent);
-        Assert.Equal("user@example.test", sent.ToEmail);
+        Assert.Equal(Email, sent.ToEmail);
         Assert.True((await Verify(_email.LatestCode())).IsSuccess);
     }
 
     [Fact]
-    public async Task Resend_WithinTheCooldown_IsRefusedAndSendsNothing()
+    public async Task Resend_WithinTheCooldown_AnswersTheSameAndSendsNothing()
     {
         SeedCode(OneTimeCodePurpose.EmailVerification, RightCode);
         _clock.UtcNow = Now.AddSeconds(59);
 
-        var result = await CreateResendHandler().Handle(new ResendEmailVerificationCommand(_user.Id));
+        var result = await Resend(Email);
 
-        Assert.Equal("email_verification.resend_too_soon", result.Error!.Code);
+        Assert.True(result.IsSuccess);
         Assert.Empty(_email.Sent);
     }
 
     [Fact]
-    public async Task Resend_ForAVerifiedEmail_IsRefused()
+    public async Task Resend_ForAVerifiedEmail_AnswersTheSameAndSendsNothing()
     {
         _user.VerifyEmail(Now);
 
-        var result = await CreateResendHandler().Handle(new ResendEmailVerificationCommand(_user.Id));
+        var result = await Resend(Email);
 
-        Assert.Equal("email_verification.already_verified", result.Error!.Code);
+        Assert.True(result.IsSuccess);
         Assert.Empty(_email.Sent);
+    }
+
+    [Fact]
+    public async Task Resend_ForAnUnknownEmail_AnswersTheSameAndSendsNothing()
+    {
+        var result = await Resend("nobody@example.test");
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(_email.Sent);
+        Assert.Empty(_codes.All);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-an-email")]
+    public async Task Resend_ForAMalformedEmail_IsAValidationError(string email)
+    {
+        var result = await Resend(email);
+
+        Assert.Equal("validation.failed", result.Error!.Code);
     }
 
     [Fact]
@@ -147,11 +188,12 @@ public sealed class EmailVerificationHandlerTests
     private Task<Result<EmailVerified>> Verify(string code)
     {
         return new VerifyEmailCommandHandler(_users, _codes, _clock, _unitOfWork)
-            .Handle(new VerifyEmailCommand(_user.Id, code));
+            .Handle(new VerifyEmailCommand(Email, code));
     }
 
-    private ResendEmailVerificationCommandHandler CreateResendHandler()
+    private Task<Result> Resend(string email)
     {
-        return new ResendEmailVerificationCommandHandler(_users, _codes, _email, _clock, _unitOfWork);
+        return new ResendEmailVerificationCommandHandler(_users, _codes, _email, _clock, _unitOfWork)
+            .Handle(new ResendEmailVerificationCommand(email));
     }
 }

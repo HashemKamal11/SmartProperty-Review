@@ -11,8 +11,6 @@ namespace SmartProperty.Api.Infrastructure.Notifications;
 /// </summary>
 internal sealed class SmtpEmailSender(IOptions<SmtpOptions> options) : IEmailSender
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
-
     public async Task SendAsync(
         string toEmail,
         string subject,
@@ -36,7 +34,7 @@ internal sealed class SmtpEmailSender(IOptions<SmtpOptions> options) : IEmailSen
         {
             EnableSsl = settings.EnableSsl,
             DeliveryMethod = SmtpDeliveryMethod.Network,
-            Timeout = (int)Timeout.TotalMilliseconds
+            Timeout = (int)TimeSpan.FromSeconds(settings.TimeoutSeconds).TotalMilliseconds
         };
 
         if (!string.IsNullOrEmpty(settings.UserName))

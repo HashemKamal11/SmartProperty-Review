@@ -9,17 +9,19 @@ namespace SmartProperty.UnitTests.Application.Authentication;
 
 /// <summary>
 /// Exercises the real verify and resend handlers against the approved rules: six digits, five minutes, five wrong
-/// attempts, and a one-minute resend cooldown.
+/// attempts, and a one-minute resend cooldown. The account is found by email, so the answers must not depend on
+/// whether an email is registered.
 /// </summary>
 public sealed class PhoneVerificationHandlerTests
 {
+    private const string Email = "user@example.test";
     private const string Phone = "+201012345678";
     private const string RightCode = "123456";
 
     private static readonly DateTimeOffset Now = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
     private readonly FakeUserRepository _users = new();
-    private readonly FakeOneTimeCodeRepository _verifications = new();
+    private readonly FakeOneTimeCodeRepository _codes = new();
     private readonly FakeSmsSender _sms = new();
     private readonly FakeDateTimeProvider _clock = new(Now);
     private readonly FakeUnitOfWork _unitOfWork = new();
@@ -27,34 +29,45 @@ public sealed class PhoneVerificationHandlerTests
 
     public PhoneVerificationHandlerTests()
     {
-        _user = new User(Guid.NewGuid(), "user@example.test", "Test", "User", Now, Phone);
+        _user = new User(Guid.NewGuid(), Email, "Test", "User", Now, Phone);
         _users.Seed(_user);
     }
 
     [Fact]
     public async Task RightCode_VerifiesThePhoneAndConsumesTheCode()
     {
-        var verification = SeedCode(RightCode);
+        var code = SeedCode(RightCode);
 
         var result = await Verify(RightCode);
 
         Assert.True(result.IsSuccess);
+        Assert.Equal(_user.Id, result.Value.UserId);
         Assert.True(_user.IsPhoneVerified);
         Assert.Equal(Now, _user.PhoneVerifiedAt);
-        Assert.Equal(Now, verification.ConsumedAt);
+        Assert.Equal(Now, code.ConsumedAt);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task PhoneNumberIsMatchedWithoutRegardToSeparators()
+    {
+        SeedCode(RightCode);
+
+        var result = await CreateVerifyHandler().Handle(new VerifyPhoneCommand(" +20 (101) 234-5678 ", RightCode));
+
+        Assert.True(result.IsSuccess);
     }
 
     [Fact]
     public async Task WrongCode_IsRefusedAndCountsOneAttempt()
     {
-        var verification = SeedCode(RightCode);
+        var code = SeedCode(RightCode);
 
         var result = await Verify("000000");
 
         Assert.Equal("phone_verification.invalid_code", result.Error!.Code);
         Assert.False(_user.IsPhoneVerified);
-        Assert.Equal(1, verification.FailedAttempts);
+        Assert.Equal(1, code.FailedAttempts);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
 
@@ -98,14 +111,14 @@ public sealed class PhoneVerificationHandlerTests
     }
 
     [Fact]
-    public async Task UsedCode_CannotBeUsedTwice()
+    public async Task UsedCode_CannotBeUsedTwice_AndTheAnswerIsTheSameAsAWrongCode()
     {
         SeedCode(RightCode);
         Assert.True((await Verify(RightCode)).IsSuccess);
 
         var again = await Verify(RightCode);
 
-        Assert.Equal("phone_verification.already_verified", again.Error!.Code);
+        Assert.Equal("phone_verification.invalid_code", again.Error!.Code);
     }
 
     [Theory]
@@ -125,27 +138,36 @@ public sealed class PhoneVerificationHandlerTests
     }
 
     [Fact]
-    public async Task UnknownUser_IsNotFound()
+    public async Task UnknownPhoneNumber_GivesTheSameErrorAsAWrongCode()
     {
-        var result = await CreateVerifyHandler().Handle(new VerifyPhoneCommand(Guid.NewGuid(), RightCode));
+        var result = await CreateVerifyHandler().Handle(new VerifyPhoneCommand("+201099999999", RightCode));
 
-        Assert.Equal("phone_verification.user_not_found", result.Error!.Code);
+        Assert.Equal("phone_verification.invalid_code", result.Error!.Code);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("01012345678")]
+    public async Task MalformedPhoneNumber_IsAValidationError(string phoneNumber)
+    {
+        var result = await CreateVerifyHandler().Handle(new VerifyPhoneCommand(phoneNumber, RightCode));
+
+        Assert.Equal("validation.failed", result.Error!.Code);
     }
 
     [Fact]
-    public async Task Resend_SendsANewCode_AndRetiresTheOldOne()
+    public async Task Resend_AfterTheOldCodeExpired_SendsANewCode_AndRetiresTheOldOne()
     {
         var old = SeedCode(RightCode);
-        _clock.UtcNow = Now.AddSeconds(60);
+        _clock.UtcNow = Now.AddMinutes(6);
 
-        var result = await CreateResendHandler().Handle(new ResendPhoneVerificationCommand(_user.Id));
+        var result = await Resend(Phone);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(Now.AddSeconds(60).AddMinutes(5), result.Value.ExpiresAt);
-        Assert.Equal(Now.AddSeconds(60), old.ConsumedAt);
+        Assert.Equal(Now.AddMinutes(6), old.ConsumedAt);
         var sent = Assert.Single(_sms.Sent);
         Assert.Equal(Phone, sent.PhoneNumber);
-        Assert.Equal(2, _verifications.All.Count);
+        Assert.Equal(2, _codes.All.Count);
 
         // Only the newest code works.
         Assert.Equal("phone_verification.invalid_code", (await Verify(RightCode)).Error!.Code);
@@ -153,49 +175,79 @@ public sealed class PhoneVerificationHandlerTests
     }
 
     [Fact]
-    public async Task Resend_WithinTheCooldown_IsRefusedAndSendsNothing()
+    public async Task Resend_WithinTheCooldown_AnswersTheSameAndSendsNothing()
     {
         SeedCode(RightCode);
         _clock.UtcNow = Now.AddSeconds(59);
 
-        var result = await CreateResendHandler().Handle(new ResendPhoneVerificationCommand(_user.Id));
+        var result = await Resend(Phone);
 
-        Assert.Equal("phone_verification.resend_too_soon", result.Error!.Code);
+        Assert.True(result.IsSuccess);
         Assert.Empty(_sms.Sent);
-        Assert.Single(_verifications.All);
+        Assert.Single(_codes.All);
     }
 
     [Fact]
-    public async Task Resend_ForAVerifiedPhone_IsRefused()
+    public async Task Resend_ForAVerifiedPhone_AnswersTheSameAndSendsNothing()
     {
         _user.VerifyPhone(Now);
 
-        var result = await CreateResendHandler().Handle(new ResendPhoneVerificationCommand(_user.Id));
+        var result = await Resend(Phone);
 
-        Assert.Equal("phone_verification.already_verified", result.Error!.Code);
+        Assert.True(result.IsSuccess);
         Assert.Empty(_sms.Sent);
+    }
+
+    [Fact]
+    public async Task Resend_ForAnUnknownPhoneNumber_AnswersTheSameAndSendsNothing()
+    {
+        var result = await Resend("+201099999999");
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(_sms.Sent);
+        Assert.Empty(_codes.All);
+    }
+
+    [Fact]
+    public async Task Resend_ForADisabledAccount_AnswersTheSameAndSendsNothing()
+    {
+        _user.Suspend(Now);
+
+        var result = await Resend(Phone);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(_sms.Sent);
+    }
+
+    [Fact]
+    public async Task Resend_ForAMalformedPhoneNumber_IsAValidationError()
+    {
+        var result = await Resend("01012345678");
+
+        Assert.Equal("validation.failed", result.Error!.Code);
     }
 
     private OneTimeCode SeedCode(string code)
     {
         var verification = OneTimeCodePolicy.Issue(_user.Id, OneTimeCodePurpose.PhoneVerification, code, Now);
-        _verifications.Seed(verification);
+        _codes.Seed(verification);
 
         return verification;
     }
 
     private Task<Result<PhoneVerified>> Verify(string code)
     {
-        return CreateVerifyHandler().Handle(new VerifyPhoneCommand(_user.Id, code));
+        return CreateVerifyHandler().Handle(new VerifyPhoneCommand(Phone, code));
+    }
+
+    private Task<Result> Resend(string phoneNumber)
+    {
+        return new ResendPhoneVerificationCommandHandler(_users, _codes, _sms, _clock, _unitOfWork)
+            .Handle(new ResendPhoneVerificationCommand(phoneNumber));
     }
 
     private VerifyPhoneCommandHandler CreateVerifyHandler()
     {
-        return new VerifyPhoneCommandHandler(_users, _verifications, _clock, _unitOfWork);
-    }
-
-    private ResendPhoneVerificationCommandHandler CreateResendHandler()
-    {
-        return new ResendPhoneVerificationCommandHandler(_users, _verifications, _sms, _clock, _unitOfWork);
+        return new VerifyPhoneCommandHandler(_users, _codes, _clock, _unitOfWork);
     }
 }

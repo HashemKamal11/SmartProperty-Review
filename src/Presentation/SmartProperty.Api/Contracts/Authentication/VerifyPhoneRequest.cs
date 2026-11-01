@@ -6,12 +6,12 @@ namespace SmartProperty.Api.Contracts.Authentication;
 /// (422) instead of the implicit required-member model validation applied to non-nullable members (400).
 /// </summary>
 public sealed record VerifyPhoneRequest(
-    Guid? UserId,
+    string? PhoneNumber,
     string? Code)
 {
-    // Keeps the one-time code out of logs and debugger displays of the record.
+    // Keeps the phone number and the one-time code out of logs and debugger displays of the record.
     public override string ToString()
     {
-        return $"{nameof(VerifyPhoneRequest)} {{ {nameof(UserId)} = {UserId} }}";
+        return $"{nameof(VerifyPhoneRequest)} {{ }}";
     }
 }
