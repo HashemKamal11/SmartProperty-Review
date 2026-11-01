@@ -112,6 +112,18 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
             .HasConversion<string>()
             .HasMaxLength(32);
 
+        builder.HasMany(property => property.Amenities)
+            .WithMany()
+            .UsingEntity<Dictionary<string, object>>(
+                "property_amenities",
+                join => join.HasOne<Amenity>().WithMany().HasForeignKey("amenity_id").OnDelete(DeleteBehavior.Restrict),
+                join => join.HasOne<Property>().WithMany().HasForeignKey("property_id").OnDelete(DeleteBehavior.Restrict),
+                join =>
+                {
+                    join.ToTable("property_amenities", "registry");
+                    join.HasKey("property_id", "amenity_id");
+                });
+
         builder.Property(property => property.CreatedAt)
             .HasColumnName("created_at")
             .IsRequired();

@@ -12,6 +12,7 @@ public sealed class CreatePropertyCommandHandlerTests
         new(2026, 10, 4, 8, 30, 0, TimeSpan.Zero);
 
     private readonly FakePropertyRepository _properties = new();
+    private readonly FakeAmenityRepository _amenities = new();
     private readonly FakeDateTimeProvider _clock = new(CreatedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
 
@@ -133,7 +134,9 @@ public sealed class CreatePropertyCommandHandlerTests
 
     private CreatePropertyCommandHandler CreateHandler()
     {
-        return new CreatePropertyCommandHandler(_properties, _clock, _unitOfWork);
+        return new CreatePropertyCommandHandler(
+            _properties,
+            _amenities, _clock, _unitOfWork);
     }
 
     private static decimal? Parse(string? value)

@@ -101,7 +101,7 @@ public sealed class ArchivePropertyEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(
-            ["address", "bathrooms", "bedrooms", "builtDate", "createdAt", "finishingStatus", "id", "status", "type", "updatedAt"],
+            ["address", "amenities", "bathrooms", "bedrooms", "builtDate", "createdAt", "finishingStatus", "id", "status", "type", "updatedAt"],
             PropertyNames(document.RootElement));
         Assert.Equal(
             ["addressLine", "city", "countryCode", "district", "latitude", "longitude", "postalCode", "region"],

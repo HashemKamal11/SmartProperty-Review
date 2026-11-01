@@ -22,7 +22,9 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
     /// </remarks>
     public Task<Property?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return dbContext.Properties.FirstOrDefaultAsync(property => property.Id == id, cancellationToken);
+        return dbContext.Properties
+            .Include(property => property.Amenities)
+            .FirstOrDefaultAsync(property => property.Id == id, cancellationToken);
     }
 
     /// <remarks>
@@ -51,7 +53,11 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
                 property.Bedrooms,
                 property.Bathrooms,
                 property.BuiltDate,
-                property.FinishingStatus))
+                property.FinishingStatus,
+                property.Amenities
+                    .OrderBy(amenity => amenity.SortOrder)
+                    .Select(amenity => new AmenityDetails(amenity.Code, amenity.NameAr, amenity.NameEn))
+                    .ToList()))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -132,7 +138,11 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
                 property.Bedrooms,
                 property.Bathrooms,
                 property.BuiltDate,
-                property.FinishingStatus))
+                property.FinishingStatus,
+                property.Amenities
+                    .OrderBy(amenity => amenity.SortOrder)
+                    .Select(amenity => new AmenityDetails(amenity.Code, amenity.NameAr, amenity.NameEn))
+                    .ToList()))
             .ToListAsync(cancellationToken);
 
         return new PropertyPage(items, totalCount);

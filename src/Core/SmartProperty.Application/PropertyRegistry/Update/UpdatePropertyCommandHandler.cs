@@ -23,6 +23,7 @@ namespace SmartProperty.Application.PropertyRegistry.Update;
 /// </remarks>
 public sealed class UpdatePropertyCommandHandler(
     IPropertyRepository propertyRepository,
+    IAmenityRepository amenityRepository,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
     : ICommandHandler<UpdatePropertyCommand, PropertyDetails>
@@ -58,6 +59,17 @@ public sealed class UpdatePropertyCommandHandler(
             return Result<PropertyDetails>.Failure(UpdatePropertyErrors.Archived);
         }
 
+        var amenities = await PropertyAmenityResolver.ResolveAsync(
+            amenityRepository,
+            command.AmenityCodes,
+            UpdatePropertyErrors.ValidationFailed,
+            cancellationToken);
+
+        if (amenities.IsFailure)
+        {
+            return Result<PropertyDetails>.Failure(amenities.Error!);
+        }
+
         var address = new PropertyAddress(
             command.CountryCode!,
             command.City,
@@ -75,7 +87,8 @@ public sealed class UpdatePropertyCommandHandler(
             command.Bedrooms,
             command.Bathrooms,
             command.BuiltDate,
-            finishingStatus);
+            finishingStatus,
+            amenities.Value);
 
         if (changed)
         {

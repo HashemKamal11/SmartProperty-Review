@@ -12,7 +12,7 @@ namespace SmartProperty.Persistence.IntegrationTests.PropertyRegistry;
 public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
     [Fact]
-    public async Task TheRegistrySchemaHoldsOnlyThePropertiesTable()
+    public async Task TheRegistrySchemaHoldsOnlyTheApprovedTables()
     {
         var actual = await QueryStringsAsync(
             """
@@ -22,7 +22,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             ORDER BY 1;
             """);
 
-        Assert.Equal(["properties"], actual);
+        Assert.Equal(["amenities", "properties", "property_amenities"], actual);
     }
 
     [Fact]

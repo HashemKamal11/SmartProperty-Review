@@ -66,6 +66,14 @@ internal static class PropertyCommandSupport
         return truncated >= currentUpdatedAt ? truncated : currentUpdatedAt;
     }
 
+    public static List<AmenityDetails> ToAmenityDetails(IEnumerable<Amenity> amenities)
+    {
+        return amenities
+            .OrderBy(amenity => amenity.SortOrder)
+            .Select(amenity => new AmenityDetails(amenity.Code, amenity.NameAr, amenity.NameEn))
+            .ToList();
+    }
+
     /// <summary>The read model of the tracked aggregate, as the command left it.</summary>
     public static PropertyDetails ToDetails(Property property)
     {
@@ -87,6 +95,7 @@ internal static class PropertyCommandSupport
             property.Bedrooms,
             property.Bathrooms,
             property.BuiltDate,
-            property.FinishingStatus);
+            property.FinishingStatus,
+            ToAmenityDetails(property.Amenities));
     }
 }

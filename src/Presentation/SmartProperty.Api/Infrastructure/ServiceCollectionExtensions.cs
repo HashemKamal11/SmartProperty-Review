@@ -36,6 +36,7 @@ using SmartProperty.Application.Marketplace.PublicListings.GetById;
 using SmartProperty.Application.Marketplace.PublicListings.Search;
 using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Archive;
+using SmartProperty.Application.PropertyRegistry.Amenities;
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Application.PropertyRegistry.GetById;
 using SmartProperty.Application.PropertyRegistry.List;
@@ -294,6 +295,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetPropertiesQuery, PagedList<PropertyDetails>>, GetPropertiesQueryHandler>();
         services.AddScoped<ICommandHandler<UpdatePropertyCommand, PropertyDetails>, UpdatePropertyCommandHandler>();
         services.AddScoped<ICommandHandler<ArchivePropertyCommand, PropertyDetails>, ArchivePropertyCommandHandler>();
+        services.AddScoped<IQueryHandler<GetAmenitiesQuery, IReadOnlyList<AmenityDetails>>, GetAmenitiesQueryHandler>();
         services.AddScoped<ICommandHandler<RecordPropertyMatchCommand, PropertyMatchDetails>, RecordPropertyMatchCommandHandler>();
 
         services

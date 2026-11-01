@@ -19,4 +19,5 @@ public sealed record UpdatePropertyCommand(
     int? Bedrooms = null,
     int? Bathrooms = null,
     DateOnly? BuiltDate = null,
-    string? FinishingStatus = null) : ICommand<PropertyDetails>;
+    string? FinishingStatus = null,
+    IReadOnlyList<string>? AmenityCodes = null) : ICommand<PropertyDetails>;

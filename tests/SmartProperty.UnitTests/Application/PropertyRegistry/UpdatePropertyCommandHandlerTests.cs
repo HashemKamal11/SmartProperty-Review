@@ -13,6 +13,7 @@ public sealed class UpdatePropertyCommandHandlerTests
     private static readonly DateTimeOffset UpdatedAt = new(2026, 10, 11, 9, 30, 0, TimeSpan.Zero);
 
     private readonly FakePropertyRepository _properties = new();
+    private readonly FakeAmenityRepository _amenities = new();
     private readonly FakeDateTimeProvider _clock = new(UpdatedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
 
@@ -321,7 +322,9 @@ public sealed class UpdatePropertyCommandHandlerTests
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
-        Assert.Equal(first.Value, second.Value);
+        // The amenity list is compared by content: a record compares collections by reference.
+        Assert.Equal(first.Value with { Amenities = null }, second.Value with { Amenities = null });
+        Assert.Equal(first.Value.Amenities, second.Value.Amenities);
         Assert.Equal(UpdatedAt, property.UpdatedAt);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
@@ -456,7 +459,7 @@ public sealed class UpdatePropertyCommandHandlerTests
 
     private UpdatePropertyCommandHandler CreateHandler()
     {
-        return new UpdatePropertyCommandHandler(_properties, _clock, _unitOfWork);
+        return new UpdatePropertyCommandHandler(_properties, _amenities, _clock, _unitOfWork);
     }
 
     private static decimal? Parse(string? value)

@@ -26,6 +26,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<WorkspaceMembershipRole> WorkspaceMembershipRoles => Set<WorkspaceMembershipRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<Property> Properties => Set<Property>();
+    public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<PropertyMatch> PropertyMatches => Set<PropertyMatch>();
     public DbSet<ListingSubmission> ListingSubmissions => Set<ListingSubmission>();
     public DbSet<ListingReviewDecision> ListingReviewDecisions => Set<ListingReviewDecision>();

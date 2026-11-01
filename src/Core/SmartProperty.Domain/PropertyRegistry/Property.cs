@@ -23,7 +23,8 @@ public sealed class Property
         int? bedrooms = null,
         int? bathrooms = null,
         DateOnly? builtDate = null,
-        FinishingStatus? finishingStatus = null)
+        FinishingStatus? finishingStatus = null,
+        IEnumerable<Amenity>? amenities = null)
     {
         if (id == Guid.Empty)
         {
@@ -45,6 +46,7 @@ public sealed class Property
         Bathrooms = bathrooms;
         BuiltDate = builtDate;
         FinishingStatus = finishingStatus;
+        _amenities.AddRange(DistinctById(amenities));
         Status = PropertyStatus.Active;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
@@ -58,6 +60,12 @@ public sealed class Property
     public int? Bathrooms { get; private set; }
     public DateOnly? BuiltDate { get; private set; }
     public FinishingStatus? FinishingStatus { get; private set; }
+
+    private readonly List<Amenity> _amenities = [];
+
+    /// <summary>The amenities this property offers, with no duplicates.</summary>
+    public IReadOnlyCollection<Amenity> Amenities => _amenities;
+
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
@@ -95,7 +103,8 @@ public sealed class Property
         int? bedrooms = null,
         int? bathrooms = null,
         DateOnly? builtDate = null,
-        FinishingStatus? finishingStatus = null)
+        FinishingStatus? finishingStatus = null,
+        IEnumerable<Amenity>? amenities = null)
     {
         if (Status != PropertyStatus.Active)
         {
@@ -117,7 +126,8 @@ public sealed class Property
             && Bedrooms == bedrooms
             && Bathrooms == bathrooms
             && BuiltDate == builtDate
-            && FinishingStatus == finishingStatus)
+            && FinishingStatus == finishingStatus
+            && HasSameAmenities(amenities))
         {
             return false;
         }
@@ -130,9 +140,37 @@ public sealed class Property
         Bathrooms = bathrooms;
         BuiltDate = builtDate;
         FinishingStatus = finishingStatus;
+        ReplaceAmenities(amenities);
         UpdatedAt = updatedAt;
 
         return true;
+    }
+
+    private static List<Amenity> DistinctById(IEnumerable<Amenity>? amenities)
+    {
+        return (amenities ?? []).DistinctBy(amenity => amenity.Id).ToList();
+    }
+
+    private bool HasSameAmenities(IEnumerable<Amenity>? amenities)
+    {
+        return DistinctById(amenities).Select(amenity => amenity.Id).ToHashSet()
+            .SetEquals(_amenities.Select(amenity => amenity.Id));
+    }
+
+    // Keeps the amenities already attached, so only the real difference reaches the database.
+    private void ReplaceAmenities(IEnumerable<Amenity>? amenities)
+    {
+        var incoming = DistinctById(amenities);
+
+        _amenities.RemoveAll(current => incoming.TrueForAll(amenity => amenity.Id != current.Id));
+
+        foreach (var amenity in incoming)
+        {
+            if (_amenities.TrueForAll(current => current.Id != amenity.Id))
+            {
+                _amenities.Add(amenity);
+            }
+        }
     }
 
     private static void ValidateSpecifications(

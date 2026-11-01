@@ -9,6 +9,7 @@ namespace SmartProperty.Application.PropertyRegistry.Create;
 
 public sealed class CreatePropertyCommandHandler(
     IPropertyRepository propertyRepository,
+    IAmenityRepository amenityRepository,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
     : ICommandHandler<CreatePropertyCommand, CreatePropertyResult>
@@ -22,6 +23,17 @@ public sealed class CreatePropertyCommandHandler(
         if (CreatePropertyCommandValidator.Validate(command, out var propertyType, out var finishingStatus) is { } validationError)
         {
             return Result<CreatePropertyResult>.Failure(validationError);
+        }
+
+        var amenities = await PropertyAmenityResolver.ResolveAsync(
+            amenityRepository,
+            command.AmenityCodes,
+            CreatePropertyErrors.ValidationFailed,
+            cancellationToken);
+
+        if (amenities.IsFailure)
+        {
+            return Result<CreatePropertyResult>.Failure(amenities.Error!);
         }
 
         var createdAt = dateTimeProvider.UtcNow;
@@ -42,7 +54,8 @@ public sealed class CreatePropertyCommandHandler(
             command.Bedrooms,
             command.Bathrooms,
             command.BuiltDate,
-            finishingStatus);
+            finishingStatus,
+            amenities.Value);
 
         await propertyRepository.AddAsync(property, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -65,6 +78,7 @@ public sealed class CreatePropertyCommandHandler(
             property.Bedrooms,
             property.Bathrooms,
             property.BuiltDate,
-            property.FinishingStatus));
+            property.FinishingStatus,
+            PropertyCommandSupport.ToAmenityDetails(property.Amenities)));
     }
 }

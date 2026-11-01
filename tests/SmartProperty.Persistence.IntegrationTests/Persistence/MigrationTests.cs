@@ -15,6 +15,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string PropertyStatusConcurrencyMigration = "20261013084401_SynchronizePropertyStatusConcurrency";
     private const string WorkspaceRoleNameMigration = "20261015082753_EnforceUniqueWorkspaceRoleNames";
     private const string PropertyMatchesMigration = "20261101104532_AddPropertyMatches";
+    private const string PropertyAmenitiesMigration = "20261101121548_AddPropertyAmenities";
 
     [Fact]
     public async Task PlatformRoleInvariantMigration_AppliesFromPreviousMigration()
@@ -44,7 +45,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithThePropertyMatchesMigration()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithThePropertyAmenitiesMigration()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -57,11 +58,38 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(PropertyMatchesMigration, applied[^1]);
+        Assert.Equal(PropertyAmenitiesMigration, applied[^1]);
+        Assert.Contains(PropertyMatchesMigration, applied);
         Assert.Contains(WorkspaceRoleNameMigration, applied);
         Assert.Contains(PropertyStatusConcurrencyMigration, applied);
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
         Assert.True(await PropertiesTableExistsAsync());
+    }
+
+    [Fact]
+    public async Task PropertyAmenitiesMigration_SeedsTheTwentyNineAmenitiesInDisplayOrder()
+    {
+        await using (var deleting = Host.CreateVerificationContext())
+        {
+            await deleting.Database.EnsureDeletedAsync();
+        }
+
+        await using var context = Host.CreateVerificationContext();
+        await context.Database.MigrateAsync();
+
+        var amenities = await context.Amenities.AsNoTracking().OrderBy(a => a.SortOrder).ToListAsync();
+
+        Assert.Equal(29, amenities.Count);
+        Assert.Equal(Enumerable.Range(1, 29), amenities.Select(a => a.SortOrder));
+        Assert.Equal(29, amenities.Select(a => a.Code).Distinct().Count());
+        Assert.All(amenities, a =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(a.NameAr));
+            Assert.False(string.IsNullOrWhiteSpace(a.NameEn));
+        });
+        Assert.Equal("شرفة", amenities.Single(a => a.Code == "Balcony").NameAr);
+        Assert.Equal("مطعم في المبنى", amenities.Single(a => a.Code == "BuildingRestaurant").NameAr);
+        Assert.Equal("Children's pool", amenities.Single(a => a.Code == "ChildrensPool").NameEn);
     }
 
     [Fact]

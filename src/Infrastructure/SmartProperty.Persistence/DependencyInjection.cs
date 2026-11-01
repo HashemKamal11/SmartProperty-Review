@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IOneTimeCodeRepository, OneTimeCodeRepository>();
         services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
         services.AddScoped<IPropertyRepository, PropertyRepository>();
+        services.AddScoped<IAmenityRepository, AmenityRepository>();
         services.AddScoped<IPropertyMatchRepository, PropertyMatchRepository>();
         services.AddScoped<IPublicListingReadRepository, PublicListingReadRepository>();
         services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();

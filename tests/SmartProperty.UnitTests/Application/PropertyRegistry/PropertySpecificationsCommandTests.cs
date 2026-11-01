@@ -8,6 +8,7 @@ namespace SmartProperty.UnitTests.Application.PropertyRegistry;
 public sealed class PropertySpecificationsCommandTests
 {
     private readonly FakePropertyRepository _properties = new();
+    private readonly FakeAmenityRepository _amenities = new();
 
     [Fact]
     public async Task CreateStoresBedroomsBathroomsBuiltDateAndFinishingStatus()
@@ -73,6 +74,7 @@ public sealed class PropertySpecificationsCommandTests
     {
         return new CreatePropertyCommandHandler(
             _properties,
+            _amenities,
             new FakeDateTimeProvider(new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero)),
             new FakeUnitOfWork());
     }

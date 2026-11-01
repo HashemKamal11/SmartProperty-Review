@@ -12,7 +12,8 @@ public sealed record CreatePropertyResult(
     int? Bedrooms = null,
     int? Bathrooms = null,
     DateOnly? BuiltDate = null,
-    FinishingStatus? FinishingStatus = null);
+    FinishingStatus? FinishingStatus = null,
+    IReadOnlyList<AmenityDetails>? Amenities = null);
 
 public sealed record CreatePropertyAddressResult(
     string CountryCode,

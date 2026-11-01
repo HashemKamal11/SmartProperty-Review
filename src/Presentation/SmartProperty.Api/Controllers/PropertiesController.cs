@@ -55,7 +55,8 @@ public sealed class PropertiesController : ControllerBase
             request.Bedrooms,
             request.Bathrooms,
             request.BuiltDate,
-            request.FinishingStatus);
+            request.FinishingStatus,
+            request.AmenityCodes);
 
         var result = await handler.Handle(command, cancellationToken);
 
@@ -84,7 +85,8 @@ public sealed class PropertiesController : ControllerBase
             property.Bedrooms,
             property.Bathrooms,
             property.BuiltDate,
-            property.FinishingStatus?.ToString()));
+            property.FinishingStatus?.ToString(),
+            ToAmenityResponses(property.Amenities)));
     }
 
     /// <summary>
@@ -193,7 +195,8 @@ public sealed class PropertiesController : ControllerBase
             request.Bedrooms,
             request.Bathrooms,
             request.BuiltDate,
-            request.FinishingStatus);
+            request.FinishingStatus,
+            request.AmenityCodes);
 
         var result = await handler.Handle(command, cancellationToken);
 
@@ -236,6 +239,13 @@ public sealed class PropertiesController : ControllerBase
         return Ok(ToResponse(result.Value));
     }
 
+    private static AmenityResponse[] ToAmenityResponses(IEnumerable<AmenityDetails>? amenities)
+    {
+        return (amenities ?? [])
+            .Select(amenity => new AmenityResponse(amenity.Code, amenity.NameAr, amenity.NameEn))
+            .ToArray();
+    }
+
     private static PropertyResponse ToResponse(PropertyDetails property)
     {
         return new PropertyResponse(
@@ -256,6 +266,7 @@ public sealed class PropertiesController : ControllerBase
             property.Bedrooms,
             property.Bathrooms,
             property.BuiltDate,
-            property.FinishingStatus?.ToString());
+            property.FinishingStatus?.ToString(),
+            ToAmenityResponses(property.Amenities));
     }
 }

@@ -789,6 +789,44 @@ namespace SmartProperty.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.Amenity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name_en");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ux_registry_amenities_code");
+
+                    b.ToTable("amenities", "registry");
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.Property", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1076,6 +1114,21 @@ namespace SmartProperty.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("property_amenities", b =>
+                {
+                    b.Property<Guid>("property_id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("amenity_id")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("property_id", "amenity_id");
+
+                    b.HasIndex("amenity_id");
+
+                    b.ToTable("property_amenities", "registry");
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Identity.OneTimeCode", b =>
                 {
                     b.HasOne("SmartProperty.Domain.Identity.User", null)
@@ -1315,6 +1368,21 @@ namespace SmartProperty.Persistence.Migrations
                     b.HasOne("SmartProperty.Domain.Workspaces.WorkspaceMembership", null)
                         .WithMany()
                         .HasForeignKey("WorkspaceMembershipId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("property_amenities", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Amenity", null)
+                        .WithMany()
+                        .HasForeignKey("amenity_id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("property_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

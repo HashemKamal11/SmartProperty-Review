@@ -16,4 +16,5 @@ public sealed record PropertyResponse(
     int? Bedrooms = null,
     int? Bathrooms = null,
     DateOnly? BuiltDate = null,
-    string? FinishingStatus = null);
+    string? FinishingStatus = null,
+    IReadOnlyList<AmenityResponse>? Amenities = null);

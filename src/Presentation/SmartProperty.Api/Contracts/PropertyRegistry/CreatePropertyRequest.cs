@@ -14,4 +14,5 @@ public sealed record CreatePropertyRequest(
     int? Bedrooms = null,
     int? Bathrooms = null,
     DateOnly? BuiltDate = null,
-    string? FinishingStatus = null);
+    string? FinishingStatus = null,
+    IReadOnlyList<string>? AmenityCodes = null);
