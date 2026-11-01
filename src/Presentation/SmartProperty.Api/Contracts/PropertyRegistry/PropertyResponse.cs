@@ -12,4 +12,8 @@ public sealed record PropertyResponse(
     string Status,
     PropertyAddressResponse Address,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    int? Bedrooms = null,
+    int? Bathrooms = null,
+    DateOnly? BuiltDate = null,
+    string? FinishingStatus = null);

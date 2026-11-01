@@ -33,7 +33,7 @@ public sealed class UpdatePropertyCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (UpdatePropertyCommandValidator.Validate(command, out var propertyType) is { } validationError)
+        if (UpdatePropertyCommandValidator.Validate(command, out var propertyType, out var finishingStatus) is { } validationError)
         {
             return Result<PropertyDetails>.Failure(validationError);
         }
@@ -71,7 +71,11 @@ public sealed class UpdatePropertyCommandHandler(
         var changed = property.UpdateDetails(
             propertyType,
             address,
-            PropertyCommandSupport.ResolveUpdatedAt(dateTimeProvider, property.UpdatedAt));
+            PropertyCommandSupport.ResolveUpdatedAt(dateTimeProvider, property.UpdatedAt),
+            command.Bedrooms,
+            command.Bathrooms,
+            command.BuiltDate,
+            finishingStatus);
 
         if (changed)
         {

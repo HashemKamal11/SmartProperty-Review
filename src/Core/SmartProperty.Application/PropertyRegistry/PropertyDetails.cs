@@ -15,7 +15,11 @@ public sealed record PropertyDetails(
     PropertyStatus Status,
     PropertyAddressDetails Address,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    int? Bedrooms = null,
+    int? Bathrooms = null,
+    DateOnly? BuiltDate = null,
+    FinishingStatus? FinishingStatus = null);
 
 public sealed record PropertyAddressDetails(
     string CountryCode,

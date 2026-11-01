@@ -10,6 +10,48 @@ namespace SmartProperty.Application.PropertyRegistry;
 internal static class PropertyCommandSupport
 {
     /// <summary>
+    /// Validates the optional specification fields shared by create and update, returning the validation
+    /// message or null. A null finishing status is valid and means "not stated".
+    /// </summary>
+    public static string? ValidateSpecifications(
+        int? bedrooms,
+        int? bathrooms,
+        DateOnly? builtDate,
+        string? finishingStatus,
+        out FinishingStatus? parsedFinishingStatus)
+    {
+        parsedFinishingStatus = null;
+
+        if (bedrooms is < 0 or > Property.MaxRoomCount)
+        {
+            return $"Bedrooms must be between 0 and {Property.MaxRoomCount}.";
+        }
+
+        if (bathrooms is < 0 or > Property.MaxRoomCount)
+        {
+            return $"Bathrooms must be between 0 and {Property.MaxRoomCount}.";
+        }
+
+        if (builtDate < Property.EarliestBuiltDate)
+        {
+            return $"Built date must not be earlier than {Property.EarliestBuiltDate:yyyy-MM-dd}.";
+        }
+
+        if (finishingStatus is not null)
+        {
+            if (!Enum.TryParse<FinishingStatus>(finishingStatus, ignoreCase: false, out var parsed)
+                || !Enum.IsDefined(parsed))
+            {
+                return "Finishing status must be Unfinished, SemiFinished, FullyFinished, SuperLux, or Furnished.";
+            }
+
+            parsedFinishingStatus = parsed;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The instant a real change is stamped with: the clock, read once and truncated to the microsecond precision
     /// PostgreSQL stores, so the value returned is exactly the value persisted and later read back. A clock behind
     /// the current update instant keeps that instant rather than moving backwards.
@@ -41,6 +83,10 @@ internal static class PropertyCommandSupport
                 property.Address.Latitude,
                 property.Address.Longitude),
             property.CreatedAt,
-            property.UpdatedAt);
+            property.UpdatedAt,
+            property.Bedrooms,
+            property.Bathrooms,
+            property.BuiltDate,
+            property.FinishingStatus);
     }
 }

@@ -8,7 +8,11 @@ public sealed record CreatePropertyResult(
     PropertyStatus Status,
     CreatePropertyAddressResult Address,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    int? Bedrooms = null,
+    int? Bathrooms = null,
+    DateOnly? BuiltDate = null,
+    FinishingStatus? FinishingStatus = null);
 
 public sealed record CreatePropertyAddressResult(
     string CountryCode,

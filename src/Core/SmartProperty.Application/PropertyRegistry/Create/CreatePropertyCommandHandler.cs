@@ -19,7 +19,7 @@ public sealed class CreatePropertyCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (CreatePropertyCommandValidator.Validate(command, out var propertyType) is { } validationError)
+        if (CreatePropertyCommandValidator.Validate(command, out var propertyType, out var finishingStatus) is { } validationError)
         {
             return Result<CreatePropertyResult>.Failure(validationError);
         }
@@ -34,7 +34,15 @@ public sealed class CreatePropertyCommandHandler(
             command.PostalCode,
             command.Latitude,
             command.Longitude);
-        var property = new Property(Guid.NewGuid(), propertyType, address, createdAt);
+        var property = new Property(
+            Guid.NewGuid(),
+            propertyType,
+            address,
+            createdAt,
+            command.Bedrooms,
+            command.Bathrooms,
+            command.BuiltDate,
+            finishingStatus);
 
         await propertyRepository.AddAsync(property, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -53,6 +61,10 @@ public sealed class CreatePropertyCommandHandler(
                 property.Address.Latitude,
                 property.Address.Longitude),
             property.CreatedAt,
-            property.UpdatedAt));
+            property.UpdatedAt,
+            property.Bedrooms,
+            property.Bathrooms,
+            property.BuiltDate,
+            property.FinishingStatus));
     }
 }

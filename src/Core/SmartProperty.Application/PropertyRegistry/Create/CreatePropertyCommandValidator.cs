@@ -5,9 +5,11 @@ namespace SmartProperty.Application.PropertyRegistry.Create;
 
 internal static class CreatePropertyCommandValidator
 {
-    public static Error? Validate(CreatePropertyCommand command, out PropertyType propertyType)
+    public static Error? Validate(CreatePropertyCommand command, out PropertyType propertyType,
+        out FinishingStatus? finishingStatus)
     {
         propertyType = default;
+        finishingStatus = null;
 
         propertyType = command.Type switch
         {
@@ -43,6 +45,16 @@ internal static class CreatePropertyCommandValidator
         if (command.Longitude is < -180m or > 180m)
         {
             return CreatePropertyErrors.ValidationFailed("Longitude must be between -180 and 180 degrees.");
+        }
+
+        if (PropertyCommandSupport.ValidateSpecifications(
+                command.Bedrooms,
+                command.Bathrooms,
+                command.BuiltDate,
+                command.FinishingStatus,
+                out finishingStatus) is { } specificationError)
+        {
+            return CreatePropertyErrors.ValidationFailed(specificationError);
         }
 
         return null;

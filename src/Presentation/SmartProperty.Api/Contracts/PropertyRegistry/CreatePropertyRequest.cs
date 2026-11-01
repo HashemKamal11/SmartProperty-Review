@@ -10,4 +10,8 @@ public sealed record CreatePropertyRequest(
     string? AddressLine = null,
     string? PostalCode = null,
     decimal? Latitude = null,
-    decimal? Longitude = null);
+    decimal? Longitude = null,
+    int? Bedrooms = null,
+    int? Bathrooms = null,
+    DateOnly? BuiltDate = null,
+    string? FinishingStatus = null);

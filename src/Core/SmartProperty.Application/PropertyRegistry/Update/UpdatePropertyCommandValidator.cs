@@ -8,8 +8,11 @@ namespace SmartProperty.Application.PropertyRegistry.Update;
 /// </summary>
 internal static class UpdatePropertyCommandValidator
 {
-    public static Error? Validate(UpdatePropertyCommand command, out PropertyType propertyType)
+    public static Error? Validate(UpdatePropertyCommand command, out PropertyType propertyType,
+        out FinishingStatus? finishingStatus)
     {
+        finishingStatus = null;
+
         propertyType = command.Type switch
         {
             nameof(PropertyType.Land) => PropertyType.Land,
@@ -44,6 +47,16 @@ internal static class UpdatePropertyCommandValidator
         if (command.Longitude is < -180m or > 180m)
         {
             return UpdatePropertyErrors.ValidationFailed("Longitude must be between -180 and 180 degrees.");
+        }
+
+        if (PropertyCommandSupport.ValidateSpecifications(
+                command.Bedrooms,
+                command.Bathrooms,
+                command.BuiltDate,
+                command.FinishingStatus,
+                out finishingStatus) is { } specificationError)
+        {
+            return UpdatePropertyErrors.ValidationFailed(specificationError);
         }
 
         return null;

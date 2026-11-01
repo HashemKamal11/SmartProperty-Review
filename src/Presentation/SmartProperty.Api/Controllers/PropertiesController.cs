@@ -51,7 +51,11 @@ public sealed class PropertiesController : ControllerBase
             request.AddressLine,
             request.PostalCode,
             request.Latitude,
-            request.Longitude);
+            request.Longitude,
+            request.Bedrooms,
+            request.Bathrooms,
+            request.BuiltDate,
+            request.FinishingStatus);
 
         var result = await handler.Handle(command, cancellationToken);
 
@@ -76,7 +80,11 @@ public sealed class PropertiesController : ControllerBase
                 property.Address.Latitude,
                 property.Address.Longitude),
             property.CreatedAt,
-            property.UpdatedAt));
+            property.UpdatedAt,
+            property.Bedrooms,
+            property.Bathrooms,
+            property.BuiltDate,
+            property.FinishingStatus?.ToString()));
     }
 
     /// <summary>
@@ -181,7 +189,11 @@ public sealed class PropertiesController : ControllerBase
             request.AddressLine,
             request.PostalCode,
             request.Latitude,
-            request.Longitude);
+            request.Longitude,
+            request.Bedrooms,
+            request.Bathrooms,
+            request.BuiltDate,
+            request.FinishingStatus);
 
         var result = await handler.Handle(command, cancellationToken);
 
@@ -240,6 +252,10 @@ public sealed class PropertiesController : ControllerBase
                 property.Address.Latitude,
                 property.Address.Longitude),
             property.CreatedAt,
-            property.UpdatedAt);
+            property.UpdatedAt,
+            property.Bedrooms,
+            property.Bathrooms,
+            property.BuiltDate,
+            property.FinishingStatus?.ToString());
     }
 }

@@ -22,6 +22,18 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
                 "status IN ('Active', 'Archived')");
 
             tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_finishing_status",
+                "finishing_status IS NULL OR finishing_status IN ('Unfinished', 'SemiFinished', 'FullyFinished', 'SuperLux', 'Furnished')");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_bedrooms_range",
+                "bedrooms IS NULL OR bedrooms BETWEEN 0 AND 100");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_bathrooms_range",
+                "bathrooms IS NULL OR bathrooms BETWEEN 0 AND 100");
+
+            tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_address_country_code",
                 "address_country_code ~ '^[A-Z]{2}$'");
 
@@ -85,6 +97,20 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
             address.Property(value => value.Longitude)
                 .HasColumnName("longitude");
         });
+
+        builder.Property(property => property.Bedrooms)
+            .HasColumnName("bedrooms");
+
+        builder.Property(property => property.Bathrooms)
+            .HasColumnName("bathrooms");
+
+        builder.Property(property => property.BuiltDate)
+            .HasColumnName("built_date");
+
+        builder.Property(property => property.FinishingStatus)
+            .HasColumnName("finishing_status")
+            .HasConversion<string>()
+            .HasMaxLength(32);
 
         builder.Property(property => property.CreatedAt)
             .HasColumnName("created_at")

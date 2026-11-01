@@ -266,9 +266,26 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<int?>("Bathrooms")
+                        .HasColumnType("integer")
+                        .HasColumnName("bathrooms");
+
+                    b.Property<int?>("Bedrooms")
+                        .HasColumnType("integer")
+                        .HasColumnName("bedrooms");
+
+                    b.Property<DateOnly?>("BuiltDate")
+                        .HasColumnType("date")
+                        .HasColumnName("built_date");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<string>("FinishingStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("finishing_status");
 
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
@@ -331,6 +348,12 @@ namespace SmartProperty.Persistence.Migrations
                     b.ToTable("properties", "registry", t =>
                         {
                             t.HasCheckConstraint("ck_registry_properties_address_country_code", "address_country_code ~ '^[A-Z]{2}$'");
+
+                            t.HasCheckConstraint("ck_registry_properties_bathrooms_range", "bathrooms IS NULL OR bathrooms BETWEEN 0 AND 100");
+
+                            t.HasCheckConstraint("ck_registry_properties_bedrooms_range", "bedrooms IS NULL OR bedrooms BETWEEN 0 AND 100");
+
+                            t.HasCheckConstraint("ck_registry_properties_finishing_status", "finishing_status IS NULL OR finishing_status IN ('Unfinished', 'SemiFinished', 'FullyFinished', 'SuperLux', 'Furnished')");
 
                             t.HasCheckConstraint("ck_registry_properties_latitude_range", "latitude IS NULL OR latitude BETWEEN -90 AND 90");
 

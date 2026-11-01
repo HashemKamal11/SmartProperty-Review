@@ -15,4 +15,8 @@ public sealed record UpdatePropertyCommand(
     string? AddressLine = null,
     string? PostalCode = null,
     decimal? Latitude = null,
-    decimal? Longitude = null) : ICommand<PropertyDetails>;
+    decimal? Longitude = null,
+    int? Bedrooms = null,
+    int? Bathrooms = null,
+    DateOnly? BuiltDate = null,
+    string? FinishingStatus = null) : ICommand<PropertyDetails>;

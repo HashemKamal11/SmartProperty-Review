@@ -47,7 +47,11 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
                     property.Address.Latitude,
                     property.Address.Longitude),
                 property.CreatedAt,
-                property.UpdatedAt))
+                property.UpdatedAt,
+                property.Bedrooms,
+                property.Bathrooms,
+                property.BuiltDate,
+                property.FinishingStatus))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -124,7 +128,11 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
                     property.Address.Latitude,
                     property.Address.Longitude),
                 property.CreatedAt,
-                property.UpdatedAt))
+                property.UpdatedAt,
+                property.Bedrooms,
+                property.Bathrooms,
+                property.BuiltDate,
+                property.FinishingStatus))
             .ToListAsync(cancellationToken);
 
         return new PropertyPage(items, totalCount);
