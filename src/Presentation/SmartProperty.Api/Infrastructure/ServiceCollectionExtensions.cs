@@ -24,6 +24,7 @@ using SmartProperty.Application.Authentication.Context;
 using SmartProperty.Application.Authentication.Refresh;
 using SmartProperty.Application.Authentication.Register;
 using SmartProperty.Application.Identity.Bootstrap;
+using SmartProperty.Application.PropertyMatching.Record;
 using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Archive;
 using SmartProperty.Application.PropertyRegistry.Create;
@@ -120,6 +121,9 @@ internal static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddOptions<AiIntegrationOptions>()
+            .Bind(configuration.GetSection(AiIntegrationOptions.SectionName));
 
         services.AddOptions<JwtOptions>()
             .Bind(configuration.GetSection(JwtOptions.SectionName))
@@ -262,6 +266,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetPropertiesQuery, PagedList<PropertyDetails>>, GetPropertiesQueryHandler>();
         services.AddScoped<ICommandHandler<UpdatePropertyCommand, PropertyDetails>, UpdatePropertyCommandHandler>();
         services.AddScoped<ICommandHandler<ArchivePropertyCommand, PropertyDetails>, ArchivePropertyCommandHandler>();
+        services.AddScoped<ICommandHandler<RecordPropertyMatchCommand, PropertyMatchDetails>, RecordPropertyMatchCommandHandler>();
 
         services
             .AddScoped<ICommandHandler<ApproveWorkspaceAccessRequestCommand, ApproveWorkspaceAccessRequestResult>,

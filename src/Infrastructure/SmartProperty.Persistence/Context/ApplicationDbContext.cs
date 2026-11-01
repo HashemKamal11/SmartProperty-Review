@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.PropertyMatching;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.Domain.Workspaces;
 
@@ -20,6 +21,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<WorkspaceMembershipRole> WorkspaceMembershipRoles => Set<WorkspaceMembershipRole>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<Property> Properties => Set<Property>();
+    public DbSet<PropertyMatch> PropertyMatches => Set<PropertyMatch>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

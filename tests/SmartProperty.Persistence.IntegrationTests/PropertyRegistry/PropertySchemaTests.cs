@@ -37,7 +37,11 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             "address_line|text|YES",
             "address_postal_code|text|YES",
             "address_region|text|YES",
+            "bathrooms|integer|YES",
+            "bedrooms|integer|YES",
+            "built_date|date|YES",
             "created_at|timestamp with time zone|NO",
+            "finishing_status|character varying(32)|YES",
             "id|uuid|NO",
             "latitude|numeric|YES",
             "longitude|numeric|YES",
@@ -81,6 +85,9 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
         string[] expected =
         [
             "ck_registry_properties_address_country_code",
+            "ck_registry_properties_bathrooms_range",
+            "ck_registry_properties_bedrooms_range",
+            "ck_registry_properties_finishing_status",
             "ck_registry_properties_latitude_range",
             "ck_registry_properties_longitude_range",
             "ck_registry_properties_status",

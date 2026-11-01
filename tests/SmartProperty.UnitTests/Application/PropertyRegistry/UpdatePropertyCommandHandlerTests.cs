@@ -355,6 +355,98 @@ public sealed class UpdatePropertyCommandHandlerTests
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
 
+    [Fact]
+    public async Task ValidCommandReplacesTheSpecificationsAndReturnsThem()
+    {
+        var property = SeedProperty();
+
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(
+            property.Id,
+            "Unit",
+            "SA",
+            Bedrooms: 3,
+            Bathrooms: 2,
+            BuiltDate: new DateOnly(2019, 7, 15),
+            FinishingStatus: "SemiFinished"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3, property.Bedrooms);
+        Assert.Equal(2, property.Bathrooms);
+        Assert.Equal(new DateOnly(2019, 7, 15), property.BuiltDate);
+        Assert.Equal(FinishingStatus.SemiFinished, property.FinishingStatus);
+        Assert.Equal(3, result.Value.Bedrooms);
+        Assert.Equal(FinishingStatus.SemiFinished, result.Value.FinishingStatus);
+        Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task OmittedSpecificationsClearTheStoredOnes()
+    {
+        var property = SeedProperty();
+        await CreateHandler().Handle(new UpdatePropertyCommand(
+            property.Id, "Unit", "SA", Bedrooms: 3, FinishingStatus: "Furnished"));
+
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "SA"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(property.Bedrooms);
+        Assert.Null(property.FinishingStatus);
+    }
+
+    [Fact]
+    public async Task UnchangedSpecificationsCommitNothing()
+    {
+        var property = SeedProperty();
+        await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "SA", Bedrooms: 3));
+        var savesBefore = _unitOfWork.SaveChangesCallCount;
+
+        var result = await CreateHandler().Handle(
+            new UpdatePropertyCommand(property.Id, "Unit", "SA", Bedrooms: 3));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(savesBefore, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Theory]
+    [InlineData(-1, null, null)]
+    [InlineData(101, null, null)]
+    [InlineData(null, -1, null)]
+    [InlineData(null, 101, null)]
+    [InlineData(null, null, "Shiny")]
+    [InlineData(null, null, "furnished")]
+    public async Task InvalidSpecificationsAreRejectedAndNothingChanges(
+        int? bedrooms,
+        int? bathrooms,
+        string? finishingStatus)
+    {
+        var property = SeedProperty();
+
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(
+            property.Id,
+            "Unit",
+            "SA",
+            Bedrooms: bedrooms,
+            Bathrooms: bathrooms,
+            FinishingStatus: finishingStatus));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation.failed", result.Error!.Code);
+        Assert.Equal(PropertyType.Land, property.Type);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task ABuiltDateBeforeTheEarliestSupportedIsRejected()
+    {
+        var property = SeedProperty();
+
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(
+            property.Id, "Unit", "SA", BuiltDate: new DateOnly(1799, 12, 31)));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation.failed", result.Error!.Code);
+    }
+
     private Property SeedProperty(PropertyAddress? address = null)
     {
         var property = new Property(Guid.NewGuid(), PropertyType.Land, address ?? new PropertyAddress("SA"), CreatedAt);

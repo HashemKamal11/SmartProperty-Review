@@ -136,6 +136,7 @@ The API uses standard ASP.NET Core configuration. `appsettings.json` contains on
 | `Jwt:SigningKey` | `Jwt__SigningKey` | empty | Required secret of at least 32 bytes |
 | `Jwt:AccessTokenLifetime` | `Jwt__AccessTokenLifetime` | `00:15:00` | Positive `TimeSpan` |
 | `Jwt:RefreshTokenLifetime` | `Jwt__RefreshTokenLifetime` | `7.00:00:00` | Positive `TimeSpan` |
+| `AiIntegration:ApiKey` | `AiIntegration__ApiKey` | empty | Secret the AI system sends in `X-Api-Key` to `POST /api/property-matches`; blank refuses every call |
 
 The API validates the `Jwt` settings at startup and stops if any value is missing or invalid. The token lifetimes are technical defaults, not confirmed business policy.
 

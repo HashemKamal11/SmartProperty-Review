@@ -49,6 +49,7 @@ services:
       Jwt__Issuer: SmartProperty
       Jwt__Audience: SmartProperty.Api
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in your shell before running Docker Compose}
+      AiIntegration__ApiKey: ${AI_INTEGRATION_API_KEY:-}
       Bootstrap__Enabled: ${BOOTSTRAP_ENABLED:-false}
       Bootstrap__PlatformAdminEmail: ${BOOTSTRAP_PLATFORM_ADMIN_EMAIL:-}
       Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN_0:-}
