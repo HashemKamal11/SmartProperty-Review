@@ -426,7 +426,7 @@ public sealed class GetMyListingSubmissionsQueryHandlerTests
             purpose == ListingPurpose.Rent
                 ? new PublicListingPrice(5200m, "SAR", RentPeriod.Monthly)
                 : new PublicListingPrice(1250000m, "SAR", null),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             ListingRepresentationKind.Owner,
             createdAt,

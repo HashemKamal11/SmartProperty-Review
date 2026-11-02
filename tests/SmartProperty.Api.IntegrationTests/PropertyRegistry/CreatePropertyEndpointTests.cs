@@ -171,7 +171,7 @@ public sealed class CreatePropertyEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
         var request = new CreatePropertyRequest(
-            "Unit",
+            "Apartment",
             "SA",
             Latitude: Parse(latitude),
             Longitude: Parse(longitude));

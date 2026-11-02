@@ -137,6 +137,10 @@ The API uses standard ASP.NET Core configuration. `appsettings.json` contains on
 | `Jwt:AccessTokenLifetime` | `Jwt__AccessTokenLifetime` | `00:15:00` | Positive `TimeSpan` |
 | `Jwt:RefreshTokenLifetime` | `Jwt__RefreshTokenLifetime` | `7.00:00:00` | Positive `TimeSpan` |
 | `AiIntegration:ApiKey` | `AiIntegration__ApiKey` | empty | Secret the AI system sends in `X-Api-Key` to `POST /api/property-matches`; blank refuses every call |
+| `AiSearch:Enabled` | `AiSearch__Enabled` | `false` | Turns the AI search integration on. While off nothing is sent to the AI service and properties report `NotSynced` |
+| `AiSearch:BaseUrl` | `AiSearch__BaseUrl` | `https://ai-search.neurix.uk` | Absolute http(s) URL of the AI search service |
+| `AiSearch:ApiKey` | `AiSearch__ApiKey` | empty | Secret sent as `x-api-key` when properties are added to or removed from the AI service |
+| `AiSearch:TimeoutSeconds` | `AiSearch__TimeoutSeconds` | `30` | 1-300; a slower answer counts as a failed call |
 
 The API validates the `Jwt` settings at startup and stops if any value is missing or invalid. The token lifetimes are technical defaults, not confirmed business policy.
 

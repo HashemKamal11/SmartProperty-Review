@@ -101,7 +101,7 @@ public sealed class ArchivePropertyEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(
-            ["address", "amenities", "bathrooms", "bedrooms", "builtDate", "createdAt", "finishingStatus", "id", "status", "type", "updatedAt"],
+            ["address", "aiSync", "amenities", "bathrooms", "bedrooms", "builtDate", "createdAt", "finishingStatus", "id", "listing", "status", "type", "updatedAt", "views"],
             PropertyNames(document.RootElement));
         Assert.Equal(
             ["addressLine", "city", "countryCode", "district", "latitude", "longitude", "postalCode", "region"],
@@ -216,7 +216,7 @@ public sealed class ArchivePropertyEndpointTests : IDisposable
         var archived = (await archive.Content.ReadFromJsonAsync<PropertyResponse>())!;
         using var update = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Unit", "AE"));
+            new UpdatePropertyRequest("Apartment", "AE"));
 
         Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, update.StatusCode);

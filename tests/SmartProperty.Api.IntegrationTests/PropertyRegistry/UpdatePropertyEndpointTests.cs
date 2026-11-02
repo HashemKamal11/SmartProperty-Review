@@ -52,7 +52,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Unit", "AE"));
+            new UpdatePropertyRequest("Apartment", "AE"));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -121,12 +121,12 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         var property = await SeedPropertyAsync();
         using var client = AuthorizedClient();
 
-        using var response = await client.PutAsJsonAsync($"{Route}/{property.Id}", new UpdatePropertyRequest("Unit", "SA"));
+        using var response = await client.PutAsJsonAsync($"{Route}/{property.Id}", new UpdatePropertyRequest("Apartment", "SA"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal(
-            ["address", "amenities", "bathrooms", "bedrooms", "builtDate", "createdAt", "finishingStatus", "id", "status", "type", "updatedAt"],
+            ["address", "aiSync", "amenities", "bathrooms", "bedrooms", "builtDate", "createdAt", "finishingStatus", "id", "listing", "status", "type", "updatedAt", "views"],
             PropertyNames(document.RootElement));
         Assert.Equal(
             ["addressLine", "city", "countryCode", "district", "latitude", "longitude", "postalCode", "region"],
@@ -299,7 +299,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Unit", "AE", "Dubai"));
+            new UpdatePropertyRequest("Apartment", "AE", "Dubai"));
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -322,7 +322,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         var requestedTime = new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var request = new
         {
-            type = "Unit",
+            type = "Apartment",
             countryCode = "SA",
             id = Guid.NewGuid(),
             status = "Archived",
@@ -379,16 +379,16 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var update = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Unit", "AE", "Dubai"));
+            new UpdatePropertyRequest("Apartment", "AE", "Dubai"));
 
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         var updated = (await update.Content.ReadFromJsonAsync<PropertyResponse>())!;
-        Assert.Equal("Unit", updated.Type);
+        Assert.Equal("Apartment", updated.Type);
         Assert.Equal("Dubai", updated.Address.City);
         Assert.Equal(property.UpdatedAt, updated.UpdatedAt);
 
         var persisted = await LoadAsync(property.Id);
-        Assert.Equal(PropertyType.Unit, persisted.Type);
+        Assert.Equal(PropertyType.Apartment, persisted.Type);
         Assert.Equal(updated.UpdatedAt, persisted.UpdatedAt);
 
         var fetched = (await client.GetFromJsonAsync<PropertyResponse>($"{Route}/{property.Id}"))!;

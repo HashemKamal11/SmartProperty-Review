@@ -250,7 +250,7 @@ public sealed class WriteContractPrivacyTests
     [Fact]
     public void ARegistryPropertyMayLackRegionCityOrDistrictAndTheViewSaysSo()
     {
-        var view = new LockedPropertyView(Guid.NewGuid(), true, false, PropertyType.Unit, "SA", null, null, null);
+        var view = new LockedPropertyView(Guid.NewGuid(), true, false, PropertyType.Apartment, "SA", null, null, null);
 
         Assert.Null(view.Region);
         Assert.Null(view.City);

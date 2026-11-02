@@ -13,6 +13,9 @@ public sealed class CreatePropertyCommandHandlerTests
 
     private readonly FakePropertyRepository _properties = new();
     private readonly FakeAmenityRepository _amenities = new();
+    private readonly FakeViewRepository _views = new();
+    private readonly FakeLocationRepository _locations = new();
+    private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeDateTimeProvider _clock = new(CreatedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
 
@@ -103,7 +106,7 @@ public sealed class CreatePropertyCommandHandlerTests
     public async Task BoundaryAndIndependentCoordinatesAreAccepted(string? latitude, string? longitude)
     {
         var result = await CreateHandler().Handle(new CreatePropertyCommand(
-            "Unit",
+            "Apartment",
             "SA",
             Latitude: Parse(latitude),
             Longitude: Parse(longitude)));
@@ -136,7 +139,12 @@ public sealed class CreatePropertyCommandHandlerTests
     {
         return new CreatePropertyCommandHandler(
             _properties,
-            _amenities, _clock, _unitOfWork);
+            _amenities,
+            _views,
+            _locations,
+            _ai,
+            _clock,
+            _unitOfWork);
     }
 
     private static decimal? Parse(string? value)

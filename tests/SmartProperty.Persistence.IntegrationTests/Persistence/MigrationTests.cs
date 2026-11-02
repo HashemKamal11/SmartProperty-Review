@@ -16,6 +16,8 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string WorkspaceRoleNameMigration = "20261015082753_EnforceUniqueWorkspaceRoleNames";
     private const string PropertyMatchesMigration = "20261101104532_AddPropertyMatches";
     private const string PropertyAmenitiesMigration = "20261101121548_AddPropertyAmenities";
+    private const string AiSearchIntegrationMigration = "20261102120000_AddAiSearchIntegration";
+    private const string LocationsMigration = "20261102180000_AddLocations";
 
     [Fact]
     public async Task PlatformRoleInvariantMigration_AppliesFromPreviousMigration()
@@ -45,7 +47,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithThePropertyAmenitiesMigration()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheLocationsMigration()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -58,7 +60,9 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(PropertyAmenitiesMigration, applied[^1]);
+        Assert.Equal(LocationsMigration, applied[^1]);
+        Assert.Contains(AiSearchIntegrationMigration, applied);
+        Assert.Contains(PropertyAmenitiesMigration, applied);
         Assert.Contains(PropertyMatchesMigration, applied);
         Assert.Contains(WorkspaceRoleNameMigration, applied);
         Assert.Contains(PropertyStatusConcurrencyMigration, applied);
@@ -67,7 +71,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task PropertyAmenitiesMigration_SeedsTheTwentyNineAmenitiesInDisplayOrder()
+    public async Task AllMigrations_SeedTheFortyOneAmenitiesInDisplayOrder()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -79,9 +83,9 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
 
         var amenities = await context.Amenities.AsNoTracking().OrderBy(a => a.SortOrder).ToListAsync();
 
-        Assert.Equal(29, amenities.Count);
-        Assert.Equal(Enumerable.Range(1, 29), amenities.Select(a => a.SortOrder));
-        Assert.Equal(29, amenities.Select(a => a.Code).Distinct().Count());
+        Assert.Equal(41, amenities.Count);
+        Assert.Equal(Enumerable.Range(1, 41), amenities.Select(a => a.SortOrder));
+        Assert.Equal(41, amenities.Select(a => a.Code).Distinct().Count());
         Assert.All(amenities, a =>
         {
             Assert.False(string.IsNullOrWhiteSpace(a.NameAr));

@@ -122,7 +122,7 @@ public sealed class ListingSubmissionTests
     private static ListingSubmission Draft(PropertyListing listing, ListingLegalAuthority authority, IEnumerable<ListingEvidenceReference> evidence) =>
         new(Guid.NewGuid(), listing, Content(), authority, evidence, Time);
     private static ListingSubmissionContent Content() => new("Country", "Region", "City", "District", "Title", "Description",
-        PropertyType.Unit, ListingPurpose.Sale, 10m, "USD", null);
+        PropertyType.Apartment, ListingPurpose.Sale, 10m, "USD", null);
     private static ListingEvidenceAssessment Clean(ListingEvidenceReference evidence) => new(Guid.NewGuid(), evidence, EvidenceScanStatus.Clean, Time);
     private static (PropertyListing, ListingLegalAuthority, ListingEvidenceReference) Inputs()
     {

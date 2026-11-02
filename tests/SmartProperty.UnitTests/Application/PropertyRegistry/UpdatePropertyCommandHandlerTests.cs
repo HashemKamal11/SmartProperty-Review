@@ -14,6 +14,9 @@ public sealed class UpdatePropertyCommandHandlerTests
 
     private readonly FakePropertyRepository _properties = new();
     private readonly FakeAmenityRepository _amenities = new();
+    private readonly FakeViewRepository _views = new();
+    private readonly FakeLocationRepository _locations = new();
+    private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeDateTimeProvider _clock = new(UpdatedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
 
@@ -108,7 +111,7 @@ public sealed class UpdatePropertyCommandHandlerTests
 
     [Theory]
     [InlineData("Building")]
-    [InlineData("Unit")]
+    [InlineData("Apartment")]
     public async Task PropertyTypeCanBeCorrected(string type)
     {
         var property = SeedProperty();
@@ -227,7 +230,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var archivedAt = CreatedAt.AddDays(1);
         property.Archive(archivedAt);
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "AE", "Dubai"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "AE", "Dubai"));
 
         Assert.True(result.IsFailure);
         Assert.Equal("properties.archived", result.Error!.Code);
@@ -284,10 +287,10 @@ public sealed class UpdatePropertyCommandHandlerTests
         var property = SeedProperty();
         _clock.UtcNow = CreatedAt.AddHours(-1);
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "AE"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "AE"));
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(PropertyType.Unit, property.Type);
+        Assert.Equal(PropertyType.Apartment, property.Type);
         Assert.Equal("AE", property.Address.CountryCode);
         Assert.Equal(CreatedAt, property.UpdatedAt);
         Assert.Equal(CreatedAt, result.Value.UpdatedAt);
@@ -301,7 +304,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var property = SeedProperty();
         _clock.UtcNow = UpdatedAt.AddTicks(15);
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "SA"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "SA"));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(UpdatedAt.AddTicks(10), property.UpdatedAt);
@@ -313,7 +316,7 @@ public sealed class UpdatePropertyCommandHandlerTests
     public async Task RepeatingAnIdenticalUpdateIsStable()
     {
         var property = SeedProperty();
-        var command = new UpdatePropertyCommand(property.Id, "Unit", "AE", "Dubai");
+        var command = new UpdatePropertyCommand(property.Id, "Apartment", "AE", "Dubai");
         var handler = CreateHandler();
 
         var first = await handler.Handle(command);
@@ -335,7 +338,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var property = SeedProperty();
         _unitOfWork.ExceptionToThrow = FakeUnitOfWork.PropertyConcurrencyConflict();
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "AE"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "AE"));
 
         Assert.True(result.IsFailure);
         Assert.Equal("properties.archived", result.Error!.Code);
@@ -351,7 +354,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         _unitOfWork.ExceptionToThrow = conflict;
 
         var thrown = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "AE")));
+            () => CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "AE")));
 
         Assert.Same(conflict, thrown);
         Assert.Equal(PersistenceResource.RefreshToken, thrown.Resource);
@@ -365,7 +368,7 @@ public sealed class UpdatePropertyCommandHandlerTests
 
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
-            "Unit",
+            "Apartment",
             "SA",
             Bedrooms: 3,
             Bathrooms: 2,
@@ -387,9 +390,9 @@ public sealed class UpdatePropertyCommandHandlerTests
     {
         var property = SeedProperty();
         await CreateHandler().Handle(new UpdatePropertyCommand(
-            property.Id, "Unit", "SA", Bedrooms: 3, FinishingStatus: "Furnished"));
+            property.Id, "Apartment", "SA", Bedrooms: 3, FinishingStatus: "LuxuryFinished"));
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "SA"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "SA"));
 
         Assert.True(result.IsSuccess);
         Assert.Null(property.Bedrooms);
@@ -400,11 +403,11 @@ public sealed class UpdatePropertyCommandHandlerTests
     public async Task UnchangedSpecificationsCommitNothing()
     {
         var property = SeedProperty();
-        await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "SA", Bedrooms: 3));
+        await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "SA", Bedrooms: 3));
         var savesBefore = _unitOfWork.SaveChangesCallCount;
 
         var result = await CreateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Unit", "SA", Bedrooms: 3));
+            new UpdatePropertyCommand(property.Id, "Apartment", "SA", Bedrooms: 3));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(savesBefore, _unitOfWork.SaveChangesCallCount);
@@ -426,7 +429,7 @@ public sealed class UpdatePropertyCommandHandlerTests
 
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
-            "Unit",
+            "Apartment",
             "SA",
             Bedrooms: bedrooms,
             Bathrooms: bathrooms,
@@ -444,7 +447,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var property = SeedProperty();
 
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
-            property.Id, "Unit", "SA", BuiltDate: new DateOnly(1799, 12, 31)));
+            property.Id, "Apartment", "SA", BuiltDate: new DateOnly(1799, 12, 31)));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -459,7 +462,7 @@ public sealed class UpdatePropertyCommandHandlerTests
 
     private UpdatePropertyCommandHandler CreateHandler()
     {
-        return new UpdatePropertyCommandHandler(_properties, _amenities, _clock, _unitOfWork);
+        return new UpdatePropertyCommandHandler(_properties, _amenities, _views, _locations, _ai, _clock, _unitOfWork);
     }
 
     private static decimal? Parse(string? value)

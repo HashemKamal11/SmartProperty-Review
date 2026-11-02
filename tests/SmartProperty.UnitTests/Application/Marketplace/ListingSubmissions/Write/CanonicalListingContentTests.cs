@@ -25,7 +25,7 @@ public sealed class CanonicalListingContentTests
         Assert.Equal("Riyadh Province", content.Region);
         Assert.Equal("Riyadh", content.City);
         Assert.Equal("Al Olaya", content.District);
-        Assert.Equal(PropertyType.Unit, content.PropertyType);
+        Assert.Equal(PropertyType.Apartment, content.PropertyType);
         Assert.Equal("Two bedroom apartment", content.Title);
         Assert.Equal("Close to the centre.", content.Description);
         Assert.Equal(1250000m, content.Amount);
@@ -141,7 +141,7 @@ public sealed class CanonicalListingContentTests
 
     private static LockedPropertyView Property()
     {
-        return new LockedPropertyView(PropertyId, true, false, PropertyType.Unit, "SA", "Riyadh Province", "Riyadh", "Al Olaya");
+        return new LockedPropertyView(PropertyId, true, false, PropertyType.Apartment, "SA", "Riyadh Province", "Riyadh", "Al Olaya");
     }
 
     private static ListingDraftContentInput Input(RentPeriod? rentPeriod = null)

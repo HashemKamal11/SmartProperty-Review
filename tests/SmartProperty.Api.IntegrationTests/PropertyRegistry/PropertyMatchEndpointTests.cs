@@ -258,7 +258,7 @@ public sealed class PropertyMatchEndpointTests : IDisposable
     private async Task<Guid> SeedPropertyAsync()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), DateTimeOffset.UtcNow.AddMinutes(-5));
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), DateTimeOffset.UtcNow.AddMinutes(-5));
 
         await using var context = _fixture.CreateContext();
         context.Properties.Add(property);

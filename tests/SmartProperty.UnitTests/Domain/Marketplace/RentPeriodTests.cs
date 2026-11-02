@@ -31,5 +31,5 @@ public sealed class RentPeriodTests
     public void SaleHasNoPeriod() => Assert.Null(Content(ListingPurpose.Sale, null).RentPeriod);
 
     private static ListingSubmissionContent Content(ListingPurpose purpose, RentPeriod? period) =>
-        new("Country", "Region", "City", "District", "Title", "Description", PropertyType.Unit, purpose, 100m, "USD", period);
+        new("Country", "Region", "City", "District", "Title", "Description", PropertyType.Apartment, purpose, 100m, "USD", period);
 }

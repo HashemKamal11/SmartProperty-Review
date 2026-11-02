@@ -1,3 +1,4 @@
+using SmartProperty.Application.Abstractions.Ai;
 #nullable enable
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Infrastructure.Http;
@@ -12,7 +13,16 @@ internal static class ApiErrorResponseFactory
         ArgumentNullException.ThrowIfNull(error);
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        var status = error.Type switch
+        // The AI search service being down is neither the caller's mistake nor ours: report it as a bad gateway,
+        // or as unavailable when the integration is switched off.
+        var upstream = error.Code switch
+        {
+            AiSearchErrors.UnavailableCode => StatusCodes.Status502BadGateway,
+            AiSearchErrors.DisabledCode => StatusCodes.Status503ServiceUnavailable,
+            _ => (int?)null
+        };
+
+        var status = upstream ?? error.Type switch
         {
             ErrorType.Failure => StatusCodes.Status400BadRequest,
             ErrorType.Validation => StatusCodes.Status422UnprocessableEntity,

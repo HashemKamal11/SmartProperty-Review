@@ -1,13 +1,20 @@
 namespace SmartProperty.Domain.PropertyRegistry;
 
 /// <summary>
-/// How far a property's interior finishing has progressed (حالة التشطيب).
+/// How far a property's interior finishing has progressed (حالة التشطيب). The set mirrors the closed list of the AI
+/// search service. Whether the property is furnished is a separate yes/no fact, not a finishing level.
 /// </summary>
 public enum FinishingStatus
 {
-    Unfinished = 1,
-    SemiFinished = 2,
-    FullyFinished = 3,
-    SuperLux = 4,
-    Furnished = 5
+    /// <summary>تشطيب كامل</summary>
+    Finished = 1,
+
+    /// <summary>تشطيب فاخر</summary>
+    LuxuryFinished = 2,
+
+    /// <summary>نصف تشطيب</summary>
+    SemiFinished = 3,
+
+    /// <summary>على الطوب الأحمر</summary>
+    CoreAndShell = 4
 }

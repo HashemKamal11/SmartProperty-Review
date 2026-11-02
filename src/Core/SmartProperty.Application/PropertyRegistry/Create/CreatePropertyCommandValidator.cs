@@ -5,23 +5,19 @@ namespace SmartProperty.Application.PropertyRegistry.Create;
 
 internal static class CreatePropertyCommandValidator
 {
-    public static Error? Validate(CreatePropertyCommand command, out PropertyType propertyType,
-        out FinishingStatus? finishingStatus)
+    public static Error? Validate(
+        CreatePropertyCommand command,
+        out PropertyType propertyType,
+        out FinishingStatus? finishingStatus,
+        out PropertyListingInfo listing)
     {
-        propertyType = default;
         finishingStatus = null;
+        listing = PropertyListingInfo.Empty;
 
-        propertyType = command.Type switch
+        if (!PropertyCommandSupport.TryParseName(command.Type, out propertyType))
         {
-            nameof(PropertyType.Land) => PropertyType.Land,
-            nameof(PropertyType.Building) => PropertyType.Building,
-            nameof(PropertyType.Unit) => PropertyType.Unit,
-            _ => default
-        };
-
-        if (propertyType == default)
-        {
-            return CreatePropertyErrors.ValidationFailed("Type must be Land, Building, or Unit.");
+            return CreatePropertyErrors.ValidationFailed(
+                $"Type must be one of: {PropertyCommandSupport.NamesOf<PropertyType>()}.");
         }
 
         if (string.IsNullOrWhiteSpace(command.CountryCode))
@@ -55,6 +51,22 @@ internal static class CreatePropertyCommandValidator
                 out finishingStatus) is { } specificationError)
         {
             return CreatePropertyErrors.ValidationFailed(specificationError);
+        }
+
+        if (PropertyCommandSupport.ValidateListing(
+                command.TransactionType,
+                command.Price,
+                command.AreaSqm,
+                command.Floor,
+                command.Furnished,
+                command.ListingStatus,
+                command.TitleAr,
+                command.TitleEn,
+                command.DescriptionAr,
+                command.DescriptionEn,
+                out listing) is { } listingError)
+        {
+            return CreatePropertyErrors.ValidationFailed(listingError);
         }
 
         return null;

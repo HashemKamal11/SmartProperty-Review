@@ -203,7 +203,7 @@ public sealed class ListingWriteGateTests
 
     private static LockedPropertyView Property()
     {
-        return new LockedPropertyView(PropertyId, true, false, PropertyType.Unit, "SA", "Riyadh Province", "Riyadh", "Al Olaya");
+        return new LockedPropertyView(PropertyId, true, false, PropertyType.Apartment, "SA", "Riyadh Province", "Riyadh", "Al Olaya");
     }
 
     private static AuthorityGrantView OwnerGrant()

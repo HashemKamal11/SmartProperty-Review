@@ -13,6 +13,7 @@ public sealed class ArchivePropertyCommandHandlerTests
     private static readonly DateTimeOffset ArchivedAt = new(2026, 10, 12, 9, 30, 0, TimeSpan.Zero);
 
     private readonly FakePropertyRepository _properties = new();
+    private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeDateTimeProvider _clock = new(ArchivedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
 
@@ -176,6 +177,6 @@ public sealed class ArchivePropertyCommandHandlerTests
 
     private ArchivePropertyCommandHandler CreateHandler()
     {
-        return new ArchivePropertyCommandHandler(_properties, _clock, _unitOfWork);
+        return new ArchivePropertyCommandHandler(_properties, _ai, _clock, _unitOfWork);
     }
 }

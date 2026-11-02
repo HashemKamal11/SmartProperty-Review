@@ -22,7 +22,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             ORDER BY 1;
             """);
 
-        Assert.Equal(["amenities", "properties", "property_amenities"], actual);
+        Assert.Equal(["amenities", "properties", "property_amenities", "property_views", "views"], actual);
     }
 
     [Fact]
@@ -37,15 +37,30 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             "address_line|text|YES",
             "address_postal_code|text|YES",
             "address_region|text|YES",
+            "ai_sync_error|character varying(1000)|YES",
+            "ai_sync_status|character varying(32)|NO",
+            "ai_synced_at|timestamp with time zone|YES",
+            "area_id|uuid|YES",
+            "area_sqm|numeric(12,2)|YES",
             "bathrooms|integer|YES",
             "bedrooms|integer|YES",
             "built_date|date|YES",
+            "compound_id|uuid|YES",
             "created_at|timestamp with time zone|NO",
+            "description_ar|character varying(10000)|YES",
+            "description_en|character varying(10000)|YES",
             "finishing_status|character varying(32)|YES",
+            "floor|integer|YES",
+            "furnished|boolean|YES",
             "id|uuid|NO",
             "latitude|numeric|YES",
+            "listing_status|character varying(32)|NO",
             "longitude|numeric|YES",
+            "price|numeric(18,2)|YES",
             "status|character varying(32)|NO",
+            "title_ar|character varying(300)|YES",
+            "title_en|character varying(300)|YES",
+            "transaction_type|character varying(32)|YES",
             "type|character varying(32)|NO",
             "updated_at|timestamp with time zone|NO"
         ];
@@ -56,13 +71,27 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
                    || CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END
             FROM pg_attribute a
             WHERE a.attrelid = 'registry.properties'::regclass AND a.attnum > 0 AND NOT a.attisdropped
-            ORDER BY a.attname;
+            ORDER BY a.attname COLLATE "C";
             """);
 
         Assert.Equal(expected, actual);
         Assert.DoesNotContain(actual, column => column.StartsWith("workspace_id|", StringComparison.Ordinal));
         Assert.DoesNotContain(actual, column => column.StartsWith("organisation_id|", StringComparison.Ordinal));
         Assert.DoesNotContain(actual, column => column.StartsWith("tenant_id|", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task TheLocationsSchemaHoldsTheFourPlaceTables()
+    {
+        var actual = await QueryStringsAsync(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'locations'
+            ORDER BY 1 COLLATE "C";
+            """);
+
+        Assert.Equal(["areas", "cities", "compounds", "countries"], actual);
     }
 
     [Fact]
@@ -85,12 +114,19 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
         string[] expected =
         [
             "ck_registry_properties_address_country_code",
+            "ck_registry_properties_ai_sync_status",
+            "ck_registry_properties_area_sqm_range",
             "ck_registry_properties_bathrooms_range",
             "ck_registry_properties_bedrooms_range",
             "ck_registry_properties_finishing_status",
+            "ck_registry_properties_floor_range",
             "ck_registry_properties_latitude_range",
+            "ck_registry_properties_listing_status",
             "ck_registry_properties_longitude_range",
+            "ck_registry_properties_place",
+            "ck_registry_properties_price_positive",
             "ck_registry_properties_status",
+            "ck_registry_properties_transaction_type",
             "ck_registry_properties_type"
         ];
 
@@ -99,20 +135,21 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             SELECT conname
             FROM pg_constraint
             WHERE conrelid = 'registry.properties'::regclass AND contype = 'c'
-            ORDER BY 1;
+            ORDER BY 1 COLLATE "C";
             """);
 
         Assert.Equal(expected, actual);
     }
 
     [Fact]
-    public async Task ThePropertiesTableHasNoForeignKeyAndNoIndexBeyondItsPrimaryKey()
+    public async Task ThePropertiesTableHasOnlyTheTwoPlaceForeignKeysAndTheirIndexes()
     {
         var foreignKeys = await QueryStringsAsync(
             """
             SELECT conname
             FROM pg_constraint
-            WHERE conrelid = 'registry.properties'::regclass AND contype = 'f';
+            WHERE conrelid = 'registry.properties'::regclass AND contype = 'f'
+            ORDER BY 1 COLLATE "C";
             """);
 
         var indexes = await QueryStringsAsync(
@@ -120,11 +157,12 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             SELECT c.relname
             FROM pg_index i
             JOIN pg_class c ON c.oid = i.indexrelid
-            WHERE i.indrelid = 'registry.properties'::regclass AND NOT i.indisprimary;
+            WHERE i.indrelid = 'registry.properties'::regclass AND NOT i.indisprimary
+            ORDER BY 1 COLLATE "C";
             """);
 
-        Assert.Empty(foreignKeys);
-        Assert.Empty(indexes);
+        Assert.Equal(["FK_properties_areas_area_id", "FK_properties_compounds_compound_id"], foreignKeys);
+        Assert.Equal(["IX_properties_area_id", "IX_properties_compound_id"], indexes);
     }
 
     [Fact]

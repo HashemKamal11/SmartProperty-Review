@@ -20,13 +20,13 @@ public sealed class PropertySpecificationsPersistenceTests(PostgreSqlFixture fix
     {
         var property = new Property(
             Guid.NewGuid(),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PropertyAddress("EG"),
             CreatedAt,
             bedrooms: 3,
             bathrooms: 2,
             builtDate: new DateOnly(2021, 6, 30),
-            finishingStatus: FinishingStatus.SuperLux);
+            finishingStatus: FinishingStatus.LuxuryFinished);
 
         await SaveAsync(property);
 
@@ -34,7 +34,7 @@ public sealed class PropertySpecificationsPersistenceTests(PostgreSqlFixture fix
         Assert.Equal(3, reloaded.Bedrooms);
         Assert.Equal(2, reloaded.Bathrooms);
         Assert.Equal(new DateOnly(2021, 6, 30), reloaded.BuiltDate);
-        Assert.Equal(FinishingStatus.SuperLux, reloaded.FinishingStatus);
+        Assert.Equal(FinishingStatus.LuxuryFinished, reloaded.FinishingStatus);
     }
 
     [Fact]
@@ -53,15 +53,14 @@ public sealed class PropertySpecificationsPersistenceTests(PostgreSqlFixture fix
     }
 
     [Theory]
-    [InlineData(FinishingStatus.Unfinished, "Unfinished")]
+    [InlineData(FinishingStatus.Finished, "Finished")]
+    [InlineData(FinishingStatus.LuxuryFinished, "LuxuryFinished")]
     [InlineData(FinishingStatus.SemiFinished, "SemiFinished")]
-    [InlineData(FinishingStatus.FullyFinished, "FullyFinished")]
-    [InlineData(FinishingStatus.SuperLux, "SuperLux")]
-    [InlineData(FinishingStatus.Furnished, "Furnished")]
+    [InlineData(FinishingStatus.CoreAndShell, "CoreAndShell")]
     public async Task EachFinishingStatusIsStoredAsItsName(FinishingStatus status, string expected)
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt, finishingStatus: status);
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt, finishingStatus: status);
 
         await SaveAsync(property);
 
@@ -73,25 +72,25 @@ public sealed class PropertySpecificationsPersistenceTests(PostgreSqlFixture fix
     public async Task UpdatingSpecificationsPersistsTheChange()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt, bedrooms: 1);
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt, bedrooms: 1);
         await SaveAsync(property);
 
         await using (var updating = Host.CreateVerificationContext())
         {
             var tracked = await updating.Properties.SingleAsync(row => row.Id == property.Id);
             tracked.UpdateDetails(
-                PropertyType.Unit,
+                PropertyType.Apartment,
                 new PropertyAddress("EG"),
                 CreatedAt.AddHours(1),
                 bedrooms: 4,
-                finishingStatus: FinishingStatus.Furnished);
+                finishingStatus: FinishingStatus.LuxuryFinished);
             await updating.SaveChangesAsync();
         }
 
         var reloaded = await ReloadAsync(property.Id);
         Assert.Equal(4, reloaded.Bedrooms);
         Assert.Null(reloaded.Bathrooms);
-        Assert.Equal(FinishingStatus.Furnished, reloaded.FinishingStatus);
+        Assert.Equal(FinishingStatus.LuxuryFinished, reloaded.FinishingStatus);
     }
 
     [Theory]
@@ -119,8 +118,8 @@ public sealed class PropertySpecificationsPersistenceTests(PostgreSqlFixture fix
     }
 
     [Theory]
-    [InlineData("Unfinished")]
-    [InlineData("Furnished")]
+    [InlineData("CoreAndShell")]
+    [InlineData("LuxuryFinished")]
     public async Task SupportedFinishingStatusNamesAreAcceptedByTheDatabase(string finishingStatus)
     {
         await InsertAsync(finishingStatus: finishingStatus);
@@ -128,6 +127,8 @@ public sealed class PropertySpecificationsPersistenceTests(PostgreSqlFixture fix
 
     [Theory]
     [InlineData("1")]
+    [InlineData("Furnished")]
+    [InlineData("Unfinished")]
     [InlineData("furnished")]
     [InlineData("Shiny")]
     [InlineData("")]
@@ -179,7 +180,7 @@ public sealed class PropertySpecificationsPersistenceTests(PostgreSqlFixture fix
             INSERT INTO registry.properties
                 (id, type, status, address_country_code, bedrooms, bathrooms, finishing_status, created_at, updated_at)
             VALUES
-                (@id, 'Unit', 'Active', 'EG', @bedrooms, @bathrooms, @finishing_status, @created_at, @created_at);
+                (@id, 'Apartment', 'Active', 'EG', @bedrooms, @bathrooms, @finishing_status, @created_at, @created_at);
             """,
             connection);
 

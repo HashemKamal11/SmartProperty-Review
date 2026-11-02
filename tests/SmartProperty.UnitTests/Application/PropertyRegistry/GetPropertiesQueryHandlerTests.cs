@@ -88,7 +88,7 @@ public sealed class GetPropertiesQueryHandlerTests
     [Theory]
     [InlineData(PropertyType.Land)]
     [InlineData(PropertyType.Building)]
-    [InlineData(PropertyType.Unit)]
+    [InlineData(PropertyType.Apartment)]
     public async Task TheTypeFilterIsForwarded(PropertyType type)
     {
         await Handle(new GetPropertiesQuery(type, null, null, null, null));
@@ -181,12 +181,12 @@ public sealed class GetPropertiesQueryHandlerTests
         using var cancellation = new CancellationTokenSource();
 
         await CreateHandler().Handle(
-            new GetPropertiesQuery(PropertyType.Unit, PropertyStatus.Archived, " eg ", 2, 5),
+            new GetPropertiesQuery(PropertyType.Apartment, PropertyStatus.Archived, " eg ", 2, 5),
             cancellation.Token);
 
         Assert.Equal(1, _properties.ListCallCount);
         Assert.Equal(
-            new FakePropertyRepository.ListCall(PropertyType.Unit, PropertyStatus.Archived, "EG", 5, 5),
+            new FakePropertyRepository.ListCall(PropertyType.Apartment, PropertyStatus.Archived, "EG", 5, 5),
             _properties.LastListCall);
         Assert.Equal(cancellation.Token, _properties.CancellationToken);
     }

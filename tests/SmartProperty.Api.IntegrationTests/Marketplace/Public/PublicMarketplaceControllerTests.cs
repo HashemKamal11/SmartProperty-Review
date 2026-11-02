@@ -132,7 +132,7 @@ public sealed class PublicMarketplaceControllerTests
             _search,
             CancellationToken.None,
             purpose: ListingPurpose.Rent,
-            propertyType: PropertyType.Unit,
+            propertyType: PropertyType.Apartment,
             countryCode: "sa",
             region: "Riyadh Province",
             city: "Riyadh",
@@ -149,7 +149,7 @@ public sealed class PublicMarketplaceControllerTests
         Assert.Equal(
             new SearchPublicListingsQuery(
                 ListingPurpose.Rent,
-                PropertyType.Unit,
+                PropertyType.Apartment,
                 "sa",
                 "Riyadh Province",
                 "Riyadh",
@@ -276,7 +276,7 @@ public sealed class PublicMarketplaceControllerTests
             purpose,
             purpose == ListingPurpose.Rent ? "Bright apartment" : "Corner villa",
             Price(purpose),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             PublishedAt);
     }
@@ -289,7 +289,7 @@ public sealed class PublicMarketplaceControllerTests
             purpose == ListingPurpose.Rent ? "Bright apartment" : "Corner villa",
             purpose == ListingPurpose.Rent ? "Two bedrooms close to the centre." : "Quiet street, 450 square metres.",
             Price(purpose),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             PublishedAt);
     }

@@ -275,7 +275,7 @@ public sealed class AdminListingSubmissionReviewEndpointTests
         Assert.Equal("First", item.GetProperty("title").GetString());
         Assert.Equal("Sale", item.GetProperty("purpose").GetString());
         Assert.Equal("PendingReview", item.GetProperty("status").GetString());
-        Assert.Equal("Unit", item.GetProperty("propertyType").GetString());
+        Assert.Equal("Apartment", item.GetProperty("propertyType").GetString());
         Assert.Equal("Owner", item.GetProperty("representation").GetString());
         Assert.Equal("Individual", item.GetProperty("ownerKind").GetString());
         Assert.Equal(2, item.GetProperty("evidenceCount").GetInt32());
@@ -887,7 +887,7 @@ public sealed class AdminListingSubmissionReviewEndpointTests
             purpose == ListingPurpose.Rent
                 ? new PublicListingPrice(5200m, "SAR", RentPeriod.Monthly)
                 : new PublicListingPrice(1250000m, "SAR", null),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             ListingRepresentationKind.Owner,
             ListingOwnerKind.Individual,

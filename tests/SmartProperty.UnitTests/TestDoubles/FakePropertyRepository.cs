@@ -52,6 +52,24 @@ internal sealed class FakePropertyRepository : IPropertyRepository
         return Task.CompletedTask;
     }
 
+    /// <summary>Ids <see cref="GetExistingIdsAsync"/> reports as existing, in addition to every tracked and detailed property.</summary>
+    public HashSet<Guid> ExistingIds { get; } = [];
+
+    public int GetExistingIdsCallCount { get; private set; }
+
+    public Task<IReadOnlyCollection<Guid>> GetExistingIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        GetExistingIdsCallCount++;
+
+        IReadOnlyCollection<Guid> existing = ids
+            .Where(id => ExistingIds.Contains(id) || Tracked.ContainsKey(id) || Details.ContainsKey(id))
+            .ToList();
+
+        return Task.FromResult(existing);
+    }
+
     public Task<PropertyDetails?> GetDetailsByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         GetDetailsByIdCallCount++;

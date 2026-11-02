@@ -122,7 +122,7 @@ public sealed class SearchPublicListingsQueryHandlerTests
     {
         var result = await Handle(Query(
             purpose: ListingPurpose.Rent,
-            propertyType: PropertyType.Unit,
+            propertyType: PropertyType.Apartment,
             countryCode: " sa ",
             region: " Riyadh Province ",
             city: "Riyadh",
@@ -140,7 +140,7 @@ public sealed class SearchPublicListingsQueryHandlerTests
         Assert.Equal(
             new PublicListingSearchCriteria(
                 ListingPurpose.Rent,
-                PropertyType.Unit,
+                PropertyType.Apartment,
                 "SA",
                 "Riyadh Province",
                 "Riyadh",
@@ -298,7 +298,7 @@ public sealed class SearchPublicListingsQueryHandlerTests
             purpose,
             title,
             price,
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             PublishedAt);
     }

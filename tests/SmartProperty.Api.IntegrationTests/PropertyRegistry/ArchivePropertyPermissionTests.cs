@@ -84,7 +84,7 @@ public sealed class ArchivePropertyPermissionTests(ApiPostgreSqlFixture fixture)
         using var getById = await client.GetAsync($"/api/properties/{property.Id}");
         using var update = await client.PutAsJsonAsync(
             $"/api/properties/{property.Id}",
-            new UpdatePropertyRequest("Unit", "SA"));
+            new UpdatePropertyRequest("Apartment", "SA"));
 
         Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);

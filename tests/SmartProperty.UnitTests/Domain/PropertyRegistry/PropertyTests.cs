@@ -24,7 +24,7 @@ public sealed class PropertyTests
     [Theory]
     [InlineData(PropertyType.Land)]
     [InlineData(PropertyType.Building)]
-    [InlineData(PropertyType.Unit)]
+    [InlineData(PropertyType.Apartment)]
     public void Constructor_RetainsThePhysicalForm(PropertyType type)
     {
         var property = CreateProperty(type: type);
@@ -172,7 +172,7 @@ public sealed class PropertyTests
         var id = Guid.NewGuid();
         var property = CreateProperty(id: id);
 
-        property.UpdateDetails(PropertyType.Unit, new PropertyAddress("AE"), CreatedAt.AddDays(1));
+        property.UpdateDetails(PropertyType.Apartment, new PropertyAddress("AE"), CreatedAt.AddDays(1));
 
         Assert.Equal(id, property.Id);
         Assert.Equal(PropertyStatus.Active, property.Status);
@@ -184,10 +184,10 @@ public sealed class PropertyTests
     {
         var property = CreateProperty(type: PropertyType.Land);
 
-        var changed = property.UpdateDetails(PropertyType.Unit, new PropertyAddress("SA"), CreatedAt.AddDays(1));
+        var changed = property.UpdateDetails(PropertyType.Apartment, new PropertyAddress("SA"), CreatedAt.AddDays(1));
 
         Assert.True(changed);
-        Assert.Equal(PropertyType.Unit, property.Type);
+        Assert.Equal(PropertyType.Apartment, property.Type);
     }
 
     [Fact]
@@ -228,7 +228,7 @@ public sealed class PropertyTests
         property.Archive(archivedAt);
 
         Assert.Throws<InvalidOperationException>(() =>
-            property.UpdateDetails(PropertyType.Unit, new PropertyAddress("AE"), CreatedAt.AddDays(2)));
+            property.UpdateDetails(PropertyType.Apartment, new PropertyAddress("AE"), CreatedAt.AddDays(2)));
 
         Assert.Equal(PropertyType.Land, property.Type);
         Assert.Equal("SA", property.Address.CountryCode);
@@ -260,7 +260,7 @@ public sealed class PropertyTests
         var property = CreateProperty();
 
         Assert.Throws<ArgumentException>(() =>
-            property.UpdateDetails(PropertyType.Unit, new PropertyAddress("SA"), CreatedAt.AddSeconds(-1)));
+            property.UpdateDetails(PropertyType.Apartment, new PropertyAddress("SA"), CreatedAt.AddSeconds(-1)));
 
         Assert.Equal(PropertyType.Land, property.Type);
     }
@@ -270,7 +270,7 @@ public sealed class PropertyTests
     {
         var property = CreateProperty();
 
-        var changed = property.UpdateDetails(PropertyType.Unit, new PropertyAddress("SA"), CreatedAt);
+        var changed = property.UpdateDetails(PropertyType.Apartment, new PropertyAddress("SA"), CreatedAt);
 
         Assert.True(changed);
         Assert.Equal(CreatedAt, property.UpdatedAt);

@@ -13,7 +13,11 @@ public sealed record CreatePropertyResult(
     int? Bathrooms = null,
     DateOnly? BuiltDate = null,
     FinishingStatus? FinishingStatus = null,
-    IReadOnlyList<AmenityDetails>? Amenities = null);
+    IReadOnlyList<AmenityDetails>? Amenities = null,
+    IReadOnlyList<ViewDetails>? Views = null,
+    PropertyListingDetails? Listing = null,
+    AiSyncDetails? AiSync = null,
+    PropertyPlaceDetails? Place = null);
 
 public sealed record CreatePropertyAddressResult(
     string CountryCode,

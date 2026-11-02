@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using SmartProperty.Application.Abstractions.Authorization;
+using SmartProperty.Application.Abstractions.Ai;
 using SmartProperty.Application.Abstractions.Notifications;
 using SmartProperty.Persistence.Context;
 
@@ -88,6 +89,11 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
     /// </summary>
     public FakePermissionChecker PermissionChecker { get; } = new();
 
+    /// <summary>
+    /// The AI search service, replaced in every host so that no test can reach the real one.
+    /// </summary>
+    internal FakeAiSearchGateway AiGateway { get; } = new();
+
     /// <summary>Every SMS the host tried to send, instead of a real provider.</summary>
     public CapturingSmsSender SmsSender { get; } = new();
 
@@ -159,6 +165,9 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ISmsSender>(SmsSender);
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(EmailSender);
+
+            services.RemoveAll<IAiSearchGateway>();
+            services.AddSingleton<IAiSearchGateway>(AiGateway);
 
             // Makes the test-only route discoverable in this host. It is declared in the test assembly and
             // reaches MVC only here, so it cannot exist in the production application.

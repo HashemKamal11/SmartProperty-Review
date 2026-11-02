@@ -37,6 +37,12 @@ using SmartProperty.Application.Marketplace.PublicListings.Search;
 using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Archive;
 using SmartProperty.Application.PropertyRegistry.Amenities;
+using SmartProperty.Application.PropertyRegistry.Ai;
+using SmartProperty.Application.Locations;
+using SmartProperty.Application.PropertyRegistry.Ai.Sync;
+using SmartProperty.Application.PropertyRegistry.Views;
+using SmartProperty.Application.PropertyMatching.Search;
+using SmartProperty.Application.Abstractions.Ai;
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Application.PropertyRegistry.GetById;
 using SmartProperty.Application.PropertyRegistry.List;
@@ -296,6 +302,11 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<UpdatePropertyCommand, PropertyDetails>, UpdatePropertyCommandHandler>();
         services.AddScoped<ICommandHandler<ArchivePropertyCommand, PropertyDetails>, ArchivePropertyCommandHandler>();
         services.AddScoped<IQueryHandler<GetAmenitiesQuery, IReadOnlyList<AmenityDetails>>, GetAmenitiesQueryHandler>();
+        services.AddScoped<IQueryHandler<GetViewsQuery, IReadOnlyList<ViewDetails>>, GetViewsQueryHandler>();
+        services.AddScoped<IQueryHandler<GetLocationsQuery, IReadOnlyList<LocationDetails>>, GetLocationsQueryHandler>();
+        services.AddScoped<IPropertyAiSynchronizer, PropertyAiSynchronizer>();
+        services.AddScoped<ICommandHandler<SyncPropertyWithAiCommand, PropertyDetails>, SyncPropertyWithAiCommandHandler>();
+        services.AddScoped<ICommandHandler<SearchPropertiesCommand, PropertySearchResult>, SearchPropertiesCommandHandler>();
         services.AddScoped<ICommandHandler<RecordPropertyMatchCommand, PropertyMatchDetails>, RecordPropertyMatchCommandHandler>();
 
         services

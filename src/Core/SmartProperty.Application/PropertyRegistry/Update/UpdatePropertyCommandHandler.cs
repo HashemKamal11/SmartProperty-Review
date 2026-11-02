@@ -2,20 +2,24 @@ using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.PropertyRegistry.Ai;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.PropertyRegistry;
 
 namespace SmartProperty.Application.PropertyRegistry.Update;
 
 /// <summary>
-/// Corrects the current details of one canonical property: its physical form and its whole address.
+/// Corrects the current details of one canonical property: its physical form, its whole address, and its market
+/// facts, then brings the AI search service's copy up to date.
 /// </summary>
 /// <remarks>
 /// A current-state correction, not a revision: the row is overwritten and no history is kept. Identity, lifecycle,
 /// and the creation instant are never touched.
 ///
 /// Every precondition is checked before the aggregate is mutated, so a refused update leaves it exactly as it was.
-/// An update whose normalized values are already current changes nothing and commits nothing.
+/// An update whose normalized values are already current changes nothing and commits nothing — except that a
+/// property the AI service does not hold yet is offered to it again, which is how a failed or incomplete
+/// property is repaired by simply saving it.
 ///
 /// Status is the row's concurrency token. Two concurrent corrections still resolve as last-writer-wins, because
 /// neither changes the status; but an update that loaded the property Active and saves after an archive committed
@@ -24,6 +28,9 @@ namespace SmartProperty.Application.PropertyRegistry.Update;
 public sealed class UpdatePropertyCommandHandler(
     IPropertyRepository propertyRepository,
     IAmenityRepository amenityRepository,
+    IViewRepository viewRepository,
+    ILocationRepository locationRepository,
+    IPropertyAiSynchronizer aiSynchronizer,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
     : ICommandHandler<UpdatePropertyCommand, PropertyDetails>
@@ -34,7 +41,8 @@ public sealed class UpdatePropertyCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (UpdatePropertyCommandValidator.Validate(command, out var propertyType, out var finishingStatus) is { } validationError)
+        if (UpdatePropertyCommandValidator.Validate(
+                command, out var propertyType, out var finishingStatus, out var listing) is { } validationError)
         {
             return Result<PropertyDetails>.Failure(validationError);
         }
@@ -59,15 +67,42 @@ public sealed class UpdatePropertyCommandHandler(
             return Result<PropertyDetails>.Failure(UpdatePropertyErrors.Archived);
         }
 
-        var amenities = await PropertyAmenityResolver.ResolveAsync(
-            amenityRepository,
+        var amenities = await PropertyCodeResolver.ResolveAsync(
+            "Amenity",
             command.AmenityCodes,
+            amenityRepository.GetByCodesAsync,
+            amenity => amenity.Code,
             UpdatePropertyErrors.ValidationFailed,
             cancellationToken);
 
         if (amenities.IsFailure)
         {
             return Result<PropertyDetails>.Failure(amenities.Error!);
+        }
+
+        var views = await PropertyCodeResolver.ResolveAsync(
+            "View",
+            command.ViewCodes,
+            viewRepository.GetByCodesAsync,
+            view => view.Code,
+            UpdatePropertyErrors.ValidationFailed,
+            cancellationToken);
+
+        if (views.IsFailure)
+        {
+            return Result<PropertyDetails>.Failure(views.Error!);
+        }
+
+        var place = await PropertyCommandSupport.ResolvePlaceAsync(
+            locationRepository,
+            command.AreaId,
+            command.CompoundId,
+            UpdatePropertyErrors.ValidationFailed,
+            cancellationToken);
+
+        if (place.IsFailure)
+        {
+            return Result<PropertyDetails>.Failure(place.Error!);
         }
 
         var address = new PropertyAddress(
@@ -88,7 +123,11 @@ public sealed class UpdatePropertyCommandHandler(
             command.Bathrooms,
             command.BuiltDate,
             finishingStatus,
-            amenities.Value);
+            amenities.Value,
+            views.Value,
+            listing,
+            place.Value.Area,
+            place.Value.Compound);
 
         if (changed)
         {
@@ -102,6 +141,11 @@ public sealed class UpdatePropertyCommandHandler(
                 // The status changed after the load, and Active is the only status an update starts from.
                 return Result<PropertyDetails>.Failure(UpdatePropertyErrors.Archived);
             }
+        }
+
+        if (changed || property.AiSyncStatus != AiSyncStatus.Synced)
+        {
+            await aiSynchronizer.SyncAsync(property, cancellationToken);
         }
 
         return Result<PropertyDetails>.Success(PropertyCommandSupport.ToDetails(property));

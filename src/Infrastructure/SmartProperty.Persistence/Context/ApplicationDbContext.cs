@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.Locations;
 using SmartProperty.Domain.PropertyMatching;
 using SmartProperty.Domain.Marketplace;
 using SmartProperty.Domain.PropertyRegistry;
@@ -27,6 +28,11 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
+    public DbSet<PropertyView> PropertyViews => Set<PropertyView>();
+    public DbSet<Country> Countries => Set<Country>();
+    public DbSet<City> Cities => Set<City>();
+    public DbSet<Area> Areas => Set<Area>();
+    public DbSet<Compound> Compounds => Set<Compound>();
     public DbSet<PropertyMatch> PropertyMatches => Set<PropertyMatch>();
     public DbSet<ListingSubmission> ListingSubmissions => Set<ListingSubmission>();
     public DbSet<ListingReviewDecision> ListingReviewDecisions => Set<ListingReviewDecision>();

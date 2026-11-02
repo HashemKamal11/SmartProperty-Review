@@ -12,7 +12,11 @@ public sealed record CreatePropertyResponse(
     int? Bathrooms = null,
     DateOnly? BuiltDate = null,
     string? FinishingStatus = null,
-    IReadOnlyList<AmenityResponse>? Amenities = null);
+    IReadOnlyList<AmenityResponse>? Amenities = null,
+    IReadOnlyList<ViewResponse>? Views = null,
+    PropertyListingResponse? Listing = null,
+    AiSyncResponse? AiSync = null,
+    PropertyPlaceResponse? Place = null);
 
 public sealed record PropertyAddressResponse(
     string CountryCode,

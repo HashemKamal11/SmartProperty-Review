@@ -186,7 +186,7 @@ public sealed class PropertyUpdateRepositoryTests(PostgreSqlFixture fixture) : D
 
             Assert.Equal(PropertyStatus.Archived, property.Status);
             Assert.Throws<InvalidOperationException>(() =>
-                property.UpdateDetails(PropertyType.Unit, new PropertyAddress("AE"), UpdatedAt));
+                property.UpdateDetails(PropertyType.Apartment, new PropertyAddress("AE"), UpdatedAt));
             Assert.False(context.ChangeTracker.HasChanges());
         }
 

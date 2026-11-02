@@ -1,3 +1,5 @@
+using SmartProperty.Domain.Locations;
+
 namespace SmartProperty.Domain.PropertyRegistry;
 
 /// <summary>
@@ -10,9 +12,11 @@ public sealed class Property
     {
         // The address is populated by the persistence layer after construction.
         Address = null!;
+        Listing = PropertyListingInfo.Empty;
     }
 
     public const int MaxRoomCount = 100;
+    public const int MaxAiSyncErrorLength = 1000;
     public static readonly DateOnly EarliestBuiltDate = new(1800, 1, 1);
 
     public Property(
@@ -24,7 +28,11 @@ public sealed class Property
         int? bathrooms = null,
         DateOnly? builtDate = null,
         FinishingStatus? finishingStatus = null,
-        IEnumerable<Amenity>? amenities = null)
+        IEnumerable<Amenity>? amenities = null,
+        IEnumerable<PropertyView>? views = null,
+        PropertyListingInfo? listing = null,
+        Area? area = null,
+        Compound? compound = null)
     {
         if (id == Guid.Empty)
         {
@@ -38,6 +46,7 @@ public sealed class Property
 
         ArgumentNullException.ThrowIfNull(address);
         ValidateSpecifications(bedrooms, bathrooms, builtDate, finishingStatus);
+        ValidatePlace(area, compound);
 
         Id = id;
         Type = type;
@@ -46,7 +55,11 @@ public sealed class Property
         Bathrooms = bathrooms;
         BuiltDate = builtDate;
         FinishingStatus = finishingStatus;
-        _amenities.AddRange(DistinctById(amenities));
+        _amenities.AddRange(DistinctById(amenities, amenity => amenity.Id));
+        _views.AddRange(DistinctById(views, view => view.Id));
+        Listing = listing ?? PropertyListingInfo.Empty;
+        AiSyncStatus = AiSyncStatus.NotSynced;
+        SetPlace(area, compound);
         Status = PropertyStatus.Active;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
@@ -62,9 +75,34 @@ public sealed class Property
     public FinishingStatus? FinishingStatus { get; private set; }
 
     private readonly List<Amenity> _amenities = [];
+    private readonly List<PropertyView> _views = [];
 
     /// <summary>The amenities this property offers, with no duplicates.</summary>
     public IReadOnlyCollection<Amenity> Amenities => _amenities;
+
+    /// <summary>What the property looks out on, with no duplicates.</summary>
+    public IReadOnlyCollection<PropertyView> Views => _views;
+
+    /// <summary>The market-facing facts: price, area, transaction type, presentation, and place ids.</summary>
+    public PropertyListingInfo Listing { get; private set; }
+
+    /// <summary>The area the property is in, or null while its place is not chosen. City and country come from it.</summary>
+    public Guid? AreaId { get; private set; }
+
+    public Area? Area { get; private set; }
+
+    /// <summary>The compound inside <see cref="Area"/>, when the property is in one.</summary>
+    public Guid? CompoundId { get; private set; }
+
+    public Compound? Compound { get; private set; }
+
+    /// <summary>Whether the AI search service holds this property. Bookkeeping: never changes <see cref="UpdatedAt"/>.</summary>
+    public AiSyncStatus AiSyncStatus { get; private set; }
+
+    public DateTimeOffset? AiSyncedAt { get; private set; }
+
+    /// <summary>Why the property is not synced (missing data, or the failure of the last attempt), or null.</summary>
+    public string? AiSyncError { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -104,7 +142,11 @@ public sealed class Property
         int? bathrooms = null,
         DateOnly? builtDate = null,
         FinishingStatus? finishingStatus = null,
-        IEnumerable<Amenity>? amenities = null)
+        IEnumerable<Amenity>? amenities = null,
+        IEnumerable<PropertyView>? views = null,
+        PropertyListingInfo? listing = null,
+        Area? area = null,
+        Compound? compound = null)
     {
         if (Status != PropertyStatus.Active)
         {
@@ -118,6 +160,7 @@ public sealed class Property
 
         ArgumentNullException.ThrowIfNull(address);
         ValidateSpecifications(bedrooms, bathrooms, builtDate, finishingStatus);
+        ValidatePlace(area, compound);
 
         // A no-op is decided before the timestamp is examined: nothing changes, so the proposed instant is irrelevant
         // and a clock running behind the stored update must not turn an unchanged correction into a failure.
@@ -127,7 +170,11 @@ public sealed class Property
             && Bathrooms == bathrooms
             && BuiltDate == builtDate
             && FinishingStatus == finishingStatus
-            && HasSameAmenities(amenities))
+            && HasSameIds(_amenities, amenities, amenity => amenity.Id)
+            && HasSameIds(_views, views, view => view.Id)
+            && Listing == (listing ?? PropertyListingInfo.Empty)
+            && AreaId == area?.Id
+            && CompoundId == compound?.Id)
         {
             return false;
         }
@@ -140,35 +187,111 @@ public sealed class Property
         Bathrooms = bathrooms;
         BuiltDate = builtDate;
         FinishingStatus = finishingStatus;
-        ReplaceAmenities(amenities);
+        ReplaceItems(_amenities, amenities, amenity => amenity.Id);
+        ReplaceItems(_views, views, view => view.Id);
+        Listing = listing ?? PropertyListingInfo.Empty;
+        SetPlace(area, compound);
         UpdatedAt = updatedAt;
 
         return true;
     }
 
-    private static List<Amenity> DistinctById(IEnumerable<Amenity>? amenities)
+    /// <summary>
+    /// The facts the AI search service requires that this property does not have yet, by their API names. Empty
+    /// when the property can be sent.
+    /// </summary>
+    public IReadOnlyList<string> MissingForAiSync()
     {
-        return (amenities ?? []).DistinctBy(amenity => amenity.Id).ToList();
+        var missing = new List<string>();
+
+        if (Listing.TransactionType is null) { missing.Add("transactionType"); }
+        if (Listing.Price is null) { missing.Add("price"); }
+        if (Listing.AreaSqm is null) { missing.Add("areaSqm"); }
+        if (AreaId is null) { missing.Add("areaId"); }
+        if (Bedrooms is null) { missing.Add("bedrooms"); }
+        if (Bathrooms is null) { missing.Add("bathrooms"); }
+
+        return missing;
     }
 
-    private bool HasSameAmenities(IEnumerable<Amenity>? amenities)
+    /// <summary>Records that the AI service now holds the property as last saved.</summary>
+    public void MarkAiSynced(DateTimeOffset at)
     {
-        return DistinctById(amenities).Select(amenity => amenity.Id).ToHashSet()
-            .SetEquals(_amenities.Select(amenity => amenity.Id));
+        AiSyncStatus = AiSyncStatus.Synced;
+        AiSyncedAt = at;
+        AiSyncError = null;
     }
 
-    // Keeps the amenities already attached, so only the real difference reaches the database.
-    private void ReplaceAmenities(IEnumerable<Amenity>? amenities)
+    /// <summary>Records that the AI service does not hold the property, with the reason when there is one.</summary>
+    public void MarkAiNotSynced(string? reason = null)
     {
-        var incoming = DistinctById(amenities);
+        AiSyncStatus = AiSyncStatus.NotSynced;
+        AiSyncedAt = null;
+        AiSyncError = TrimError(reason);
+    }
 
-        _amenities.RemoveAll(current => incoming.TrueForAll(amenity => amenity.Id != current.Id));
+    /// <summary>Records that the last attempt to send the property failed.</summary>
+    public void MarkAiSyncFailed(string reason)
+    {
+        AiSyncStatus = AiSyncStatus.Failed;
+        AiSyncError = TrimError(reason);
+    }
 
-        foreach (var amenity in incoming)
+    private static string? TrimError(string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
         {
-            if (_amenities.TrueForAll(current => current.Id != amenity.Id))
+            return null;
+        }
+
+        var trimmed = reason.Trim();
+
+        return trimmed.Length <= MaxAiSyncErrorLength ? trimmed : trimmed[..MaxAiSyncErrorLength];
+    }
+
+    private static void ValidatePlace(Area? area, Compound? compound)
+    {
+        if (compound is not null && area is null)
+        {
+            throw new ArgumentException("A compound can only be chosen together with its area.", nameof(compound));
+        }
+
+        if (compound is not null && area is not null && compound.AreaId != area.Id)
+        {
+            throw new ArgumentException("The compound does not belong to the area.", nameof(compound));
+        }
+    }
+
+    private void SetPlace(Area? area, Compound? compound)
+    {
+        Area = area;
+        AreaId = area?.Id;
+        Compound = compound;
+        CompoundId = compound?.Id;
+    }
+
+    private static List<T> DistinctById<T>(IEnumerable<T>? items, Func<T, Guid> id)
+    {
+        return (items ?? []).DistinctBy(id).ToList();
+    }
+
+    private static bool HasSameIds<T>(List<T> current, IEnumerable<T>? incoming, Func<T, Guid> id)
+    {
+        return DistinctById(incoming, id).Select(id).ToHashSet().SetEquals(current.Select(id));
+    }
+
+    // Keeps the items already attached, so only the real difference reaches the database.
+    private static void ReplaceItems<T>(List<T> current, IEnumerable<T>? incoming, Func<T, Guid> id)
+    {
+        var wanted = DistinctById(incoming, id);
+
+        current.RemoveAll(existing => wanted.TrueForAll(item => id(item) != id(existing)));
+
+        foreach (var item in wanted)
+        {
+            if (current.TrueForAll(existing => id(existing) != id(item)))
             {
-                _amenities.Add(amenity);
+                current.Add(item);
             }
         }
     }

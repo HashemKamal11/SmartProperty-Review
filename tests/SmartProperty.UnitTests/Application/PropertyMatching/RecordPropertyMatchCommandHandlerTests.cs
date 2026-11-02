@@ -23,7 +23,7 @@ public sealed class RecordPropertyMatchCommandHandlerTests
         _users.Seed(new User(_userId, "buyer@example.com", "Buy", "Er", Now));
         _properties.Details[_propertyId] = new PropertyDetails(
             _propertyId,
-            PropertyType.Unit,
+            PropertyType.Apartment,
             PropertyStatus.Active,
             new PropertyAddressDetails("EG", null, null, null, null, null, null, null),
             Now,

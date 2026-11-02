@@ -27,12 +27,12 @@ public sealed class PropertySpecificationsTests
     public void Constructor_RetainsEverySuppliedSpecification()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, 3, 2, new DateOnly(2020, 5, 1), FinishingStatus.Furnished);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, 3, 2, new DateOnly(2020, 5, 1), FinishingStatus.LuxuryFinished);
 
         Assert.Equal(3, property.Bedrooms);
         Assert.Equal(2, property.Bathrooms);
         Assert.Equal(new DateOnly(2020, 5, 1), property.BuiltDate);
-        Assert.Equal(FinishingStatus.Furnished, property.FinishingStatus);
+        Assert.Equal(FinishingStatus.LuxuryFinished, property.FinishingStatus);
     }
 
     [Theory]
@@ -41,7 +41,7 @@ public sealed class PropertySpecificationsTests
     public void Constructor_AcceptsTheBoundaryRoomCounts(int count)
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, bedrooms: count, bathrooms: count);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, bedrooms: count, bathrooms: count);
 
         Assert.Equal(count, property.Bedrooms);
         Assert.Equal(count, property.Bathrooms);
@@ -53,7 +53,7 @@ public sealed class PropertySpecificationsTests
     public void Constructor_RejectsAnOutOfRangeBedroomCount(int count)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new Property(Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, bedrooms: count));
+            new Property(Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, bedrooms: count));
     }
 
     [Theory]
@@ -62,7 +62,7 @@ public sealed class PropertySpecificationsTests
     public void Constructor_RejectsAnOutOfRangeBathroomCount(int count)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new Property(Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, bathrooms: count));
+            new Property(Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, bathrooms: count));
     }
 
     [Fact]
@@ -88,22 +88,22 @@ public sealed class PropertySpecificationsTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new Property(
-                Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, finishingStatus: (FinishingStatus)99));
+                Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, finishingStatus: (FinishingStatus)99));
     }
 
     [Fact]
     public void UpdateDetails_ReplacesEverySpecificationAndReportsAChange()
     {
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt);
 
         var changed = property.UpdateDetails(
-            PropertyType.Unit, Address, LaterAt, 4, 3, new DateOnly(2018, 3, 9), FinishingStatus.SuperLux);
+            PropertyType.Apartment, Address, LaterAt, 4, 3, new DateOnly(2018, 3, 9), FinishingStatus.LuxuryFinished);
 
         Assert.True(changed);
         Assert.Equal(4, property.Bedrooms);
         Assert.Equal(3, property.Bathrooms);
         Assert.Equal(new DateOnly(2018, 3, 9), property.BuiltDate);
-        Assert.Equal(FinishingStatus.SuperLux, property.FinishingStatus);
+        Assert.Equal(FinishingStatus.LuxuryFinished, property.FinishingStatus);
         Assert.Equal(LaterAt, property.UpdatedAt);
     }
 
@@ -111,9 +111,9 @@ public sealed class PropertySpecificationsTests
     public void UpdateDetails_ClearsASpecificationLeftNull()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, 3, 2, new DateOnly(2020, 5, 1), FinishingStatus.Furnished);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, 3, 2, new DateOnly(2020, 5, 1), FinishingStatus.LuxuryFinished);
 
-        var changed = property.UpdateDetails(PropertyType.Unit, Address, LaterAt);
+        var changed = property.UpdateDetails(PropertyType.Apartment, Address, LaterAt);
 
         Assert.True(changed);
         Assert.Null(property.Bedrooms);
@@ -126,10 +126,10 @@ public sealed class PropertySpecificationsTests
     public void UpdateDetails_ChangingOnlyASpecificationIsAChange()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, finishingStatus: FinishingStatus.Unfinished);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, finishingStatus: FinishingStatus.CoreAndShell);
 
         var changed = property.UpdateDetails(
-            PropertyType.Unit, Address, LaterAt, finishingStatus: FinishingStatus.FullyFinished);
+            PropertyType.Apartment, Address, LaterAt, finishingStatus: FinishingStatus.Finished);
 
         Assert.True(changed);
         Assert.Equal(LaterAt, property.UpdatedAt);
@@ -139,10 +139,10 @@ public sealed class PropertySpecificationsTests
     public void UpdateDetails_IdenticalSpecificationsAreNotAChange()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, 3, 2, new DateOnly(2020, 5, 1), FinishingStatus.Furnished);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, 3, 2, new DateOnly(2020, 5, 1), FinishingStatus.LuxuryFinished);
 
         var changed = property.UpdateDetails(
-            PropertyType.Unit, Address, LaterAt, 3, 2, new DateOnly(2020, 5, 1), FinishingStatus.Furnished);
+            PropertyType.Apartment, Address, LaterAt, 3, 2, new DateOnly(2020, 5, 1), FinishingStatus.LuxuryFinished);
 
         Assert.False(changed);
         Assert.Equal(CreatedAt, property.UpdatedAt);
@@ -151,10 +151,10 @@ public sealed class PropertySpecificationsTests
     [Fact]
     public void UpdateDetails_RejectsInvalidSpecificationsAndLeavesThePropertyUntouched()
     {
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, bedrooms: 2);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, bedrooms: 2);
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            property.UpdateDetails(PropertyType.Unit, Address, LaterAt, bedrooms: -5));
+            property.UpdateDetails(PropertyType.Apartment, Address, LaterAt, bedrooms: -5));
 
         Assert.Equal(2, property.Bedrooms);
         Assert.Equal(CreatedAt, property.UpdatedAt);
@@ -163,19 +163,18 @@ public sealed class PropertySpecificationsTests
     [Fact]
     public void UpdateDetails_RefusesAnArchivedPropertyEvenWithNewSpecifications()
     {
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt);
         property.Archive(CreatedAt);
 
         Assert.Throws<InvalidOperationException>(() =>
-            property.UpdateDetails(PropertyType.Unit, Address, LaterAt, bedrooms: 3));
+            property.UpdateDetails(PropertyType.Apartment, Address, LaterAt, bedrooms: 3));
     }
 
     [Theory]
-    [InlineData(FinishingStatus.Unfinished, 1)]
-    [InlineData(FinishingStatus.SemiFinished, 2)]
-    [InlineData(FinishingStatus.FullyFinished, 3)]
-    [InlineData(FinishingStatus.SuperLux, 4)]
-    [InlineData(FinishingStatus.Furnished, 5)]
+    [InlineData(FinishingStatus.Finished, 1)]
+    [InlineData(FinishingStatus.LuxuryFinished, 2)]
+    [InlineData(FinishingStatus.SemiFinished, 3)]
+    [InlineData(FinishingStatus.CoreAndShell, 4)]
     public void FinishingStatus_KeepsItsStableNumericValues(FinishingStatus status, int expected)
     {
         Assert.Equal(expected, (int)status);

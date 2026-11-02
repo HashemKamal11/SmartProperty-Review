@@ -134,7 +134,7 @@ public sealed class PublicListingEndpointTests
         Assert.Equal(
             new PublicListingSearchCriteria(
                 ListingPurpose.Rent,
-                PropertyType.Unit,
+                PropertyType.Apartment,
                 "SA",
                 "Riyadh Province",
                 "Riyadh",
@@ -438,7 +438,7 @@ public sealed class PublicListingEndpointTests
             purpose == ListingPurpose.Rent
                 ? new PublicListingPrice(5200m, "SAR", rentPeriod)
                 : new PublicListingPrice(1250000m, "SAR", null),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             PublishedAt);
     }
@@ -453,7 +453,7 @@ public sealed class PublicListingEndpointTests
             purpose == ListingPurpose.Rent
                 ? new PublicListingPrice(5200m, "SAR", rentPeriod)
                 : new PublicListingPrice(1250000m, "SAR", null),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             PublishedAt);
     }

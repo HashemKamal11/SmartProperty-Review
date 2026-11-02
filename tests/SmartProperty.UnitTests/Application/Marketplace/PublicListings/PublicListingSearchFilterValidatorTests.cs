@@ -121,7 +121,7 @@ public sealed class PublicListingSearchFilterValidatorTests
     [Theory]
     [InlineData(PropertyType.Land)]
     [InlineData(PropertyType.Building)]
-    [InlineData(PropertyType.Unit)]
+    [InlineData(PropertyType.Apartment)]
     public void AValidPropertyTypePassesThrough(PropertyType propertyType)
     {
         var result = Validate(propertyType: propertyType);
@@ -349,7 +349,7 @@ public sealed class PublicListingSearchFilterValidatorTests
     {
         var result = Validate(
             purpose: ListingPurpose.Rent,
-            propertyType: PropertyType.Unit,
+            propertyType: PropertyType.Apartment,
             countryCode: "sa",
             region: "Riyadh Province",
             city: " Riyadh ",
@@ -364,7 +364,7 @@ public sealed class PublicListingSearchFilterValidatorTests
         Assert.Equal(
             new PublicListingSearchCriteria(
                 ListingPurpose.Rent,
-                PropertyType.Unit,
+                PropertyType.Apartment,
                 "SA",
                 "Riyadh Province",
                 "Riyadh",

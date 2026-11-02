@@ -17,14 +17,14 @@ public sealed class PublicListingReadRepositoryTests(PostgreSqlFixture fixture) 
     {
         await using var context = Host.CreateVerificationContext();
         var at = MarketplaceGraph.Time;
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), at);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), at);
         var listing = new PropertyListing(Guid.NewGuid(), property.Id, purpose, at);
         context.Add(property);
         context.Add(listing);
         await context.SaveChangesAsync();
         var template = MarketplaceGraph.Pending(listing, at.AddSeconds(1));
         var content = new ListingSubmissionContent("Legacy country", "Region", "City", "District", "Public title", "Public description",
-            PropertyType.Unit, purpose, amount, "Legacy currency", purpose == ListingPurpose.Rent ? RentPeriod.Yearly : null);
+            PropertyType.Apartment, purpose, amount, "Legacy currency", purpose == ListingPurpose.Rent ? RentPeriod.Yearly : null);
         var submission = new ListingSubmission(Guid.NewGuid(), listing, content, template.Authority, template.Evidence, at.AddSeconds(1));
         submission.Submit(submission.Authority.ActingUserId, null, at.AddSeconds(1), MarketplaceGraph.Assessments(submission, at.AddSeconds(1)), true, null);
         context.Add(submission);

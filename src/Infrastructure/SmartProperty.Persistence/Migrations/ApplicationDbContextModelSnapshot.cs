@@ -331,6 +331,152 @@ namespace SmartProperty.Persistence.Migrations
                     b.ToTable("user_platform_roles", "identity");
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.Locations.Area", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AiId")
+                        .HasColumnType("integer")
+                        .HasColumnName("ai_id");
+
+                    b.Property<Guid>("CityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("city_id");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_en");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AiId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_locations_areas_ai_id");
+
+                    b.HasIndex("CityId");
+
+                    b.ToTable("areas", "locations");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Locations.City", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AiId")
+                        .HasColumnType("integer")
+                        .HasColumnName("ai_id");
+
+                    b.Property<Guid>("CountryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("country_id");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_en");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AiId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_locations_cities_ai_id");
+
+                    b.HasIndex("CountryId");
+
+                    b.ToTable("cities", "locations");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Locations.Compound", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AiId")
+                        .HasColumnType("integer")
+                        .HasColumnName("ai_id");
+
+                    b.Property<Guid>("AreaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("area_id");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_en");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AiId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_locations_compounds_ai_id");
+
+                    b.HasIndex("AreaId");
+
+                    b.ToTable("compounds", "locations");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Locations.Country", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AiId")
+                        .HasColumnType("integer")
+                        .HasColumnName("ai_id");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name_en");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AiId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_locations_countries_ai_id");
+
+                    b.ToTable("countries", "locations");
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.ListingReviewDecision", b =>
                 {
                     b.Property<Guid>("Id")
@@ -468,7 +614,7 @@ namespace SmartProperty.Persistence.Migrations
 
                     b.ToTable("submissions", "marketplace", t =>
                         {
-                            t.HasCheckConstraint("ck_marketplace_submissions_content", "COALESCE((content_snapshot->>'FormatVersion' = '1' AND jsonb_typeof(content_snapshot->'Payload'->'Country') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Country')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Region') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Region')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'City') = 'string' AND length(btrim(content_snapshot->'Payload'->>'City')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'District') = 'string' AND length(btrim(content_snapshot->'Payload'->>'District')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Title') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Title')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Description') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Description')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Currency') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Currency')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Amount') = 'number' AND content_snapshot->'Payload'->>'PropertyType' IN ('1','2','3') AND ((purpose = 'Sale' AND content_snapshot->'Payload'->>'Purpose' = '1' AND content_snapshot->'Payload'->'RentPeriod' = 'null'::jsonb) OR (purpose = 'Rent' AND content_snapshot->'Payload'->>'Purpose' = '2' AND content_snapshot->'Payload'->>'RentPeriod' IN ('1','2')))), false)");
+                            t.HasCheckConstraint("ck_marketplace_submissions_content", "COALESCE((content_snapshot->>'FormatVersion' = '1' AND jsonb_typeof(content_snapshot->'Payload'->'Country') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Country')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Region') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Region')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'City') = 'string' AND length(btrim(content_snapshot->'Payload'->>'City')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'District') = 'string' AND length(btrim(content_snapshot->'Payload'->>'District')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Title') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Title')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Description') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Description')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Currency') = 'string' AND length(btrim(content_snapshot->'Payload'->>'Currency')) > 0 AND jsonb_typeof(content_snapshot->'Payload'->'Amount') = 'number' AND content_snapshot->'Payload'->>'PropertyType' IN ('1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16') AND ((purpose = 'Sale' AND content_snapshot->'Payload'->>'Purpose' = '1' AND content_snapshot->'Payload'->'RentPeriod' = 'null'::jsonb) OR (purpose = 'Rent' AND content_snapshot->'Payload'->>'Purpose' = '2' AND content_snapshot->'Payload'->>'RentPeriod' IN ('1','2')))), false)");
 
                             t.HasCheckConstraint("ck_marketplace_submissions_evidence", "COALESCE((jsonb_typeof(evidence_snapshot->'Payload') = 'array' AND (status = 'Draft' OR jsonb_array_length(evidence_snapshot->'Payload') > 0) AND evidence_snapshot->>'FormatVersion' = '1' AND authority_snapshot->>'FormatVersion' = '1' AND submitted_assessments_snapshot->>'FormatVersion' = '1'), false)");
 
@@ -796,6 +942,11 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AiCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ai_code");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -834,6 +985,27 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("AiSyncError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("ai_sync_error");
+
+                    b.Property<string>("AiSyncStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("NotSynced")
+                        .HasColumnName("ai_sync_status");
+
+                    b.Property<DateTimeOffset?>("AiSyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ai_synced_at");
+
+                    b.Property<Guid?>("AreaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("area_id");
+
                     b.Property<int?>("Bathrooms")
                         .HasColumnType("integer")
                         .HasColumnName("bathrooms");
@@ -845,6 +1017,10 @@ namespace SmartProperty.Persistence.Migrations
                     b.Property<DateOnly?>("BuiltDate")
                         .HasColumnType("date")
                         .HasColumnName("built_date");
+
+                    b.Property<Guid?>("CompoundId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("compound_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -911,17 +1087,91 @@ namespace SmartProperty.Persistence.Migrations
                                 .HasColumnName("address_region");
                         });
 
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Listing", "SmartProperty.Domain.PropertyRegistry.Property.Listing#PropertyListingInfo", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<decimal?>("AreaSqm")
+                                .HasPrecision(12, 2)
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("area_sqm");
+
+                            b1.Property<string>("DescriptionAr")
+                                .HasMaxLength(10000)
+                                .HasColumnType("character varying(10000)")
+                                .HasColumnName("description_ar");
+
+                            b1.Property<string>("DescriptionEn")
+                                .HasMaxLength(10000)
+                                .HasColumnType("character varying(10000)")
+                                .HasColumnName("description_en");
+
+                            b1.Property<int?>("Floor")
+                                .HasColumnType("integer")
+                                .HasColumnName("floor");
+
+                            b1.Property<bool?>("Furnished")
+                                .HasColumnType("boolean")
+                                .HasColumnName("furnished");
+
+                            b1.Property<string>("ListingStatus")
+                                .IsRequired()
+                                .ValueGeneratedOnAdd()
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasDefaultValue("Available")
+                                .HasColumnName("listing_status");
+
+                            b1.Property<decimal?>("Price")
+                                .HasPrecision(18, 2)
+                                .HasColumnType("numeric(18,2)")
+                                .HasColumnName("price");
+
+                            b1.Property<string>("TitleAr")
+                                .HasMaxLength(300)
+                                .HasColumnType("character varying(300)")
+                                .HasColumnName("title_ar");
+
+                            b1.Property<string>("TitleEn")
+                                .HasMaxLength(300)
+                                .HasColumnType("character varying(300)")
+                                .HasColumnName("title_en");
+
+                            b1.Property<string>("TransactionType")
+                                .HasMaxLength(32)
+                                .HasColumnType("character varying(32)")
+                                .HasColumnName("transaction_type");
+                        });
+
                     b.HasKey("Id");
+
+                    b.HasIndex("AreaId");
+
+                    b.HasIndex("CompoundId");
 
                     b.ToTable("properties", "registry", t =>
                         {
+                                                        t.HasCheckConstraint("ck_registry_properties_ai_sync_status", "ai_sync_status IN ('NotSynced', 'Synced', 'Failed')");
+
+                            t.HasCheckConstraint("ck_registry_properties_area_sqm_range", "area_sqm IS NULL OR (area_sqm > 0 AND area_sqm <= 100000)");
+
+                            t.HasCheckConstraint("ck_registry_properties_floor_range", "floor IS NULL OR floor BETWEEN -5 AND 300");
+
+                            t.HasCheckConstraint("ck_registry_properties_listing_status", "listing_status IN ('Available', 'Reserved', 'Sold', 'Rented')");
+
+                            t.HasCheckConstraint("ck_registry_properties_place", "compound_id IS NULL OR area_id IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_registry_properties_price_positive", "price IS NULL OR price > 0");
+
+                            t.HasCheckConstraint("ck_registry_properties_transaction_type", "transaction_type IS NULL OR transaction_type IN ('Sale', 'Rent')");
+
                             t.HasCheckConstraint("ck_registry_properties_address_country_code", "address_country_code ~ '^[A-Z]{2}$'");
 
                             t.HasCheckConstraint("ck_registry_properties_bathrooms_range", "bathrooms IS NULL OR bathrooms BETWEEN 0 AND 100");
 
                             t.HasCheckConstraint("ck_registry_properties_bedrooms_range", "bedrooms IS NULL OR bedrooms BETWEEN 0 AND 100");
 
-                            t.HasCheckConstraint("ck_registry_properties_finishing_status", "finishing_status IS NULL OR finishing_status IN ('Unfinished', 'SemiFinished', 'FullyFinished', 'SuperLux', 'Furnished')");
+                            t.HasCheckConstraint("ck_registry_properties_finishing_status", "finishing_status IS NULL OR finishing_status IN ('Finished', 'LuxuryFinished', 'SemiFinished', 'CoreAndShell')");
 
                             t.HasCheckConstraint("ck_registry_properties_latitude_range", "latitude IS NULL OR latitude BETWEEN -90 AND 90");
 
@@ -929,8 +1179,46 @@ namespace SmartProperty.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_registry_properties_status", "status IN ('Active', 'Archived')");
 
-                            t.HasCheckConstraint("ck_registry_properties_type", "type IN ('Land', 'Building', 'Unit')");
+                            t.HasCheckConstraint("ck_registry_properties_type", "type IN ('Land', 'Building', 'Apartment', 'Villa', 'Duplex', 'Studio', 'Chalet', 'Townhouse', 'TwinHouse', 'Penthouse', 'StandaloneVilla', 'HotelApartment', 'Office', 'Shop', 'Warehouse', 'Farm')");
                         });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.PropertyView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name_ar");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name_en");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ux_registry_views_code");
+
+                    b.ToTable("views", "registry");
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Workspaces.Workspace", b =>
@@ -1127,6 +1415,21 @@ namespace SmartProperty.Persistence.Migrations
                     b.HasIndex("amenity_id");
 
                     b.ToTable("property_amenities", "registry");
+                });
+
+            modelBuilder.Entity("property_views", b =>
+                {
+                    b.Property<Guid>("property_id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("view_id")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("property_id", "view_id");
+
+                    b.HasIndex("view_id");
+
+                    b.ToTable("property_views", "registry");
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Identity.OneTimeCode", b =>
@@ -1387,10 +1690,75 @@ namespace SmartProperty.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("property_views", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("property_id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.PropertyView", null)
+                        .WithMany()
+                        .HasForeignKey("view_id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.ListingSubmission", b =>
                 {
                     b.Navigation("ReviewDecision");
                 });
+            modelBuilder.Entity("SmartProperty.Domain.Locations.Area", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Locations.City", "City")
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("City");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Locations.City", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Locations.Country", "Country")
+                        .WithMany()
+                        .HasForeignKey("CountryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Country");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Locations.Compound", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Locations.Area", "Area")
+                        .WithMany()
+                        .HasForeignKey("AreaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Area");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.Property", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Locations.Area", "Area")
+                        .WithMany()
+                        .HasForeignKey("AreaId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Locations.Compound", "Compound")
+                        .WithMany()
+                        .HasForeignKey("CompoundId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Area");
+
+                    b.Navigation("Compound");
+                });
+
 #pragma warning restore 612, 618
         }
     }

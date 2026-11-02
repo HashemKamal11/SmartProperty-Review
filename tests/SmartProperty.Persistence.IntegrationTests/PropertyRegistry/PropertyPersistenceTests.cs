@@ -22,7 +22,7 @@ public sealed class PropertyPersistenceTests(PostgreSqlFixture fixture) : Databa
     [Theory]
     [InlineData(PropertyType.Land, "Land")]
     [InlineData(PropertyType.Building, "Building")]
-    [InlineData(PropertyType.Unit, "Unit")]
+    [InlineData(PropertyType.Apartment, "Apartment")]
     public async Task EachPropertyTypeIsStoredAsItsName(PropertyType type, string expected)
     {
         var property = new Property(Guid.NewGuid(), type, new PropertyAddress("SA"), CreatedAt);
@@ -152,7 +152,7 @@ public sealed class PropertyPersistenceTests(PostgreSqlFixture fixture) : Databa
     public async Task ArchivingAPersistedPropertyIsStoredAndReloaded()
     {
         var archivedAt = CreatedAt.AddDays(3);
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("SA"), CreatedAt);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("SA"), CreatedAt);
 
         await SaveAsync(property);
 

@@ -14,6 +14,11 @@ public interface IPropertyRepository
     /// </summary>
     Task<Property?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
+    /// <summary>The subset of <paramref name="ids"/> that are properties of the registry, whatever their status.</summary>
+    Task<IReadOnlyCollection<Guid>> GetExistingIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default);
+
     /// <summary>The read model of one property, whatever its status, or null when no property has the id.</summary>
     Task<PropertyDetails?> GetDetailsByIdAsync(Guid id, CancellationToken cancellationToken = default);
 

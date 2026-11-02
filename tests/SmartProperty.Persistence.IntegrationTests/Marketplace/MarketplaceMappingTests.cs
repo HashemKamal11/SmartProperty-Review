@@ -236,7 +236,7 @@ internal sealed record MarketplaceGraph(Property Property, User User, PropertyLi
 
     internal static MarketplaceGraph Create(bool sale = true)
     {
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("SA"), Time);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("SA"), Time);
         var user = new User(Guid.NewGuid(), $"{Guid.NewGuid():N}@example.test", "Test", "User", Time);
         var saleListing = new PropertyListing(Guid.NewGuid(), property.Id, ListingPurpose.Sale, Time);
         var rentListing = new PropertyListing(Guid.NewGuid(), property.Id, ListingPurpose.Rent, Time);
@@ -258,7 +258,7 @@ internal sealed record MarketplaceGraph(Property Property, User User, PropertyLi
             ListingRepresentationKind.Owner, null, listing.CreatedAt, null);
         var evidence = new ListingEvidenceReference(Guid.NewGuid(), Guid.NewGuid(), listing.PropertyId, listing.Purpose, new string('A', 64));
         var content = new ListingSubmissionContent("Country", "Region", "City", "District", "Title", "Description",
-            SmartProperty.Domain.PropertyRegistry.PropertyType.Unit, listing.Purpose, 100m, "USD",
+            SmartProperty.Domain.PropertyRegistry.PropertyType.Apartment, listing.Purpose, 100m, "USD",
             listing.Purpose == ListingPurpose.Rent ? RentPeriod.Monthly : null);
         var submission = new ListingSubmission(Guid.NewGuid(), listing, content, authority, [evidence], at, predecessor);
         submission.Submit(actor, null, at, Assessments(submission, at), true, null);

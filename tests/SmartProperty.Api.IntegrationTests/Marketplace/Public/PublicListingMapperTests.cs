@@ -76,7 +76,7 @@ public sealed class PublicListingMapperTests
     [Theory]
     [InlineData(PropertyType.Land, "Land")]
     [InlineData(PropertyType.Building, "Building")]
-    [InlineData(PropertyType.Unit, "Unit")]
+    [InlineData(PropertyType.Apartment, "Apartment")]
     public void EveryPropertyTypeMapsToItsPublicName(PropertyType propertyType, string expected)
     {
         var summary = PublicListingMapper.ToSummaryResponse(SaleSummary() with { PropertyType = propertyType });
@@ -349,7 +349,7 @@ public sealed class PublicListingMapperTests
             ListingPurpose.Rent,
             "Bright apartment",
             new PublicListingPrice(5200m, "SAR", rentPeriod),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             Location(),
             PublishedAt);
     }
@@ -375,7 +375,7 @@ public sealed class PublicListingMapperTests
             "Bright apartment",
             "Two bedrooms close to the centre.",
             new PublicListingPrice(5200m, "SAR", rentPeriod),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             Location(),
             PublishedAt);
     }

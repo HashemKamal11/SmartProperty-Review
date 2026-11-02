@@ -297,7 +297,7 @@ public sealed class GetReviewQueueQueryHandlerTests
             purpose == ListingPurpose.Rent
                 ? new PublicListingPrice(5200m, "SAR", RentPeriod.Monthly)
                 : new PublicListingPrice(1250000m, "SAR", null),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             ListingRepresentationKind.Owner,
             ListingOwnerKind.Individual,

@@ -8,22 +8,19 @@ namespace SmartProperty.Application.PropertyRegistry.Update;
 /// </summary>
 internal static class UpdatePropertyCommandValidator
 {
-    public static Error? Validate(UpdatePropertyCommand command, out PropertyType propertyType,
-        out FinishingStatus? finishingStatus)
+    public static Error? Validate(
+        UpdatePropertyCommand command,
+        out PropertyType propertyType,
+        out FinishingStatus? finishingStatus,
+        out PropertyListingInfo listing)
     {
         finishingStatus = null;
+        listing = PropertyListingInfo.Empty;
 
-        propertyType = command.Type switch
+        if (!PropertyCommandSupport.TryParseName(command.Type, out propertyType))
         {
-            nameof(PropertyType.Land) => PropertyType.Land,
-            nameof(PropertyType.Building) => PropertyType.Building,
-            nameof(PropertyType.Unit) => PropertyType.Unit,
-            _ => default
-        };
-
-        if (propertyType == default)
-        {
-            return UpdatePropertyErrors.ValidationFailed("Type must be Land, Building, or Unit.");
+            return UpdatePropertyErrors.ValidationFailed(
+                $"Type must be one of: {PropertyCommandSupport.NamesOf<PropertyType>()}.");
         }
 
         if (string.IsNullOrWhiteSpace(command.CountryCode))
@@ -57,6 +54,22 @@ internal static class UpdatePropertyCommandValidator
                 out finishingStatus) is { } specificationError)
         {
             return UpdatePropertyErrors.ValidationFailed(specificationError);
+        }
+
+        if (PropertyCommandSupport.ValidateListing(
+                command.TransactionType,
+                command.Price,
+                command.AreaSqm,
+                command.Floor,
+                command.Furnished,
+                command.ListingStatus,
+                command.TitleAr,
+                command.TitleEn,
+                command.DescriptionAr,
+                command.DescriptionEn,
+                out listing) is { } listingError)
+        {
+            return UpdatePropertyErrors.ValidationFailed(listingError);
         }
 
         return null;

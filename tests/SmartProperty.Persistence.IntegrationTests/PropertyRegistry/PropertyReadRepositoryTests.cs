@@ -52,7 +52,7 @@ public sealed class PropertyReadRepositoryTests(PostgreSqlFixture fixture) : Dat
     [Fact]
     public async Task GetByIdReturnsArchivedPropertyAndUnknownIdReturnsNull()
     {
-        var property = NewProperty(PropertyType.Unit, "EG", BaseTime);
+        var property = NewProperty(PropertyType.Apartment, "EG", BaseTime);
         property.Archive(BaseTime.AddDays(1));
         await SeedAsync(property);
 
@@ -72,7 +72,7 @@ public sealed class PropertyReadRepositoryTests(PostgreSqlFixture fixture) : Dat
     public async Task ListWithoutFiltersIncludesActiveAndArchivedNewestFirst()
     {
         var oldest = NewProperty(PropertyType.Land, "SA", BaseTime);
-        var archived = NewProperty(PropertyType.Unit, "EG", BaseTime.AddMinutes(1));
+        var archived = NewProperty(PropertyType.Apartment, "EG", BaseTime.AddMinutes(1));
         archived.Archive(BaseTime.AddHours(1));
         var newest = NewProperty(PropertyType.Building, "SA", BaseTime.AddMinutes(2));
         await SeedAsync(oldest, archived, newest);
@@ -92,11 +92,11 @@ public sealed class PropertyReadRepositoryTests(PostgreSqlFixture fixture) : Dat
     [Fact]
     public async Task ListAppliesEveryFilterAndPagesTheFilteredRows()
     {
-        var firstMatch = NewProperty(PropertyType.Unit, "SA", BaseTime);
-        var secondMatch = NewProperty(PropertyType.Unit, "SA", BaseTime.AddMinutes(1));
+        var firstMatch = NewProperty(PropertyType.Apartment, "SA", BaseTime);
+        var secondMatch = NewProperty(PropertyType.Apartment, "SA", BaseTime.AddMinutes(1));
         var wrongType = NewProperty(PropertyType.Land, "SA", BaseTime.AddMinutes(2));
-        var wrongCountry = NewProperty(PropertyType.Unit, "EG", BaseTime.AddMinutes(3));
-        var archived = NewProperty(PropertyType.Unit, "SA", BaseTime.AddMinutes(4));
+        var wrongCountry = NewProperty(PropertyType.Apartment, "EG", BaseTime.AddMinutes(3));
+        var archived = NewProperty(PropertyType.Apartment, "SA", BaseTime.AddMinutes(4));
         archived.Archive(BaseTime.AddHours(1));
         await SeedAsync(firstMatch, secondMatch, wrongType, wrongCountry, archived);
 
@@ -104,7 +104,7 @@ public sealed class PropertyReadRepositoryTests(PostgreSqlFixture fixture) : Dat
         var repository = scope.ServiceProvider.GetRequiredService<IPropertyRepository>();
 
         var result = await repository.ListAsync(
-            PropertyType.Unit,
+            PropertyType.Apartment,
             PropertyStatus.Active,
             "SA",
             skip: 1,

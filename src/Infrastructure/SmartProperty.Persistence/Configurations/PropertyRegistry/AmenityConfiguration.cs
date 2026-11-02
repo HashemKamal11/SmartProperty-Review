@@ -34,6 +34,10 @@ internal sealed class AmenityConfiguration : IEntityTypeConfiguration<Amenity>
             .HasColumnName("sort_order")
             .IsRequired();
 
+        builder.Property(amenity => amenity.AiCode)
+            .HasColumnName("ai_code")
+            .HasMaxLength(Amenity.MaxCodeLength);
+
         builder.HasIndex(amenity => amenity.Code)
             .IsUnique()
             .HasDatabaseName("ux_registry_amenities_code");

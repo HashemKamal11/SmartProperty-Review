@@ -2,6 +2,7 @@ using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.PropertyRegistry.Ai;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.PropertyRegistry;
 
@@ -23,6 +24,7 @@ namespace SmartProperty.Application.PropertyRegistry.Archive;
 /// </remarks>
 public sealed class ArchivePropertyCommandHandler(
     IPropertyRepository propertyRepository,
+    IPropertyAiSynchronizer aiSynchronizer,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
     : ICommandHandler<ArchivePropertyCommand, PropertyDetails>
@@ -65,6 +67,9 @@ public sealed class ArchivePropertyCommandHandler(
             // The status changed after the load, and Archived is the only status an Active property moves to.
             return Result<PropertyDetails>.Failure(ArchivePropertyErrors.Archived);
         }
+
+        // An archived property must stop appearing in search. Best effort, like every sync: it is already archived.
+        await aiSynchronizer.RemoveAsync(property, cancellationToken);
 
         return Result<PropertyDetails>.Success(PropertyCommandSupport.ToDetails(property));
     }

@@ -18,7 +18,7 @@ public sealed class ListingWriteDomainTests
     }
 
     private static ListingSubmissionContent Content(ListingPurpose purpose = ListingPurpose.Sale) =>
-        new("EG", "Region", "City", "District", "Title", "Description", PropertyType.Unit,
+        new("EG", "Region", "City", "District", "Title", "Description", PropertyType.Apartment,
             purpose, 100m, "EGP", purpose == ListingPurpose.Rent ? RentPeriod.Monthly : null);
 
     [Fact]

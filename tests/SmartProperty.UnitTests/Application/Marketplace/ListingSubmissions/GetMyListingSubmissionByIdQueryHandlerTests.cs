@@ -366,7 +366,7 @@ public sealed class GetMyListingSubmissionByIdQueryHandlerTests
             "Bright apartment",
             "Two bedrooms close to the centre.",
             new PublicListingPrice(5200m, "SAR", RentPeriod.Monthly),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             ListingRepresentationKind.IndividualRepresentative,
             createdAt,

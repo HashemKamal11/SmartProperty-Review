@@ -183,7 +183,7 @@ public sealed class PublicListingContractPrivacyTests
 
         Assert.Equal(SampleListingId.ToString(), root.GetProperty("listingId").GetString());
         Assert.Equal("Sale", root.GetProperty("purpose").GetString());
-        Assert.Equal("Unit", root.GetProperty("propertyType").GetString());
+        Assert.Equal("Apartment", root.GetProperty("propertyType").GetString());
         Assert.Equal(JsonValueKind.String, root.GetProperty("publishedAt").ValueKind);
     }
 
@@ -295,7 +295,7 @@ public sealed class PublicListingContractPrivacyTests
             "Sale",
             "Corner villa",
             new PublicMoneyResponse(1250000m, "SAR"),
-            "Unit",
+            "Apartment",
             new PublicLocationResponse("SA", "Riyadh", "Riyadh Province", "Al Olaya"),
             new DateTimeOffset(2026, 10, 20, 8, 0, 0, TimeSpan.Zero));
     }
@@ -309,7 +309,7 @@ public sealed class PublicListingContractPrivacyTests
             "Bright apartment",
             "Two bedrooms close to the centre.",
             new PublicMoneyResponse(5200m, "SAR", "Monthly"),
-            "Unit",
+            "Apartment",
             new PublicLocationResponse("SA", "Riyadh", "Riyadh Province", "Al Olaya"),
             new DateTimeOffset(2026, 10, 20, 8, 0, 0, TimeSpan.Zero));
     }

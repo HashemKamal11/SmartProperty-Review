@@ -71,7 +71,7 @@ public sealed class PropertyConstraintTests(PostgreSqlFixture fixture) : Databas
     [Theory]
     [InlineData("Land")]
     [InlineData("Building")]
-    [InlineData("Unit")]
+    [InlineData("Apartment")]
     public async Task EverySupportedTypeIsAccepted(string type)
     {
         await InsertAsync(type: type);

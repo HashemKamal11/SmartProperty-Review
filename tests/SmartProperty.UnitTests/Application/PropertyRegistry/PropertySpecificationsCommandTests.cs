@@ -9,25 +9,28 @@ public sealed class PropertySpecificationsCommandTests
 {
     private readonly FakePropertyRepository _properties = new();
     private readonly FakeAmenityRepository _amenities = new();
+    private readonly FakeViewRepository _views = new();
+    private readonly FakeLocationRepository _locations = new();
+    private readonly FakePropertyAiSynchronizer _ai = new();
 
     [Fact]
     public async Task CreateStoresBedroomsBathroomsBuiltDateAndFinishingStatus()
     {
         var result = await CreateHandler().Handle(new CreatePropertyCommand(
-            "Unit",
+            "Apartment",
             "EG",
             Bedrooms: 3,
             Bathrooms: 2,
             BuiltDate: new DateOnly(2020, 5, 1),
-            FinishingStatus: "SuperLux"));
+            FinishingStatus: "LuxuryFinished"));
 
         Assert.True(result.IsSuccess);
         var property = Assert.Single(_properties.Added);
         Assert.Equal(3, property.Bedrooms);
         Assert.Equal(2, property.Bathrooms);
         Assert.Equal(new DateOnly(2020, 5, 1), property.BuiltDate);
-        Assert.Equal(FinishingStatus.SuperLux, property.FinishingStatus);
-        Assert.Equal(FinishingStatus.SuperLux, result.Value.FinishingStatus);
+        Assert.Equal(FinishingStatus.LuxuryFinished, property.FinishingStatus);
+        Assert.Equal(FinishingStatus.LuxuryFinished, result.Value.FinishingStatus);
     }
 
     [Fact]
@@ -58,7 +61,7 @@ public sealed class PropertySpecificationsCommandTests
         string? finishingStatus)
     {
         var result = await CreateHandler().Handle(new CreatePropertyCommand(
-            "Unit",
+            "Apartment",
             "EG",
             Bedrooms: bedrooms,
             Bathrooms: bathrooms,
@@ -75,6 +78,9 @@ public sealed class PropertySpecificationsCommandTests
         return new CreatePropertyCommandHandler(
             _properties,
             _amenities,
+            _views,
+            _locations,
+            _ai,
             new FakeDateTimeProvider(new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero)),
             new FakeUnitOfWork());
     }

@@ -28,5 +28,11 @@ public enum PersistenceConstraint
     /// <summary>
     /// A user's normalized phone number must be unique.
     /// </summary>
-    UserPhoneNumber = 5
+    UserPhoneNumber = 5,
+
+    /// <summary>
+    /// A place keeps one row per AI service id within its level, so two requests that both fill a level do not
+    /// store it twice.
+    /// </summary>
+    LocationAiId = 6
 }

@@ -6,8 +6,10 @@ using SmartProperty.Api.Infrastructure.Authorization;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Authorization;
+using SmartProperty.Application.Locations;
 using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Archive;
+using SmartProperty.Application.PropertyRegistry.Ai.Sync;
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Application.PropertyRegistry.GetById;
 using SmartProperty.Application.PropertyRegistry.List;
@@ -56,7 +58,20 @@ public sealed class PropertiesController : ControllerBase
             request.Bathrooms,
             request.BuiltDate,
             request.FinishingStatus,
-            request.AmenityCodes);
+            request.AmenityCodes,
+            request.ViewCodes,
+            request.TransactionType,
+            request.Price,
+            request.AreaSqm,
+            request.Floor,
+            request.Furnished,
+            request.ListingStatus,
+            request.TitleAr,
+            request.TitleEn,
+            request.DescriptionAr,
+            request.DescriptionEn,
+            request.AreaId,
+            request.CompoundId);
 
         var result = await handler.Handle(command, cancellationToken);
 
@@ -86,7 +101,11 @@ public sealed class PropertiesController : ControllerBase
             property.Bathrooms,
             property.BuiltDate,
             property.FinishingStatus?.ToString(),
-            ToAmenityResponses(property.Amenities)));
+            ToAmenityResponses(property.Amenities),
+            ToViewResponses(property.Views),
+            ToListingResponse(property.Listing),
+            ToAiSyncResponse(property.AiSync),
+            ToPlaceResponse(property.Place)));
     }
 
     /// <summary>
@@ -196,9 +215,53 @@ public sealed class PropertiesController : ControllerBase
             request.Bathrooms,
             request.BuiltDate,
             request.FinishingStatus,
-            request.AmenityCodes);
+            request.AmenityCodes,
+            request.ViewCodes,
+            request.TransactionType,
+            request.Price,
+            request.AreaSqm,
+            request.Floor,
+            request.Furnished,
+            request.ListingStatus,
+            request.TitleAr,
+            request.TitleEn,
+            request.DescriptionAr,
+            request.DescriptionEn,
+            request.AreaId,
+            request.CompoundId);
 
         var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(ToResponse(result.Value));
+    }
+
+    /// <summary>
+    /// Sends the property to the AI search service again. The repair for a property whose last attempt failed,
+    /// or that was incomplete and has since been completed; safe to repeat.
+    /// </summary>
+    /// <remarks>
+    /// Returns <c>200</c> with the property whatever the outcome; <c>aiSync</c> says whether it is now held. An
+    /// archived property is refused with <c>409 properties.archived</c>.
+    /// </remarks>
+    [HttpPost("{id:guid}/ai-sync")]
+    [RequirePermission(PermissionCodes.PropertyUpdate)]
+    [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> SyncWithAi(
+        Guid id,
+        [FromServices] ICommandHandler<SyncPropertyWithAiCommand, PropertyDetails> handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(new SyncPropertyWithAiCommand(id), cancellationToken);
 
         if (result.IsFailure)
         {
@@ -239,6 +302,56 @@ public sealed class PropertiesController : ControllerBase
         return Ok(ToResponse(result.Value));
     }
 
+    private static ViewResponse[] ToViewResponses(IEnumerable<ViewDetails>? views)
+    {
+        return (views ?? [])
+            .Select(view => new ViewResponse(view.Code, view.NameAr, view.NameEn))
+            .ToArray();
+    }
+
+    private static PropertyListingResponse ToListingResponse(PropertyListingDetails? listing)
+    {
+        return listing is null
+            ? new PropertyListingResponse(null, null, null, null, null, nameof(ListingStatus.Available), null, null, null, null)
+            : new PropertyListingResponse(
+                listing.TransactionType?.ToString(),
+                listing.Price,
+                listing.AreaSqm,
+                listing.Floor,
+                listing.Furnished,
+                listing.ListingStatus.ToString(),
+                listing.TitleAr,
+                listing.TitleEn,
+                listing.DescriptionAr,
+                listing.DescriptionEn);
+    }
+
+    private static PropertyPlaceResponse? ToPlaceResponse(PropertyPlaceDetails? place)
+    {
+        if (place is null)
+        {
+            return null;
+        }
+
+        return new PropertyPlaceResponse(
+            ToItem(place.Country),
+            ToItem(place.City),
+            ToItem(place.Area),
+            place.Compound is null ? null : ToItem(place.Compound));
+    }
+
+    private static PlaceResponseItem ToItem(LocationDetails place)
+    {
+        return new PlaceResponseItem(place.Id, place.NameEn, place.NameAr);
+    }
+
+    private static AiSyncResponse ToAiSyncResponse(AiSyncDetails? aiSync)
+    {
+        return aiSync is null
+            ? new AiSyncResponse(nameof(AiSyncStatus.NotSynced), null, null)
+            : new AiSyncResponse(aiSync.Status.ToString(), aiSync.SyncedAt, aiSync.Error);
+    }
+
     private static AmenityResponse[] ToAmenityResponses(IEnumerable<AmenityDetails>? amenities)
     {
         return (amenities ?? [])
@@ -267,6 +380,10 @@ public sealed class PropertiesController : ControllerBase
             property.Bathrooms,
             property.BuiltDate,
             property.FinishingStatus?.ToString(),
-            ToAmenityResponses(property.Amenities));
+            ToAmenityResponses(property.Amenities),
+            ToViewResponses(property.Views),
+            ToListingResponse(property.Listing),
+            ToAiSyncResponse(property.AiSync),
+            ToPlaceResponse(property.Place));
     }
 }

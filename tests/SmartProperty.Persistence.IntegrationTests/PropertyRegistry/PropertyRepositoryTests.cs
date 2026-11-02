@@ -15,7 +15,7 @@ public sealed class PropertyRepositoryTests(PostgreSqlFixture fixture) : Databas
     {
         var property = new Property(
             Guid.NewGuid(),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PropertyAddress(" sa ", latitude: 24.7136m),
             TestClock.DefaultNow);
 
@@ -31,7 +31,7 @@ public sealed class PropertyRepositoryTests(PostgreSqlFixture fixture) : Databas
         await using var verification = Host.CreateVerificationContext();
         var persisted = await verification.Properties.AsNoTracking().SingleAsync(row => row.Id == property.Id);
 
-        Assert.Equal(PropertyType.Unit, persisted.Type);
+        Assert.Equal(PropertyType.Apartment, persisted.Type);
         Assert.Equal(PropertyStatus.Active, persisted.Status);
         Assert.Equal("SA", persisted.Address.CountryCode);
         Assert.Equal(24.7136m, persisted.Address.Latitude);

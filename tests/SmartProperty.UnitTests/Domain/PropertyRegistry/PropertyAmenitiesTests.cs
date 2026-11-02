@@ -53,7 +53,7 @@ public sealed class PropertyAmenitiesTests
     [Fact]
     public void Constructor_WithoutAmenitiesLeavesTheSetEmpty()
     {
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt);
 
         Assert.Empty(property.Amenities);
     }
@@ -62,7 +62,7 @@ public sealed class PropertyAmenitiesTests
     public void Constructor_RetainsTheSuppliedAmenitiesAndCollapsesDuplicates()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, amenities: [Pool, Gym, Pool]);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, amenities: [Pool, Gym, Pool]);
 
         Assert.Equal(2, property.Amenities.Count);
         Assert.Contains(Pool, property.Amenities);
@@ -73,9 +73,9 @@ public sealed class PropertyAmenitiesTests
     public void UpdateDetails_ReplacesTheAmenitiesAndReportsAChange()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, amenities: [Pool, Gym]);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, amenities: [Pool, Gym]);
 
-        var changed = property.UpdateDetails(PropertyType.Unit, Address, LaterAt, amenities: [Gym, Balcony]);
+        var changed = property.UpdateDetails(PropertyType.Apartment, Address, LaterAt, amenities: [Gym, Balcony]);
 
         Assert.True(changed);
         Assert.Equal(2, property.Amenities.Count);
@@ -89,9 +89,9 @@ public sealed class PropertyAmenitiesTests
     public void UpdateDetails_LeavingAmenitiesNullClearsThem()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, amenities: [Pool]);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, amenities: [Pool]);
 
-        var changed = property.UpdateDetails(PropertyType.Unit, Address, LaterAt);
+        var changed = property.UpdateDetails(PropertyType.Apartment, Address, LaterAt);
 
         Assert.True(changed);
         Assert.Empty(property.Amenities);
@@ -100,9 +100,9 @@ public sealed class PropertyAmenitiesTests
     [Fact]
     public void UpdateDetails_ChangingOnlyTheAmenitiesIsAChange()
     {
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt);
 
-        var changed = property.UpdateDetails(PropertyType.Unit, Address, LaterAt, amenities: [Pool]);
+        var changed = property.UpdateDetails(PropertyType.Apartment, Address, LaterAt, amenities: [Pool]);
 
         Assert.True(changed);
         Assert.Equal(LaterAt, property.UpdatedAt);
@@ -112,9 +112,9 @@ public sealed class PropertyAmenitiesTests
     public void UpdateDetails_TheSameAmenitiesInAnyOrderAreNotAChange()
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, Address, CreatedAt, amenities: [Pool, Gym]);
+            Guid.NewGuid(), PropertyType.Apartment, Address, CreatedAt, amenities: [Pool, Gym]);
 
-        var changed = property.UpdateDetails(PropertyType.Unit, Address, LaterAt, amenities: [Gym, Pool, Gym]);
+        var changed = property.UpdateDetails(PropertyType.Apartment, Address, LaterAt, amenities: [Gym, Pool, Gym]);
 
         Assert.False(changed);
         Assert.Equal(CreatedAt, property.UpdatedAt);

@@ -50,6 +50,12 @@ services:
       Jwt__Audience: SmartProperty.Api
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in your shell before running Docker Compose}
       AiIntegration__ApiKey: ${AI_INTEGRATION_API_KEY:-}
+      # The AI search service. Off unless AI_SEARCH_ENABLED=true; the key is sent as x-api-key when properties are
+      # added to or removed from it.
+      AiSearch__Enabled: ${AI_SEARCH_ENABLED:-false}
+      AiSearch__BaseUrl: ${AI_SEARCH_BASE_URL:-https://ai-search.neurix.uk}
+      AiSearch__ApiKey: ${AI_SEARCH_API_KEY:-}
+      AiSearch__TimeoutSeconds: ${AI_SEARCH_TIMEOUT_SECONDS:-30}
       Bootstrap__Enabled: ${BOOTSTRAP_ENABLED:-false}
       Bootstrap__PlatformAdminEmail: ${BOOTSTRAP_PLATFORM_ADMIN_EMAIL:-}
       # Email through SMTP. Leave SMTP_HOST empty to use the logging stand-in that sends nothing.

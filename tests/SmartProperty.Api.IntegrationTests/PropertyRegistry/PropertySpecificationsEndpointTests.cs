@@ -38,12 +38,12 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
         var request = new CreatePropertyRequest(
-            "Unit",
+            "Apartment",
             "EG",
             Bedrooms: 3,
             Bathrooms: 2,
             BuiltDate: new DateOnly(2021, 6, 30),
-            FinishingStatus: "SuperLux");
+            FinishingStatus: "LuxuryFinished");
 
         using var response = await client.PostAsJsonAsync(Route, request);
 
@@ -52,13 +52,13 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
         Assert.Equal(3, body.Bedrooms);
         Assert.Equal(2, body.Bathrooms);
         Assert.Equal(new DateOnly(2021, 6, 30), body.BuiltDate);
-        Assert.Equal("SuperLux", body.FinishingStatus);
+        Assert.Equal("LuxuryFinished", body.FinishingStatus);
 
         var persisted = await LoadAsync(body.Id);
         Assert.Equal(3, persisted.Bedrooms);
         Assert.Equal(2, persisted.Bathrooms);
         Assert.Equal(new DateOnly(2021, 6, 30), persisted.BuiltDate);
-        Assert.Equal(FinishingStatus.SuperLux, persisted.FinishingStatus);
+        Assert.Equal(FinishingStatus.LuxuryFinished, persisted.FinishingStatus);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
         using var response = await client.PostAsJsonAsync(
             Route,
             new CreatePropertyRequest(
-                "Unit", "EG", Bedrooms: bedrooms, Bathrooms: bathrooms, FinishingStatus: finishingStatus));
+                "Apartment", "EG", Bedrooms: bedrooms, Bathrooms: bathrooms, FinishingStatus: finishingStatus));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -109,7 +109,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
 
         using var response = await client.PostAsJsonAsync(
             Route,
-            new CreatePropertyRequest("Unit", "EG", BuiltDate: new DateOnly(1799, 12, 31)));
+            new CreatePropertyRequest("Apartment", "EG", BuiltDate: new DateOnly(1799, 12, 31)));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -123,16 +123,16 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
         using var set = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
             new UpdatePropertyRequest(
-                "Unit", "EG", Bedrooms: 4, Bathrooms: 3, BuiltDate: new DateOnly(2015, 1, 2), FinishingStatus: "Furnished"));
+                "Apartment", "EG", Bedrooms: 4, Bathrooms: 3, BuiltDate: new DateOnly(2015, 1, 2), FinishingStatus: "LuxuryFinished"));
 
         Assert.Equal(HttpStatusCode.OK, set.StatusCode);
         var updated = (await set.Content.ReadFromJsonAsync<PropertyResponse>())!;
         Assert.Equal(4, updated.Bedrooms);
         Assert.Equal(3, updated.Bathrooms);
         Assert.Equal(new DateOnly(2015, 1, 2), updated.BuiltDate);
-        Assert.Equal("Furnished", updated.FinishingStatus);
+        Assert.Equal("LuxuryFinished", updated.FinishingStatus);
 
-        using var cleared = await client.PutAsJsonAsync($"{Route}/{property.Id}", new UpdatePropertyRequest("Unit", "EG"));
+        using var cleared = await client.PutAsJsonAsync($"{Route}/{property.Id}", new UpdatePropertyRequest("Apartment", "EG"));
 
         Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
         var persisted = await LoadAsync(property.Id);
@@ -150,7 +150,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Unit", "EG", Bedrooms: 5, FinishingStatus: "Shiny"));
+            new UpdatePropertyRequest("Apartment", "EG", Bedrooms: 5, FinishingStatus: "Shiny"));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal(2, (await LoadAsync(property.Id)).Bedrooms);
@@ -192,7 +192,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
         var now = DateTimeOffset.UtcNow;
         var createdAt = new DateTimeOffset(now.Ticks - (now.Ticks % 10), TimeSpan.Zero).AddMinutes(-10);
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), createdAt, bedrooms, bathrooms, builtDate, finishingStatus);
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), createdAt, bedrooms, bathrooms, builtDate, finishingStatus);
 
         await using var context = _fixture.CreateContext();
         context.Properties.Add(property);

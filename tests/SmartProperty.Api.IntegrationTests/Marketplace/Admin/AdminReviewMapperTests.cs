@@ -44,7 +44,7 @@ public sealed class AdminReviewMapperTests
         Assert.Equal(1250000m, response.Price.Amount);
         Assert.Equal("SAR", response.Price.Currency);
         Assert.Null(response.Price.RentPeriod);
-        Assert.Equal("Unit", response.PropertyType);
+        Assert.Equal("Apartment", response.PropertyType);
         Assert.Equal("SA", response.Location.CountryCode);
         Assert.Equal("Riyadh", response.Location.City);
         Assert.Equal("Riyadh Province", response.Location.Region);
@@ -91,7 +91,7 @@ public sealed class AdminReviewMapperTests
     [Theory]
     [InlineData(PropertyType.Land, "Land")]
     [InlineData(PropertyType.Building, "Building")]
-    [InlineData(PropertyType.Unit, "Unit")]
+    [InlineData(PropertyType.Apartment, "Apartment")]
     public void EveryPropertyTypeIsItsName(PropertyType type, string expected)
     {
         Assert.Equal(expected, AdminReviewMapper.ToQueueItemResponse(SaleItem() with { PropertyType = type }).PropertyType);
@@ -507,7 +507,7 @@ public sealed class AdminReviewMapperTests
             ListingSubmissionStatus.PendingReview,
             "Two bedroom apartment",
             new PublicListingPrice(1250000m, "SAR", null),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             ListingRepresentationKind.Owner,
             ListingOwnerKind.Individual,
@@ -538,7 +538,7 @@ public sealed class AdminReviewMapperTests
             "Two bedroom apartment",
             "Close to the centre.",
             new PublicListingPrice(1250000m, "SAR", null),
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Olaya"),
             ListingRepresentationKind.Owner,
             ListingOwnerKind.Individual,

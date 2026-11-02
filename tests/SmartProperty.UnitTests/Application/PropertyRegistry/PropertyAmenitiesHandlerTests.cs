@@ -13,6 +13,9 @@ public sealed class PropertyAmenitiesHandlerTests
 
     private readonly FakePropertyRepository _properties = new();
     private readonly FakeAmenityRepository _amenities = new();
+    private readonly FakeViewRepository _views = new();
+    private readonly FakeLocationRepository _locations = new();
+    private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly Amenity _pool;
     private readonly Amenity _gym;
@@ -29,7 +32,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CreateAttachesTheChosenAmenitiesAndReturnsThemInDisplayOrder()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Unit", "EG", AmenityCodes: ["SwimmingPool", "Balcony"]));
+            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["SwimmingPool", "Balcony"]));
 
         Assert.True(result.IsSuccess);
         var property = Assert.Single(_properties.Added);
@@ -40,7 +43,7 @@ public sealed class PropertyAmenitiesHandlerTests
     [Fact]
     public async Task CreateWithoutAmenityCodesAttachesNothingAndDoesNotAskTheRepository()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Unit", "EG"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", "EG"));
 
         Assert.True(result.IsSuccess);
         Assert.Empty(Assert.Single(_properties.Added).Amenities);
@@ -52,7 +55,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CreateCollapsesDuplicateAndPaddedCodes()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Unit", "EG", AmenityCodes: ["Balcony", " Balcony ", "Balcony"]));
+            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["Balcony", " Balcony ", "Balcony"]));
 
         Assert.True(result.IsSuccess);
         Assert.Single(Assert.Single(_properties.Added).Amenities);
@@ -62,7 +65,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CreateRejectsAnUnknownCodeNamingItAndStoresNothing()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Unit", "EG", AmenityCodes: ["Balcony", "Helipad", "Moat"]));
+            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["Balcony", "Helipad", "Moat"]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -79,7 +82,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CreateRejectsABlankCode(string code)
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Unit", "EG", AmenityCodes: ["Balcony", code]));
+            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["Balcony", code]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -90,7 +93,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CodesAreMatchedExactlyIncludingCase()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Unit", "EG", AmenityCodes: ["balcony"]));
+            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["balcony"]));
 
         Assert.True(result.IsFailure);
     }
@@ -101,7 +104,7 @@ public sealed class PropertyAmenitiesHandlerTests
         var property = SeedProperty(_pool, _gym);
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Unit", "EG", AmenityCodes: ["SharedGym", "Balcony"]));
+            new UpdatePropertyCommand(property.Id, "Apartment", "EG", AmenityCodes: ["SharedGym", "Balcony"]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, property.Amenities.Count);
@@ -117,7 +120,7 @@ public sealed class PropertyAmenitiesHandlerTests
     {
         var property = SeedProperty(_pool);
 
-        var result = await UpdateHandler().Handle(new UpdatePropertyCommand(property.Id, "Unit", "EG"));
+        var result = await UpdateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "EG"));
 
         Assert.True(result.IsSuccess);
         Assert.Empty(property.Amenities);
@@ -130,7 +133,7 @@ public sealed class PropertyAmenitiesHandlerTests
         var property = SeedProperty(_pool, _gym);
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Unit", "EG", AmenityCodes: ["SwimmingPool", "SharedGym"]));
+            new UpdatePropertyCommand(property.Id, "Apartment", "EG", AmenityCodes: ["SwimmingPool", "SharedGym"]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
@@ -142,7 +145,7 @@ public sealed class PropertyAmenitiesHandlerTests
         var property = SeedProperty(_pool);
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Unit", "EG", AmenityCodes: ["Helipad"]));
+            new UpdatePropertyCommand(property.Id, "Apartment", "EG", AmenityCodes: ["Helipad"]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -165,7 +168,7 @@ public sealed class PropertyAmenitiesHandlerTests
     private Property SeedProperty(params Amenity[] amenities)
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), Now.AddDays(-5), amenities: amenities);
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), Now.AddDays(-5), amenities: amenities);
         _properties.Tracked.Add(property.Id, property);
 
         return property;
@@ -173,11 +176,13 @@ public sealed class PropertyAmenitiesHandlerTests
 
     private CreatePropertyCommandHandler CreateHandler()
     {
-        return new CreatePropertyCommandHandler(_properties, _amenities, new FakeDateTimeProvider(Now), _unitOfWork);
+        return new CreatePropertyCommandHandler(
+            _properties, _amenities, _views, _locations, _ai, new FakeDateTimeProvider(Now), _unitOfWork);
     }
 
     private UpdatePropertyCommandHandler UpdateHandler()
     {
-        return new UpdatePropertyCommandHandler(_properties, _amenities, new FakeDateTimeProvider(Now), _unitOfWork);
+        return new UpdatePropertyCommandHandler(
+            _properties, _amenities, _views, _locations, _ai, new FakeDateTimeProvider(Now), _unitOfWork);
     }
 }

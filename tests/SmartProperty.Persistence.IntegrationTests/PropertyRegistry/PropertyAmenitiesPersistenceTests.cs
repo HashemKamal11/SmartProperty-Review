@@ -48,7 +48,7 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
     {
         await SeedAmenitiesAsync();
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt,
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
             amenities: await LoadAmenitiesAsync("Balcony", "SwimmingPool", "SharedGym"));
 
         await SaveAsync(property);
@@ -72,7 +72,7 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
     {
         await SeedAmenitiesAsync();
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt,
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
             amenities: await LoadAmenitiesAsync("Balcony", "SwimmingPool"));
         await SaveAsync(property);
 
@@ -85,7 +85,7 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
             var balcony = tracked.Amenities.Single(a => a.Code == "Balcony");
 
             var changed = tracked.UpdateDetails(
-                PropertyType.Unit, new PropertyAddress("EG"), CreatedAt.AddHours(1), amenities: [balcony, gym]);
+                PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt.AddHours(1), amenities: [balcony, gym]);
             await updating.SaveChangesAsync();
 
             Assert.True(changed);
@@ -99,14 +99,14 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
     {
         await SeedAmenitiesAsync();
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt,
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
             amenities: await LoadAmenitiesAsync("Balcony", "SwimmingPool"));
         await SaveAsync(property);
 
         await using (var updating = Host.CreateVerificationContext())
         {
             var tracked = await updating.Properties.Include(p => p.Amenities).SingleAsync(p => p.Id == property.Id);
-            tracked.UpdateDetails(PropertyType.Unit, new PropertyAddress("EG"), CreatedAt.AddHours(1));
+            tracked.UpdateDetails(PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt.AddHours(1));
             await updating.SaveChangesAsync();
         }
 
@@ -118,7 +118,7 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
     {
         await SeedAmenitiesAsync();
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt,
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
             amenities: await LoadAmenitiesAsync("Balcony"));
         await SaveAsync(property);
 
@@ -135,7 +135,7 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
     public async Task ALinkToAnUnknownAmenityOrPropertyIsRejected()
     {
         await SeedAmenitiesAsync();
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt);
         await SaveAsync(property);
 
         var unknownAmenity = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
@@ -152,7 +152,7 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
     {
         await SeedAmenitiesAsync();
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt,
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
             amenities: await LoadAmenitiesAsync("Balcony"));
         await SaveAsync(property);
 
@@ -167,7 +167,7 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
     {
         await SeedAmenitiesAsync();
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt,
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
             amenities: await LoadAmenitiesAsync("SwimmingPool", "Balcony", "Security"));
         await SaveAsync(property);
 
@@ -189,13 +189,13 @@ public sealed class PropertyAmenitiesPersistenceTests(PostgreSqlFixture fixture)
     {
         await SeedAmenitiesAsync();
         var withPool = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt,
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
             amenities: await LoadAmenitiesAsync("SwimmingPool"));
         var withBoth = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt.AddMinutes(1),
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt.AddMinutes(1),
             amenities: await LoadAmenitiesAsync("Balcony", "SharedGym"));
         var withNone = new Property(
-            Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt.AddMinutes(2));
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt.AddMinutes(2));
         await SaveAsync(withPool);
         await SaveAsync(withBoth);
         await SaveAsync(withNone);

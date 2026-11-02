@@ -15,7 +15,7 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
         {
             tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_type",
-                "type IN ('Land', 'Building', 'Unit')");
+                "type IN ('Land', 'Building', 'Apartment', 'Villa', 'Duplex', 'Studio', 'Chalet', 'Townhouse', 'TwinHouse', 'Penthouse', 'StandaloneVilla', 'HotelApartment', 'Office', 'Shop', 'Warehouse', 'Farm')");
 
             tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_status",
@@ -23,7 +23,7 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
 
             tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_finishing_status",
-                "finishing_status IS NULL OR finishing_status IN ('Unfinished', 'SemiFinished', 'FullyFinished', 'SuperLux', 'Furnished')");
+                "finishing_status IS NULL OR finishing_status IN ('Finished', 'LuxuryFinished', 'SemiFinished', 'CoreAndShell')");
 
             tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_bedrooms_range",
@@ -32,6 +32,34 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
             tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_bathrooms_range",
                 "bathrooms IS NULL OR bathrooms BETWEEN 0 AND 100");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_transaction_type",
+                "transaction_type IS NULL OR transaction_type IN ('Sale', 'Rent')");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_listing_status",
+                "listing_status IN ('Available', 'Reserved', 'Sold', 'Rented')");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_price_positive",
+                "price IS NULL OR price > 0");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_area_sqm_range",
+                "area_sqm IS NULL OR (area_sqm > 0 AND area_sqm <= 100000)");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_floor_range",
+                "floor IS NULL OR floor BETWEEN -5 AND 300");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_place",
+                "compound_id IS NULL OR area_id IS NOT NULL");
+
+            tableBuilder.HasCheckConstraint(
+                "ck_registry_properties_ai_sync_status",
+                "ai_sync_status IN ('NotSynced', 'Synced', 'Failed')");
 
             tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_address_country_code",
@@ -123,6 +151,98 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
                     join.ToTable("property_amenities", "registry");
                     join.HasKey("property_id", "amenity_id");
                 });
+
+        builder.HasMany(property => property.Views)
+            .WithMany()
+            .UsingEntity<Dictionary<string, object>>(
+                "property_views",
+                join => join.HasOne<PropertyView>().WithMany().HasForeignKey("view_id").OnDelete(DeleteBehavior.Restrict),
+                join => join.HasOne<Property>().WithMany().HasForeignKey("property_id").OnDelete(DeleteBehavior.Restrict),
+                join =>
+                {
+                    join.ToTable("property_views", "registry");
+                    join.HasKey("property_id", "view_id");
+                });
+
+        // The market-facing facts are a value object with no identity, stored inline like the address.
+        builder.ComplexProperty(property => property.Listing, listing =>
+        {
+            listing.IsRequired();
+
+            listing.Property(value => value.TransactionType)
+                .HasColumnName("transaction_type")
+                .HasConversion<string>()
+                .HasMaxLength(32);
+
+            listing.Property(value => value.Price)
+                .HasColumnName("price")
+                .HasPrecision(18, 2);
+
+            listing.Property(value => value.AreaSqm)
+                .HasColumnName("area_sqm")
+                .HasPrecision(12, 2);
+
+            listing.Property(value => value.Floor)
+                .HasColumnName("floor");
+
+            listing.Property(value => value.Furnished)
+                .HasColumnName("furnished");
+
+            listing.Property(value => value.ListingStatus)
+                .HasColumnName("listing_status")
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .HasDefaultValue(ListingStatus.Available)
+                .IsRequired();
+
+            listing.Property(value => value.TitleAr)
+                .HasColumnName("title_ar")
+                .HasMaxLength(PropertyListingInfo.MaxTitleLength);
+
+            listing.Property(value => value.TitleEn)
+                .HasColumnName("title_en")
+                .HasMaxLength(PropertyListingInfo.MaxTitleLength);
+
+            listing.Property(value => value.DescriptionAr)
+                .HasColumnName("description_ar")
+                .HasMaxLength(PropertyListingInfo.MaxDescriptionLength);
+
+            listing.Property(value => value.DescriptionEn)
+                .HasColumnName("description_en")
+                .HasMaxLength(PropertyListingInfo.MaxDescriptionLength);
+        });
+
+        // The place: an area, and optionally a compound inside it. City and country are reached through the area.
+        builder.Property(property => property.AreaId)
+            .HasColumnName("area_id");
+
+        builder.HasOne(property => property.Area)
+            .WithMany()
+            .HasForeignKey(property => property.AreaId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property(property => property.CompoundId)
+            .HasColumnName("compound_id");
+
+        builder.HasOne(property => property.Compound)
+            .WithMany()
+            .HasForeignKey(property => property.CompoundId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Bookkeeping about the copy held by the AI search service; it never moves updated_at.
+        builder.Property(property => property.AiSyncStatus)
+            .HasColumnName("ai_sync_status")
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .HasDefaultValue(AiSyncStatus.NotSynced)
+            .IsRequired();
+
+        builder.Property(property => property.AiSyncedAt)
+            .HasColumnName("ai_synced_at");
+
+        builder.Property(property => property.AiSyncError)
+            .HasColumnName("ai_sync_error")
+            .HasMaxLength(Property.MaxAiSyncErrorLength);
 
         builder.Property(property => property.CreatedAt)
             .HasColumnName("created_at")

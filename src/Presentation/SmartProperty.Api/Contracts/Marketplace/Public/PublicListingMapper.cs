@@ -63,13 +63,10 @@ internal static class PublicListingMapper
 
     private static string ToPropertyType(PropertyType propertyType)
     {
-        return propertyType switch
-        {
-            PropertyType.Land => "Land",
-            PropertyType.Building => "Building",
-            PropertyType.Unit => "Unit",
-            _ => throw Invalid("an unsupported property type")
-        };
+        // The registry's property type names are the contract values, so every defined type maps to its own name.
+        return Enum.IsDefined(propertyType)
+            ? propertyType.ToString()
+            : throw Invalid("an unsupported property type");
     }
 
     private static string ToRentPeriod(RentPeriod rentPeriod)

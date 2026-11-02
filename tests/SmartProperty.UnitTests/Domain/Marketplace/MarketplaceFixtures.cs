@@ -37,7 +37,7 @@ internal static class MarketplaceFixtures
             ListingRepresentationKind.Owner, null, listing.CreatedAt, null);
         var evidence = new ListingEvidenceReference(Guid.NewGuid(), Guid.NewGuid(), listing.PropertyId, listing.Purpose, new string('A', 64));
         var content = new ListingSubmissionContent("Country", "Region", "City", "District", "Title", "Description",
-            SmartProperty.Domain.PropertyRegistry.PropertyType.Unit, listing.Purpose, 100m, "USD",
+            SmartProperty.Domain.PropertyRegistry.PropertyType.Apartment, listing.Purpose, 100m, "USD",
             listing.Purpose == ListingPurpose.Rent ? RentPeriod.Monthly : null);
         var submission = new ListingSubmission(Guid.NewGuid(), listing, content, authority, [evidence], at, predecessor);
         submission.Submit(actor, null, at, Assessments(submission, at), true, null);

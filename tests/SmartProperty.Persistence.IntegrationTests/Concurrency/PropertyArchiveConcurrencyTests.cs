@@ -61,7 +61,7 @@ public sealed class PropertyArchiveConcurrencyTests(PostgreSqlFixture fixture) :
         var archivedAt = TestClock.DefaultNow.AddMinutes(1);
         archiving.Archive(archivedAt);
         Assert.True(updating.UpdateDetails(
-            PropertyType.Unit,
+            PropertyType.Apartment,
             new PropertyAddress("AE", "Dubai"),
             TestClock.DefaultNow.AddMinutes(2)));
 
@@ -96,7 +96,7 @@ public sealed class PropertyArchiveConcurrencyTests(PostgreSqlFixture fixture) :
         var updatedAt = TestClock.DefaultNow.AddMinutes(1);
         var archivedAt = TestClock.DefaultNow.AddMinutes(2);
         var updatedAddress = new PropertyAddress("AE", "Dubai", latitude: 25.2m);
-        Assert.True(updating.UpdateDetails(PropertyType.Unit, updatedAddress, updatedAt));
+        Assert.True(updating.UpdateDetails(PropertyType.Apartment, updatedAddress, updatedAt));
         archiving.Archive(archivedAt);
 
         await SaveAsync(updatingScope);
@@ -110,7 +110,7 @@ public sealed class PropertyArchiveConcurrencyTests(PostgreSqlFixture fixture) :
 
         Assert.Equal(PropertyStatus.Archived, persisted.Status);
         Assert.Equal(archivedAt, persisted.UpdatedAt);
-        Assert.Equal(PropertyType.Unit, persisted.Type);
+        Assert.Equal(PropertyType.Apartment, persisted.Type);
         Assert.Equal(updatedAddress, persisted.Address);
         Assert.Equal(seeded.CreatedAt, persisted.CreatedAt);
     }

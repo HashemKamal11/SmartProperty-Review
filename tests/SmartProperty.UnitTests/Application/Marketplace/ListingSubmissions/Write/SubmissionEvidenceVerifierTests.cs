@@ -313,7 +313,7 @@ public sealed class SubmissionEvidenceVerifierTests
     {
         var listing = new PropertyListing(Guid.NewGuid(), PropertyId, ListingPurpose.Sale, Created.AddDays(-1));
         var content = new ListingSubmissionContent(
-            "SA", "Riyadh Province", "Riyadh", "Al Olaya", "Title", "Description", PropertyType.Unit, ListingPurpose.Sale, 1000m, "SAR", null);
+            "SA", "Riyadh Province", "Riyadh", "Al Olaya", "Title", "Description", PropertyType.Apartment, ListingPurpose.Sale, 1000m, "SAR", null);
         var authority = new ListingLegalAuthority(
             PropertyId,
             ListingPurpose.Sale,

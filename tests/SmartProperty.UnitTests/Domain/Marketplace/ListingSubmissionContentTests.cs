@@ -20,7 +20,7 @@ public sealed class ListingSubmissionContentTests
         var text = new[] { "Country", "Region", "City", "District", "Title", "Description", "USD" };
         text[field] = value!;
         Assert.ThrowsAny<ArgumentException>(() => new ListingSubmissionContent(text[0], text[1], text[2], text[3], text[4], text[5],
-            PropertyType.Unit, ListingPurpose.Sale, 100m, text[6], null));
+            PropertyType.Apartment, ListingPurpose.Sale, 100m, text[6], null));
     }
 
     [Theory]
@@ -35,7 +35,7 @@ public sealed class ListingSubmissionContentTests
     public void ContentPreservesValuesWithoutNormalizationOrRounding()
     {
         var content = new ListingSubmissionContent(" Country ", "Region", "City", "District", "Title", "Description",
-            PropertyType.Unit, ListingPurpose.Rent, 123.4567m, "Currency", RentPeriod.Yearly);
+            PropertyType.Apartment, ListingPurpose.Rent, 123.4567m, "Currency", RentPeriod.Yearly);
         Assert.Equal(" Country ", content.Country);
         Assert.Equal("Region", content.Region);
         Assert.Equal("City", content.City);

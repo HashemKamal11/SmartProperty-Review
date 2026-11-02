@@ -33,7 +33,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PutAsJsonAsync(
             $"/api/properties/{property.Id}",
-            new UpdatePropertyRequest("Unit", "SA"));
+            new UpdatePropertyRequest("Apartment", "SA"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -50,7 +50,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PutAsJsonAsync(
             $"/api/properties/{property.Id}",
-            new UpdatePropertyRequest("Unit", "SA"));
+            new UpdatePropertyRequest("Apartment", "SA"));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -69,7 +69,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PutAsJsonAsync(
             $"/api/properties/{property.Id}",
-            new UpdatePropertyRequest("Unit", "SA"));
+            new UpdatePropertyRequest("Apartment", "SA"));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

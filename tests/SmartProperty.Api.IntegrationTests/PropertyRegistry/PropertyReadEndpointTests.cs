@@ -48,9 +48,9 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
     [Fact]
     public async Task AuthorizedListReturnsFilteredPageNewestFirstWithEveryFieldMapped()
     {
-        var older = NewProperty(PropertyType.Unit, "XZ", BaseTime, city: "Older City");
+        var older = NewProperty(PropertyType.Apartment, "XZ", BaseTime, city: "Older City");
         var newer = NewProperty(
-            PropertyType.Unit,
+            PropertyType.Apartment,
             "XZ",
             BaseTime.AddMinutes(1),
             city: "Newer City",
@@ -61,7 +61,7 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
             latitude: 24.7136m,
             longitude: 46.6753m);
         var wrongType = NewProperty(PropertyType.Land, "XZ", BaseTime.AddMinutes(2));
-        var wrongCountry = NewProperty(PropertyType.Unit, "XY", BaseTime.AddMinutes(3));
+        var wrongCountry = NewProperty(PropertyType.Apartment, "XY", BaseTime.AddMinutes(3));
         await SeedAsync(older, newer, wrongType, wrongCountry);
         using var factory = ReadAuthorizedFactory();
         using var client = factory.CreateAuthenticatedClient(Guid.NewGuid());
@@ -78,7 +78,7 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
         Assert.False(body.HasPrevious);
         var property = Assert.Single(body.Items);
         Assert.Equal(newer.Id, property.Id);
-        Assert.Equal("Unit", property.Type);
+        Assert.Equal("Apartment", property.Type);
         Assert.Equal("Active", property.Status);
         Assert.Equal("XZ", property.Address.CountryCode);
         Assert.Equal("Newer City", property.Address.City);

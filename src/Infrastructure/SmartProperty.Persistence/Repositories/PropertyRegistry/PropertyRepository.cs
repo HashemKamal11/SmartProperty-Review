@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
+using SmartProperty.Application.Locations;
 using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.List;
 using SmartProperty.Common.Pagination;
@@ -24,7 +25,25 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
     {
         return dbContext.Properties
             .Include(property => property.Amenities)
+            .Include(property => property.Views)
+            .Include(property => property.Area!)
+                .ThenInclude(area => area.City)
+                .ThenInclude(city => city.Country)
+            .Include(property => property.Compound)
             .FirstOrDefaultAsync(property => property.Id == id, cancellationToken);
+    }
+
+    public async Task<IReadOnlyCollection<Guid>> GetExistingIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        return await dbContext.Properties
+            .AsNoTracking()
+            .Where(property => ids.Contains(property.Id))
+            .Select(property => property.Id)
+            .ToListAsync(cancellationToken);
     }
 
     /// <remarks>
@@ -57,7 +76,32 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
                 property.Amenities
                     .OrderBy(amenity => amenity.SortOrder)
                     .Select(amenity => new AmenityDetails(amenity.Code, amenity.NameAr, amenity.NameEn))
-                    .ToList()))
+                    .ToList(),
+                property.Views
+                    .OrderBy(view => view.SortOrder)
+                    .Select(view => new ViewDetails(view.Code, view.NameAr, view.NameEn))
+                    .ToList(),
+                new PropertyListingDetails(
+                    property.Listing.TransactionType,
+                    property.Listing.Price,
+                    property.Listing.AreaSqm,
+                    property.Listing.Floor,
+                    property.Listing.Furnished,
+                    property.Listing.ListingStatus,
+                    property.Listing.TitleAr,
+                    property.Listing.TitleEn,
+                    property.Listing.DescriptionAr,
+                    property.Listing.DescriptionEn),
+                new AiSyncDetails(property.AiSyncStatus, property.AiSyncedAt, property.AiSyncError),
+                property.Area == null
+                    ? null
+                    : new PropertyPlaceDetails(
+                        new LocationDetails(property.Area.City.Country.Id, property.Area.City.Country.NameEn, property.Area.City.Country.NameAr),
+                        new LocationDetails(property.Area.City.Id, property.Area.City.NameEn, property.Area.City.NameAr),
+                        new LocationDetails(property.Area.Id, property.Area.NameEn, property.Area.NameAr),
+                        property.Compound == null
+                            ? null
+                            : new LocationDetails(property.Compound.Id, property.Compound.NameEn, property.Compound.NameAr))))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -142,7 +186,32 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
                 property.Amenities
                     .OrderBy(amenity => amenity.SortOrder)
                     .Select(amenity => new AmenityDetails(amenity.Code, amenity.NameAr, amenity.NameEn))
-                    .ToList()))
+                    .ToList(),
+                property.Views
+                    .OrderBy(view => view.SortOrder)
+                    .Select(view => new ViewDetails(view.Code, view.NameAr, view.NameEn))
+                    .ToList(),
+                new PropertyListingDetails(
+                    property.Listing.TransactionType,
+                    property.Listing.Price,
+                    property.Listing.AreaSqm,
+                    property.Listing.Floor,
+                    property.Listing.Furnished,
+                    property.Listing.ListingStatus,
+                    property.Listing.TitleAr,
+                    property.Listing.TitleEn,
+                    property.Listing.DescriptionAr,
+                    property.Listing.DescriptionEn),
+                new AiSyncDetails(property.AiSyncStatus, property.AiSyncedAt, property.AiSyncError),
+                property.Area == null
+                    ? null
+                    : new PropertyPlaceDetails(
+                        new LocationDetails(property.Area.City.Country.Id, property.Area.City.Country.NameEn, property.Area.City.Country.NameAr),
+                        new LocationDetails(property.Area.City.Id, property.Area.City.NameEn, property.Area.City.NameAr),
+                        new LocationDetails(property.Area.Id, property.Area.NameEn, property.Area.NameAr),
+                        property.Compound == null
+                            ? null
+                            : new LocationDetails(property.Compound.Id, property.Compound.NameEn, property.Compound.NameAr))))
             .ToListAsync(cancellationToken);
 
         return new PropertyPage(items, totalCount);

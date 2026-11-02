@@ -119,7 +119,7 @@ public sealed class PropertyMatchPersistenceTests(PostgreSqlFixture fixture) : D
     private async Task<(Guid UserId, Guid PropertyId)> SeedUserAndPropertyAsync()
     {
         var user = new User(Guid.NewGuid(), $"{Guid.NewGuid():n}@example.com", "Test", "Buyer", CreatedAt);
-        var property = new Property(Guid.NewGuid(), PropertyType.Unit, new PropertyAddress("EG"), CreatedAt);
+        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt);
 
         await using var seeding = Host.CreateVerificationContext();
         seeding.Users.Add(user);

@@ -16,7 +16,7 @@ public sealed class Amenity
         NameEn = string.Empty;
     }
 
-    public Amenity(Guid id, string code, string nameAr, string nameEn, int sortOrder)
+    public Amenity(Guid id, string code, string nameAr, string nameEn, int sortOrder, string? aiCode = null)
     {
         if (id == Guid.Empty)
         {
@@ -28,6 +28,7 @@ public sealed class Amenity
         NameAr = TrimRequired(nameAr, MaxNameLength, nameof(nameAr));
         NameEn = TrimRequired(nameEn, MaxNameLength, nameof(nameEn));
         SortOrder = sortOrder;
+        AiCode = string.IsNullOrWhiteSpace(aiCode) ? null : TrimRequired(aiCode, MaxCodeLength, nameof(aiCode));
     }
 
     public Guid Id { get; private set; }
@@ -35,6 +36,9 @@ public sealed class Amenity
     public string NameAr { get; private set; }
     public string NameEn { get; private set; }
     public int SortOrder { get; private set; }
+
+    /// <summary>The matching code in the AI search service vocabulary, or null when it has no equivalent.</summary>
+    public string? AiCode { get; private set; }
 
     private static string TrimRequired(string value, int maxLength, string parameterName)
     {
