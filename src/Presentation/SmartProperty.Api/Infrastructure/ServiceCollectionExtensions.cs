@@ -39,6 +39,10 @@ using SmartProperty.Application.PropertyRegistry.Archive;
 using SmartProperty.Application.PropertyRegistry.Amenities;
 using SmartProperty.Application.PropertyRegistry.Ai;
 using SmartProperty.Application.Locations;
+using SmartProperty.Application.Favorites;
+using SmartProperty.Application.Favorites.Add;
+using SmartProperty.Application.Favorites.List;
+using SmartProperty.Application.Favorites.Remove;
 using SmartProperty.Application.PropertyRegistry.Ai.Sync;
 using SmartProperty.Application.PropertyRegistry.Views;
 using SmartProperty.Application.PropertyMatching.Search;
@@ -307,6 +311,10 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IPropertyAiSynchronizer, PropertyAiSynchronizer>();
         services.AddScoped<ICommandHandler<SyncPropertyWithAiCommand, PropertyDetails>, SyncPropertyWithAiCommandHandler>();
         services.AddScoped<ICommandHandler<SearchPropertiesCommand, PropertySearchResult>, SearchPropertiesCommandHandler>();
+        services.AddScoped<ICommandHandler<AddFavoriteCommand, AddFavoriteResult>, AddFavoriteCommandHandler>();
+        services.AddScoped<ICommandHandler<RemoveFavoriteCommand, RemoveFavoriteResult>, RemoveFavoriteCommandHandler>();
+        services.AddScoped<IQueryHandler<GetFavoritesQuery, PagedList<FavoriteDetails>>, GetFavoritesQueryHandler>();
+        services.AddScoped<IQueryHandler<GetFavoriteIdsQuery, IReadOnlyList<Guid>>, GetFavoriteIdsQueryHandler>();
         services.AddScoped<ICommandHandler<RecordPropertyMatchCommand, PropertyMatchDetails>, RecordPropertyMatchCommandHandler>();
 
         services

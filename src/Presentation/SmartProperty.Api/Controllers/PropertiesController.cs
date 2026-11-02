@@ -359,7 +359,7 @@ public sealed class PropertiesController : ControllerBase
             .ToArray();
     }
 
-    private static PropertyResponse ToResponse(PropertyDetails property)
+    internal static PropertyResponse ToResponse(PropertyDetails property)
     {
         return new PropertyResponse(
             property.Id,

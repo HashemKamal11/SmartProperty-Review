@@ -34,5 +34,10 @@ public enum PersistenceConstraint
     /// A place keeps one row per AI service id within its level, so two requests that both fill a level do not
     /// store it twice.
     /// </summary>
-    LocationAiId = 6
+    LocationAiId = 6,
+
+    /// <summary>
+    /// A user can mark a property as a favorite once; the second mark is the same favorite.
+    /// </summary>
+    FavoriteProperty = 7
 }

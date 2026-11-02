@@ -54,54 +54,7 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
         return dbContext.Properties
             .AsNoTracking()
             .Where(property => property.Id == id)
-            .Select(property => new PropertyDetails(
-                property.Id,
-                property.Type,
-                property.Status,
-                new PropertyAddressDetails(
-                    property.Address.CountryCode,
-                    property.Address.City,
-                    property.Address.Region,
-                    property.Address.District,
-                    property.Address.AddressLine,
-                    property.Address.PostalCode,
-                    property.Address.Latitude,
-                    property.Address.Longitude),
-                property.CreatedAt,
-                property.UpdatedAt,
-                property.Bedrooms,
-                property.Bathrooms,
-                property.BuiltDate,
-                property.FinishingStatus,
-                property.Amenities
-                    .OrderBy(amenity => amenity.SortOrder)
-                    .Select(amenity => new AmenityDetails(amenity.Code, amenity.NameAr, amenity.NameEn))
-                    .ToList(),
-                property.Views
-                    .OrderBy(view => view.SortOrder)
-                    .Select(view => new ViewDetails(view.Code, view.NameAr, view.NameEn))
-                    .ToList(),
-                new PropertyListingDetails(
-                    property.Listing.TransactionType,
-                    property.Listing.Price,
-                    property.Listing.AreaSqm,
-                    property.Listing.Floor,
-                    property.Listing.Furnished,
-                    property.Listing.ListingStatus,
-                    property.Listing.TitleAr,
-                    property.Listing.TitleEn,
-                    property.Listing.DescriptionAr,
-                    property.Listing.DescriptionEn),
-                new AiSyncDetails(property.AiSyncStatus, property.AiSyncedAt, property.AiSyncError),
-                property.Area == null
-                    ? null
-                    : new PropertyPlaceDetails(
-                        new LocationDetails(property.Area.City.Country.Id, property.Area.City.Country.NameEn, property.Area.City.Country.NameAr),
-                        new LocationDetails(property.Area.City.Id, property.Area.City.NameEn, property.Area.City.NameAr),
-                        new LocationDetails(property.Area.Id, property.Area.NameEn, property.Area.NameAr),
-                        property.Compound == null
-                            ? null
-                            : new LocationDetails(property.Compound.Id, property.Compound.NameEn, property.Compound.NameAr))))
+            .Select(PropertyDetailsProjection.Expression)
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -164,54 +117,7 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
             .ThenByDescending(property => property.Id)
             .Skip(skip)
             .Take(take)
-            .Select(property => new PropertyDetails(
-                property.Id,
-                property.Type,
-                property.Status,
-                new PropertyAddressDetails(
-                    property.Address.CountryCode,
-                    property.Address.City,
-                    property.Address.Region,
-                    property.Address.District,
-                    property.Address.AddressLine,
-                    property.Address.PostalCode,
-                    property.Address.Latitude,
-                    property.Address.Longitude),
-                property.CreatedAt,
-                property.UpdatedAt,
-                property.Bedrooms,
-                property.Bathrooms,
-                property.BuiltDate,
-                property.FinishingStatus,
-                property.Amenities
-                    .OrderBy(amenity => amenity.SortOrder)
-                    .Select(amenity => new AmenityDetails(amenity.Code, amenity.NameAr, amenity.NameEn))
-                    .ToList(),
-                property.Views
-                    .OrderBy(view => view.SortOrder)
-                    .Select(view => new ViewDetails(view.Code, view.NameAr, view.NameEn))
-                    .ToList(),
-                new PropertyListingDetails(
-                    property.Listing.TransactionType,
-                    property.Listing.Price,
-                    property.Listing.AreaSqm,
-                    property.Listing.Floor,
-                    property.Listing.Furnished,
-                    property.Listing.ListingStatus,
-                    property.Listing.TitleAr,
-                    property.Listing.TitleEn,
-                    property.Listing.DescriptionAr,
-                    property.Listing.DescriptionEn),
-                new AiSyncDetails(property.AiSyncStatus, property.AiSyncedAt, property.AiSyncError),
-                property.Area == null
-                    ? null
-                    : new PropertyPlaceDetails(
-                        new LocationDetails(property.Area.City.Country.Id, property.Area.City.Country.NameEn, property.Area.City.Country.NameAr),
-                        new LocationDetails(property.Area.City.Id, property.Area.City.NameEn, property.Area.City.NameAr),
-                        new LocationDetails(property.Area.Id, property.Area.NameEn, property.Area.NameAr),
-                        property.Compound == null
-                            ? null
-                            : new LocationDetails(property.Compound.Id, property.Compound.NameEn, property.Compound.NameAr))))
+            .Select(PropertyDetailsProjection.Expression)
             .ToListAsync(cancellationToken);
 
         return new PropertyPage(items, totalCount);

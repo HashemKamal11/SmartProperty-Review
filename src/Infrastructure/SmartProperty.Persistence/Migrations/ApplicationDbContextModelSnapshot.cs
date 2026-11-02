@@ -23,6 +23,30 @@ namespace SmartProperty.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("SmartProperty.Domain.Favorites.FavoriteProperty", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("UserId", "PropertyId")
+                        .HasName("PK_favorite_properties");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("favorite_properties", "registry");
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Identity.OneTimeCode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1757,6 +1781,21 @@ namespace SmartProperty.Persistence.Migrations
                     b.Navigation("Area");
 
                     b.Navigation("Compound");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Favorites.FavoriteProperty", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
 #pragma warning restore 612, 618

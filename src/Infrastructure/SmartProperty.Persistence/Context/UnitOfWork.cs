@@ -4,6 +4,7 @@ using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.Domain.Workspaces;
+using SmartProperty.Persistence.Configurations.Favorites;
 using SmartProperty.Persistence.Configurations.Identity;
 using SmartProperty.Persistence.Configurations.Locations;
 
@@ -90,6 +91,7 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
             PermissionConfiguration.CodeUniqueIndexName => PersistenceConstraint.PermissionCode,
             LocationIndexNames.Country or LocationIndexNames.City or LocationIndexNames.Area or LocationIndexNames.Compound =>
                 PersistenceConstraint.LocationAiId,
+            FavoritePropertyConfiguration.PrimaryKeyName => PersistenceConstraint.FavoriteProperty,
             _ => null
         };
     }

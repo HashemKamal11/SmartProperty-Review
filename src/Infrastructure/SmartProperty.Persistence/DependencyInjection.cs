@@ -7,6 +7,7 @@ using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Persistence.Authorization;
 using SmartProperty.Persistence.Context;
 using SmartProperty.Persistence.Health;
+using SmartProperty.Persistence.Repositories.Favorites;
 using SmartProperty.Persistence.Repositories.Identity;
 using SmartProperty.Persistence.Repositories.Locations;
 using SmartProperty.Persistence.Repositories.Marketplace;
@@ -42,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IAmenityRepository, AmenityRepository>();
         services.AddScoped<IViewRepository, ViewRepository>();
         services.AddScoped<ILocationRepository, LocationRepository>();
+        services.AddScoped<IFavoritePropertyRepository, FavoritePropertyRepository>();
         services.AddScoped<IPropertyMatchRepository, PropertyMatchRepository>();
         services.AddScoped<IPublicListingReadRepository, PublicListingReadRepository>();
         services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();

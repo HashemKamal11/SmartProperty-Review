@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using SmartProperty.Domain.Favorites;
 using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.Locations;
 using SmartProperty.Domain.PropertyMatching;
@@ -33,6 +34,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<City> Cities => Set<City>();
     public DbSet<Area> Areas => Set<Area>();
     public DbSet<Compound> Compounds => Set<Compound>();
+    public DbSet<FavoriteProperty> FavoriteProperties => Set<FavoriteProperty>();
     public DbSet<PropertyMatch> PropertyMatches => Set<PropertyMatch>();
     public DbSet<ListingSubmission> ListingSubmissions => Set<ListingSubmission>();
     public DbSet<ListingReviewDecision> ListingReviewDecisions => Set<ListingReviewDecision>();
