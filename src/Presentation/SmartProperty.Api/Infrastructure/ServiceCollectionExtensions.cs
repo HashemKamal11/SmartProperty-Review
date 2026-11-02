@@ -37,6 +37,10 @@ using SmartProperty.Application.WorkspaceAccessRequests.Approve;
 using SmartProperty.Application.WorkspaceAccessRequests.List;
 using SmartProperty.Application.WorkspaceAccessRequests.Reject;
 using SmartProperty.Application.Workspaces.Get;
+using SmartProperty.Application.Workspaces.Administration;
+using SmartProperty.Application.Workspaces.Administration.Create;
+using SmartProperty.Application.Workspaces.Administration.Get;
+using SmartProperty.Application.Workspaces.Administration.List;
 using SmartProperty.Application.Workspaces.RegistrationOptions;
 using SmartProperty.Common.Pagination;
 
@@ -280,6 +284,9 @@ internal static class ServiceCollectionExtensions
             .AddScoped<IQueryHandler<GetRegistrationWorkspaceOptionsQuery, IReadOnlyList<RegistrationWorkspaceOption>>,
                 GetRegistrationWorkspaceOptionsQueryHandler>();
         services.AddScoped<IQueryHandler<GetWorkspaceQuery, WorkspaceDetails>, GetWorkspaceQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAdminWorkspacesQuery, PagedList<AdminWorkspaceDetails>>, GetAdminWorkspacesQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAdminWorkspaceQuery, AdminWorkspaceDetails>, GetAdminWorkspaceQueryHandler>();
+        services.AddScoped<ICommandHandler<CreateWorkspaceCommand, AdminWorkspaceDetails>, CreateWorkspaceCommandHandler>();
 
         // The anonymous public marketplace. Both handlers need IPublicListingReadRepository, which Persistence
         // registers; a host without that registration does not start in Development.
