@@ -5,6 +5,7 @@ using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using SmartProperty.Api.Infrastructure;
 using SmartProperty.Api.Infrastructure.AiSearch;
+using SmartProperty.Api.Infrastructure.Storage;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Http;
 using SmartProperty.Persistence;
@@ -61,6 +62,7 @@ builder.Services.AddApiAuthentication(builder.Configuration);
 builder.Services.AddApiAuthorization();
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddAiSearch(builder.Configuration);
+builder.Services.AddImageStorage(builder.Configuration);
 builder.Services.AddApplicationHandlers();
 builder.Services.AddPlatformAdminBootstrap(builder.Configuration);
 

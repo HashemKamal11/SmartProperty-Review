@@ -137,6 +137,7 @@ The API uses standard ASP.NET Core configuration. `appsettings.json` contains on
 | `Jwt:AccessTokenLifetime` | `Jwt__AccessTokenLifetime` | `00:15:00` | Positive `TimeSpan` |
 | `Jwt:RefreshTokenLifetime` | `Jwt__RefreshTokenLifetime` | `7.00:00:00` | Positive `TimeSpan` |
 | `AiIntegration:ApiKey` | `AiIntegration__ApiKey` | empty | Secret the AI system sends in `X-Api-Key` to `POST /api/property-matches`; blank refuses every call |
+| `ImageStorage:RootPath` | `ImageStorage__RootPath` | `App_Data/images` | Directory where uploaded property photos are stored. Relative paths are resolved against the application folder. In Docker it is `/data/images`, bound to the repository `Storage` folder, so photos survive container rebuilds; running locally (Development) it also points at `Storage` |
 | `AiSearch:Enabled` | `AiSearch__Enabled` | `false` | Turns the AI search integration on. While off nothing is sent to the AI service and properties report `NotSynced` |
 | `AiSearch:BaseUrl` | `AiSearch__BaseUrl` | `https://ai-search.neurix.uk` | Absolute http(s) URL of the AI search service |
 | `AiSearch:ApiKey` | `AiSearch__ApiKey` | empty | Secret sent as `x-api-key` when properties are added to or removed from the AI service |

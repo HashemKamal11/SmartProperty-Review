@@ -1,4 +1,5 @@
 #nullable enable
+using SmartProperty.Api.Contracts.PropertyImages;
 namespace SmartProperty.Api.Contracts.PropertyRegistry;
 
 public sealed record CreatePropertyResponse(
@@ -16,7 +17,8 @@ public sealed record CreatePropertyResponse(
     IReadOnlyList<ViewResponse>? Views = null,
     PropertyListingResponse? Listing = null,
     AiSyncResponse? AiSync = null,
-    PropertyPlaceResponse? Place = null);
+    PropertyPlaceResponse? Place = null,
+    IReadOnlyList<PropertyImageResponse>? Images = null);
 
 public sealed record PropertyAddressResponse(
     string CountryCode,

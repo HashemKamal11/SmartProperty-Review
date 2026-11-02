@@ -26,6 +26,7 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
         return dbContext.Properties
             .Include(property => property.Amenities)
             .Include(property => property.Views)
+            .Include(property => property.Images)
             .Include(property => property.Area!)
                 .ThenInclude(area => area.City)
                 .ThenInclude(city => city.Country)

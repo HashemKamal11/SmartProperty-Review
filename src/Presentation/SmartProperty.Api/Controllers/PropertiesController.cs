@@ -105,7 +105,8 @@ public sealed class PropertiesController : ControllerBase
             ToViewResponses(property.Views),
             ToListingResponse(property.Listing),
             ToAiSyncResponse(property.AiSync),
-            ToPlaceResponse(property.Place)));
+            ToPlaceResponse(property.Place),
+            []));
     }
 
     /// <summary>
@@ -384,6 +385,7 @@ public sealed class PropertiesController : ControllerBase
             ToViewResponses(property.Views),
             ToListingResponse(property.Listing),
             ToAiSyncResponse(property.AiSync),
-            ToPlaceResponse(property.Place));
+            ToPlaceResponse(property.Place),
+            (property.Images ?? []).Select(image => PropertyImagesController.ToResponse(property.Id, image)).ToArray());
     }
 }

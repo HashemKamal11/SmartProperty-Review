@@ -19,6 +19,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string AiSearchIntegrationMigration = "20261102120000_AddAiSearchIntegration";
     private const string LocationsMigration = "20261102180000_AddLocations";
     private const string FavoritePropertiesMigration = "20261103090000_AddFavoriteProperties";
+    private const string PropertyImagesMigration = "20261104090000_AddPropertyImages";
 
     [Fact]
     public async Task PlatformRoleInvariantMigration_AppliesFromPreviousMigration()
@@ -48,7 +49,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheFavoritePropertiesMigration()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithThePropertyImagesMigration()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -61,7 +62,8 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(FavoritePropertiesMigration, applied[^1]);
+        Assert.Equal(PropertyImagesMigration, applied[^1]);
+        Assert.Contains(FavoritePropertiesMigration, applied);
         Assert.Contains(LocationsMigration, applied);
         Assert.Contains(AiSearchIntegrationMigration, applied);
         Assert.Contains(PropertyAmenitiesMigration, applied);

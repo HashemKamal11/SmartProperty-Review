@@ -29,3 +29,10 @@ appsettings.Local.json
 # Local Claude / MCP tool configuration
 .claude/
 .mcp.json
+
+# Property photos uploaded while running the API locally (see ImageStorage:RootPath)
+**/App_Data/
+
+# Uploaded property photos (the folder is kept, its files are not)
+/Storage/*
+!/Storage/.gitkeep

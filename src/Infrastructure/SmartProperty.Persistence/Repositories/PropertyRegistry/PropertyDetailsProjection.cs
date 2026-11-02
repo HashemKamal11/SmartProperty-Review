@@ -1,5 +1,6 @@
 ﻿using System.Linq.Expressions;
 using SmartProperty.Application.Locations;
+using SmartProperty.Application.PropertyImages;
 using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Domain.PropertyRegistry;
 
@@ -59,5 +60,11 @@ internal static class PropertyDetailsProjection
                     new LocationDetails(property.Area.Id, property.Area.NameEn, property.Area.NameAr),
                     property.Compound == null
                         ? null
-                        : new LocationDetails(property.Compound.Id, property.Compound.NameEn, property.Compound.NameAr)));
+                        : new LocationDetails(property.Compound.Id, property.Compound.NameEn, property.Compound.NameAr)),
+                property.Images
+                    .OrderBy(image => image.SortOrder)
+                    .ThenBy(image => image.CreatedAt)
+                    .Select(image => new PropertyImageDetails(
+                        image.Id, image.FileName, image.ContentType, image.SizeBytes, image.SortOrder))
+                    .ToList());
 }

@@ -39,6 +39,10 @@ WORKDIR /app/api
 COPY --from=build /publish/api /app/api
 COPY --from=build /publish/migrator /app/migrator
 
+# Uploaded property photos are kept here. Created and handed to the app user before the switch to it, so a volume mounted
+# at this path (docker-compose.yml) starts out writable by the non-root user.
+RUN mkdir -p /data/images && chown $APP_UID /data/images
+
 # APP_UID is defined by the aspnet base image; running as that non-root user is the
 # documented default for .NET containers and works on the unprivileged port 8080.
 USER $APP_UID

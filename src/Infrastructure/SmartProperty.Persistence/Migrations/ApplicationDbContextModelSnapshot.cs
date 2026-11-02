@@ -1207,6 +1207,65 @@ namespace SmartProperty.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.PropertyImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("file_name");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("storage_key");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_registry_property_images_storage_key");
+
+                    b.HasIndex("PropertyId", "SortOrder");
+
+                    b.ToTable("property_images", "registry", t =>
+                        {
+                            t.HasCheckConstraint("ck_registry_property_images_content_type", "content_type IN ('image/jpeg', 'image/png', 'image/webp')");
+
+                            t.HasCheckConstraint("ck_registry_property_images_size", "size_bytes > 0 AND size_bytes <= 5242880");
+
+                            t.HasCheckConstraint("ck_registry_property_images_sort_order", "sort_order >= 0");
+                        });
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.PropertyView", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1796,6 +1855,20 @@ namespace SmartProperty.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.PropertyImage", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany("Images")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.Property", b =>
+                {
+                    b.Navigation("Images");
                 });
 
 #pragma warning restore 612, 618

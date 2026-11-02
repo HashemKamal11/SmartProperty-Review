@@ -1,5 +1,6 @@
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Locations;
+using SmartProperty.Application.PropertyImages;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Locations;
 using SmartProperty.Application.Abstractions.Time;
@@ -305,6 +306,17 @@ internal static class PropertyCommandSupport
             ToViewDetails(property.Views),
             ToListingDetails(property.Listing),
             ToAiSyncDetails(property),
-            ToPlaceDetails(property));
+            ToPlaceDetails(property),
+            ToImageDetails(property.Images));
+    }
+
+    public static List<PropertyImageDetails> ToImageDetails(IEnumerable<PropertyImage> images)
+    {
+        return images
+            .OrderBy(image => image.SortOrder)
+            .ThenBy(image => image.CreatedAt)
+            .Select(image => new PropertyImageDetails(
+                image.Id, image.FileName, image.ContentType, image.SizeBytes, image.SortOrder))
+            .ToList();
     }
 }

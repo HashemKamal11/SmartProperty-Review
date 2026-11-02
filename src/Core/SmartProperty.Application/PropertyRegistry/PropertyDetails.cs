@@ -1,4 +1,5 @@
 using SmartProperty.Application.Locations;
+using SmartProperty.Application.PropertyImages;
 using SmartProperty.Domain.PropertyRegistry;
 
 namespace SmartProperty.Application.PropertyRegistry;
@@ -25,7 +26,8 @@ public sealed record PropertyDetails(
     IReadOnlyList<ViewDetails>? Views = null,
     PropertyListingDetails? Listing = null,
     AiSyncDetails? AiSync = null,
-    PropertyPlaceDetails? Place = null);
+    PropertyPlaceDetails? Place = null,
+    IReadOnlyList<PropertyImageDetails>? Images = null);
 
 public sealed record PropertyAddressDetails(
     string CountryCode,

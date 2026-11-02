@@ -56,6 +56,8 @@ services:
       AiSearch__BaseUrl: ${AI_SEARCH_BASE_URL:-https://ai-search.neurix.uk}
       AiSearch__ApiKey: ${AI_SEARCH_API_KEY:-}
       AiSearch__TimeoutSeconds: ${AI_SEARCH_TIMEOUT_SECONDS:-30}
+      # Where uploaded property photos are stored: a mounted volume, so they outlive the container.
+      ImageStorage__RootPath: ${IMAGE_STORAGE_PATH:-/data/images}
       Bootstrap__Enabled: ${BOOTSTRAP_ENABLED:-false}
       Bootstrap__PlatformAdminEmail: ${BOOTSTRAP_PLATFORM_ADMIN_EMAIL:-}
       # Email through SMTP. Leave SMTP_HOST empty to use the logging stand-in that sends nothing.
@@ -69,6 +71,8 @@ services:
       Smtp__TimeoutSeconds: ${SMTP_TIMEOUT_SECONDS:-60}
       Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN_0:-}
       Cors__AllowedOrigins__1: ${CORS_ALLOWED_ORIGIN_1:-}
+    volumes:
+      - ${IMAGE_STORAGE_HOST_PATH:-./Storage}:/data/images
     ports:
       - "${API_PORT:-5000}:8080"
     depends_on:

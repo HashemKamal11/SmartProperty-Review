@@ -43,6 +43,9 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
     private readonly KeyValuePair<string, string?>[] extraConfiguration;
     private readonly string hostEnvironment;
 
+    /// <summary>Where this host stores uploaded images, so no test writes to a real path.</summary>
+    public string ImageRoot { get; } = Path.Combine(Path.GetTempPath(), "smartproperty-images-" + Guid.NewGuid().ToString("N"));
+
     /// <param name="database">The collection fixture's migrated PostgreSQL database.</param>
     /// <param name="usePersistencePermissionChecker">
     /// True to leave the production permission checker in place and resolve permissions from the database.
@@ -123,6 +126,7 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
                 .. TestJwt.Configuration(),
                 new KeyValuePair<string, string?>("Bootstrap:Enabled", "false"),
                 new KeyValuePair<string, string?>("Bootstrap:PlatformAdminEmail", string.Empty),
+                new KeyValuePair<string, string?>("ImageStorage:RootPath", ImageRoot),
                 .. extraConfiguration
             ];
 
@@ -174,6 +178,22 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
             services.AddControllers()
                 .AddApplicationPart(typeof(TestPermissionController).Assembly);
         });
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+
+        if (disposing && Directory.Exists(ImageRoot))
+        {
+            try
+            {
+                Directory.Delete(ImageRoot, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
     }
 
     /// <summary>The file name <c>AddUserSecrets</c> registers its JSON source under.</summary>

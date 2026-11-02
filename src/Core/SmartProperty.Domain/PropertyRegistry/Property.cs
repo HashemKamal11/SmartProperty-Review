@@ -76,12 +76,19 @@ public sealed class Property
 
     private readonly List<Amenity> _amenities = [];
     private readonly List<PropertyView> _views = [];
+    private readonly List<PropertyImage> _images = [];
 
     /// <summary>The amenities this property offers, with no duplicates.</summary>
     public IReadOnlyCollection<Amenity> Amenities => _amenities;
 
     /// <summary>What the property looks out on, with no duplicates.</summary>
     public IReadOnlyCollection<PropertyView> Views => _views;
+
+    /// <summary>
+    /// The photos of the property. Read-only here: images are added, removed, and reordered by their own use cases,
+    /// not by correcting the property's details, so a details update never touches them.
+    /// </summary>
+    public IReadOnlyCollection<PropertyImage> Images => _images;
 
     /// <summary>The market-facing facts: price, area, transaction type, presentation, and place ids.</summary>
     public PropertyListingInfo Listing { get; private set; }
