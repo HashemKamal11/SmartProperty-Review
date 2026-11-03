@@ -32,11 +32,6 @@ public sealed class SearchPropertiesCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (command.UserId == Guid.Empty)
-        {
-            return Failure(SearchPropertiesErrors.ValidationFailed("A signed-in user is required."));
-        }
-
         if (string.IsNullOrWhiteSpace(command.Query))
         {
             return Failure(SearchPropertiesErrors.ValidationFailed("Query is required."));
@@ -75,6 +70,9 @@ public sealed class SearchPropertiesCommandHandler(
             ? new HashSet<Guid>()
             : (await propertyRepository.GetExistingIdsAsync(candidateIds, cancellationToken)).ToHashSet();
 
+        // A match belongs to a user: an anonymous search (no user id) is answered but never stored.
+        Guid? userId = command.UserId is { } id0 && id0 != Guid.Empty ? id0 : null;
+
         var createdAt = dateTimeProvider.UtcNow;
         var items = new List<PropertySearchItem>(candidates.Count);
 
@@ -84,11 +82,11 @@ public sealed class SearchPropertiesCommandHandler(
             var description = DescriptionOf(item);
             var propertyId = id is { } candidate && existing.Contains(candidate) ? candidate : (Guid?)null;
 
-            if (propertyId is { } ours)
+            if (propertyId is { } ours && userId is { } owner)
             {
                 await propertyMatchRepository.AddAsync(
                     new PropertyMatch(
-                        Guid.NewGuid(), command.UserId, ours, percentage, description, query, createdAt),
+                        Guid.NewGuid(), owner, ours, percentage, description, query, createdAt),
                     cancellationToken);
             }
 

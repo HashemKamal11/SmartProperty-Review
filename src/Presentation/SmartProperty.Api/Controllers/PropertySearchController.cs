@@ -14,9 +14,10 @@ namespace SmartProperty.Api.Controllers;
 /// Free-text property search, answered by the AI search service.
 /// </summary>
 /// <remarks>
-/// The signed-in user's query goes to the AI service, which ranks the properties. For every result that is a
+/// Anyone may search, signed in or not. The query goes to the AI service, which ranks the properties. When a signed-in
+/// user searched, for every result that is a
 /// property of this platform the match — percentage, description, and the query — is stored against the user
-/// before the answer is returned, so a user's search history is kept here. Any listing the AI service knows that is
+/// before the answer is returned, so a user's search history is kept here. An anonymous search stores nothing. Any listing the AI service knows that is
 /// not one of this platform's properties is returned for display with a null <c>propertyId</c> and is not stored.
 /// </remarks>
 [ApiController]
@@ -24,10 +25,9 @@ namespace SmartProperty.Api.Controllers;
 public sealed class PropertySearchController : ControllerBase
 {
     [HttpPost]
-    [Authorize]
+    [AllowAnonymous]
     [ProducesResponseType<PropertySearchResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status502BadGateway)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status503ServiceUnavailable)]
@@ -37,11 +37,9 @@ public sealed class PropertySearchController : ControllerBase
         [FromServices] ICommandHandler<SearchPropertiesCommand, PropertySearchResult> handler,
         CancellationToken cancellationToken)
     {
-        // The token's subject is the only user id that counts; a body cannot name another user.
-        if (currentUser.UserId is not { } userId)
-        {
-            return Unauthorized(ApiErrorResponseFactory.Unauthorized(HttpContext));
-        }
+        // Anyone may search. The token's subject, when there is a valid one, is the only user id that counts (a body
+        // cannot name another user); without it the search is answered but nothing is stored.
+        var userId = currentUser.UserId;
 
         var result = await handler.Handle(
             new SearchPropertiesCommand(userId, request.Query, request.TopK),

@@ -4,13 +4,13 @@ using SmartProperty.Application.Abstractions.Messaging;
 namespace SmartProperty.Application.PropertyMatching.Search;
 
 /// <summary>
-/// A user's free-text search. The AI search service ranks the properties; the platform keeps the match for every
-/// result that is one of its own properties.
+/// A free-text search, open to anyone. The AI search service ranks the properties; the platform keeps the match for every
+/// result that is one of its own properties, but only when a signed-in user made the search.
 /// </summary>
-/// <param name="UserId">The signed-in user searching.</param>
+/// <param name="UserId">The signed-in user searching, or null for an anonymous search (nothing is stored then).</param>
 /// <param name="Query">What they typed.</param>
 /// <param name="TopK">How many results to ask for; <see cref="SearchPropertiesCommandHandler.DefaultTopK"/> when null.</param>
-public sealed record SearchPropertiesCommand(Guid UserId, string? Query, int? TopK = null)
+public sealed record SearchPropertiesCommand(Guid? UserId, string? Query, int? TopK = null)
     : ICommand<PropertySearchResult>;
 
 public sealed record PropertySearchResult(

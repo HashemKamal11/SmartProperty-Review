@@ -42,14 +42,23 @@ public sealed class AiSearchEndpointTests : IDisposable
     // ---- search
 
     [Fact]
-    public async Task SearchWithoutSigningInReturns401()
+    public async Task SearchWithoutSigningInIsAnsweredButStoresNothing()
     {
+        var ours = await SeedPropertyAsync();
+        _factory.AiGateway.SearchOutcome = new AiSearchOutcome(
+            "flat", "a flat", 1, [Item(ours.ToString(), "PF-OURS-1", 0.8, "وصف")]);
+        await using var before = _fixture.CreateContext();
+        var countBefore = await before.PropertyMatches.CountAsync();
         using var client = _factory.CreateClient();
 
         using var response = await client.PostAsJsonAsync(SearchRoute, new PropertySearchRequest("flat"));
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Empty(_factory.AiGateway.Searches);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = (await response.Content.ReadFromJsonAsync<PropertySearchResponse>())!;
+        Assert.Equal(ours, Assert.Single(body.Items).PropertyId);
+        Assert.Single(_factory.AiGateway.Searches);
+        await using var after = _fixture.CreateContext();
+        Assert.Equal(countBefore, await after.PropertyMatches.CountAsync());
     }
 
     [Fact]

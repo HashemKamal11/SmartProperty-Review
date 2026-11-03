@@ -165,13 +165,22 @@ public sealed class SearchPropertiesCommandHandlerTests
         Assert.True(atTheLimit.IsSuccess);
     }
 
-    [Fact]
-    public async Task TheEmptyUserIdIsRejected()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WithoutAUserTheSearchIsAnsweredButNothingIsStored(bool emptyId)
     {
-        var result = await CreateHandler().Handle(new SearchPropertiesCommand(Guid.Empty, "flat"));
+        var ours = Guid.NewGuid();
+        _properties.ExistingIds.Add(ours);
+        _gateway.SearchOutcome = Outcome(Item(ours.ToString(), 0.9, descriptionEn: "mine"));
 
-        Assert.True(result.IsFailure);
-        Assert.Empty(_gateway.Searches);
+        var result = await CreateHandler().Handle(new SearchPropertiesCommand(emptyId ? Guid.Empty : null, "flat"));
+
+        Assert.True(result.IsSuccess);
+        var item = Assert.Single(result.Value.Items);
+        Assert.Equal(ours, item.PropertyId);
+        Assert.Empty(_matches.Added);
+        Assert.Single(_gateway.Searches);
     }
 
     [Fact]
