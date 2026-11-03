@@ -21,7 +21,8 @@ Ordering is database name order, then UUID ascending. Paging defaults to 1/10 an
 sizes 1–100. Count and page are separate database reads and do not promise a shared concurrency snapshot.
 There are no filters or client-selectable sorts.
 
-POST accepts `{"name":"Workspace name"}`. IDs and UTC timestamps are server-generated.
+POST accepts `{"name":"Workspace name"}` and, optionally, `"admin":{"email","password","firstName","lastName"}`. IDs and UTC timestamps are server-generated.
+With `admin`, the response is `id`, `name`, `createdAt`, `updatedAt`, `adminUserId` (null without `admin`). The admin fields follow the registration rules; an existing email returns 409 `users.email_already_exists` and nothing is saved.
 Names are trimmed, required, and limited to 1–200 UTF-16 code units after trimming.
 Control characters are rejected in the original input, including surrounding tabs/newlines.
 Unicode, casing and internal spaces are preserved. Duplicate names are allowed; IDs are authoritative.
@@ -37,7 +38,8 @@ Errors use the existing code/message/status/fieldErrors/correlationId envelope.
 ## Creation and security boundaries
 
 Creation performs one Workspace insert through the repository and UnitOfWork, with one SaveChangesAsync.
-It creates no membership, Workspace role, role-permission mapping, access request, user or platform assignment.
+Without `admin` it creates no membership, Workspace role, role-permission mapping, access request, user or platform assignment.
+With `admin`, the same single save also creates: an Active user and credential, a Workspace-scoped "Workspace Admin" role for the new workspace holding exactly `workspace.read` (the permission row is created if absent), the user's membership, and the membership-role assignment. No platform role or platform permission is granted, and no access request is created.
 The creator's auth-context memberships remain unchanged. Existing member detail still requires local workspace.read.
 The new Workspace immediately appears in anonymous registration options, under the existing public visibility rule.
 

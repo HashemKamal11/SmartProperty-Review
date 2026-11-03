@@ -63,22 +63,24 @@ public sealed class AdminWorkspacesController : ControllerBase
 
     [HttpPost]
     [RequirePermission(PermissionCodes.WorkspaceAdminCreate)]
-    [ProducesResponseType<AdminWorkspaceResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<CreateWorkspaceResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Create(CreateWorkspaceRequest request,
-        [FromServices] ICommandHandler<CreateWorkspaceCommand, AdminWorkspaceDetails> handler,
+        [FromServices] ICommandHandler<CreateWorkspaceCommand, CreateWorkspaceResult> handler,
         CancellationToken cancellationToken)
     {
-        var result = await handler.Handle(new(request.Name), cancellationToken);
+        var result = await handler.Handle(new(request.Name, request.Admin is { } a ? new CreateWorkspaceAdmin(a.Email, a.Password, a.FirstName, a.LastName) : null), cancellationToken);
         if (result.IsFailure)
         {
             var error = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
             return StatusCode(error.Status, error);
         }
-        return CreatedAtAction(nameof(GetById), new { workspaceId = result.Value.Id }, Map(result.Value));
+        var created = result.Value;
+        return CreatedAtAction(nameof(GetById), new { workspaceId = created.Id },
+            new CreateWorkspaceResponse(created.Id, created.Name, created.CreatedAt, created.UpdatedAt, created.AdminUserId));
     }
 
     private static AdminWorkspaceResponse Map(AdminWorkspaceDetails workspace) =>

@@ -26,8 +26,8 @@ public sealed class AdminWorkspacesOpenApiTests(ApiPostgreSqlFixture fixture)
         var schemas = json.RootElement.GetProperty("components").GetProperty("schemas");
         Assert.Equal(new[] { "createdAt", "id", "name", "updatedAt" },
             schemas.GetProperty("AdminWorkspaceResponse").GetProperty("properties").EnumerateObject().Select(x => x.Name).Order(StringComparer.Ordinal));
-        Assert.Equal(new[] { "name" },
-            schemas.GetProperty("CreateWorkspaceRequest").GetProperty("properties").EnumerateObject().Select(x => x.Name));
+        Assert.Equal(new[] { "admin", "name" },
+            schemas.GetProperty("CreateWorkspaceRequest").GetProperty("properties").EnumerateObject().Select(x => x.Name).Order(StringComparer.Ordinal));
         Assert.False(paths.GetProperty("/api/workspaces/registration-options").GetProperty("get").TryGetProperty("security", out _));
     }
 }

@@ -78,6 +78,44 @@ public sealed class AdminWorkspaceCreateEndpointTests(ApiPostgreSqlFixture fixtu
         Assert.Equal(before, await Counts());
     }
 
+    [Fact]
+    public async Task AdminAccountIsCreatedActiveAndCanLogInAndReadOnlyItsOwnWorkspace()
+    {
+        using var factory = new SmartPropertyApiFactory(fixture, usePersistencePermissionChecker: true);
+        using var setup = factory.CreateClient();
+        var scenario = new AuthScenario(fixture);
+        var platform = await scenario.RegisterActiveUserAsync(setup);
+        await scenario.GrantPlatformPermissionAsync(platform.UserId, PermissionCodes.WorkspaceAdminCreate);
+        using var client = factory.CreateAuthenticatedClient(platform.UserId);
+        var email = $"ws-admin-{Guid.NewGuid():N}@example.com";
+
+        using var response = await client.PostAsJsonAsync("/api/admin/workspaces", new
+        {
+            name = "Admin test " + Guid.NewGuid().ToString("N"),
+            admin = new { email, password = AuthScenario.Password, firstName = "Sara", lastName = "Admin" },
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = (await response.Content.ReadFromJsonAsync<CreateWorkspaceResponse>())!;
+        Assert.NotNull(created.AdminUserId);
+        var tokens = await AuthScenario.LoginAsync(setup, email);
+        using var adminClient = factory.CreateAuthenticatedClient(created.AdminUserId!.Value);
+        using var own = await adminClient.GetAsync($"/api/workspaces/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, own.StatusCode);
+        Assert.NotNull(tokens);
+        await using var db = fixture.CreateContext();
+        Assert.Equal(1, await db.Roles.CountAsync(r => r.WorkspaceId == created.Id && r.Name == "Workspace Admin"));
+        Assert.Equal(1, await db.WorkspaceMemberships.CountAsync(m => m.WorkspaceId == created.Id && m.UserId == created.AdminUserId));
+
+        using var duplicate = await client.PostAsJsonAsync("/api/admin/workspaces", new
+        {
+            name = "Other",
+            admin = new { email, password = AuthScenario.Password, firstName = "Sara", lastName = "Admin" },
+        });
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        Assert.Equal(0, await db.Workspaces.CountAsync(w => w.Name == "Other"));
+    }
+
     private async Task<int[]> Counts()
     {
         await using var db = fixture.CreateContext();

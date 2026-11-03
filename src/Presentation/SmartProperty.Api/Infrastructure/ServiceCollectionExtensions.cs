@@ -286,7 +286,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetWorkspaceQuery, WorkspaceDetails>, GetWorkspaceQueryHandler>();
         services.AddScoped<IQueryHandler<GetAdminWorkspacesQuery, PagedList<AdminWorkspaceDetails>>, GetAdminWorkspacesQueryHandler>();
         services.AddScoped<IQueryHandler<GetAdminWorkspaceQuery, AdminWorkspaceDetails>, GetAdminWorkspaceQueryHandler>();
-        services.AddScoped<ICommandHandler<CreateWorkspaceCommand, AdminWorkspaceDetails>, CreateWorkspaceCommandHandler>();
+        services.AddScoped<ICommandHandler<CreateWorkspaceCommand, CreateWorkspaceResult>, CreateWorkspaceCommandHandler>();
 
         // The anonymous public marketplace. Both handlers need IPublicListingReadRepository, which Persistence
         // registers; a host without that registration does not start in Development.

@@ -94,4 +94,11 @@ internal sealed class FakeUnitOfWork : IUnitOfWork
             PersistenceConstraint.WorkspaceMembershipUserWorkspace,
             new InvalidOperationException("Simulated concurrent workspace membership insert."));
     }
+
+    public static UniqueConstraintViolationException UserEmailUniqueConstraintViolation()
+    {
+        return new UniqueConstraintViolationException(
+            PersistenceConstraint.UserEmail,
+            new InvalidOperationException("Simulated concurrent user insert."));
+    }
 }
