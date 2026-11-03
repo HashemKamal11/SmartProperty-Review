@@ -43,6 +43,7 @@ public sealed class PermissionCodesAuthorityTests
         "workspace.read",
         "workspace.admin.read",
         "workspace.admin.create",
+        "workspace.members.create",
     ];
 
     [Fact]
@@ -124,7 +125,7 @@ public sealed class PermissionCodesAuthorityTests
     }
 
     [Fact]
-    public void TheCatalogIsExactlyTheFourteenCodesWithTheirDescriptionsAndEachCodeIsUnique()
+    public void TheCatalogIsExactlyTheFifteenCodesWithTheirDescriptionsAndEachCodeIsUnique()
     {
         var constants = typeof(PermissionCodes)
             .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
@@ -133,9 +134,9 @@ public sealed class PermissionCodesAuthorityTests
         var codes = constants.Where(field => !field.Name.EndsWith("Description", StringComparison.Ordinal)).Select(field => (string)field.GetRawConstantValue()!).ToArray();
         var descriptions = constants.Where(field => field.Name.EndsWith("Description", StringComparison.Ordinal)).Select(field => (string)field.GetRawConstantValue()!).ToArray();
 
-        Assert.Equal(14, codes.Length);
-        Assert.Equal(14, descriptions.Length);
-        Assert.Equal(14, codes.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(15, codes.Length);
+        Assert.Equal(15, descriptions.Length);
+        Assert.Equal(15, codes.Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(
             ExistingCodes.Concat(AuthorityCodes).Order(StringComparer.Ordinal),
             codes.Order(StringComparer.Ordinal));

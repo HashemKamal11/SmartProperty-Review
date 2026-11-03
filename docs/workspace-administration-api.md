@@ -39,7 +39,7 @@ Errors use the existing code/message/status/fieldErrors/correlationId envelope.
 
 Creation performs one Workspace insert through the repository and UnitOfWork, with one SaveChangesAsync.
 Without `admin` it creates no membership, Workspace role, role-permission mapping, access request, user or platform assignment.
-With `admin`, the same single save also creates: an Active user and credential, a Workspace-scoped "Workspace Admin" role for the new workspace holding exactly `workspace.read` (the permission row is created if absent), the user's membership, and the membership-role assignment. No platform role or platform permission is granted, and no access request is created.
+With `admin`, the same single save also creates: an Active user and credential, a Workspace-scoped "Workspace Admin" role for the new workspace holding exactly `workspace.read` and `workspace.members.create` (the permission rows are created if absent), the user's membership, and the membership-role assignment. No platform role or platform permission is granted, and no access request is created.
 The creator's auth-context memberships remain unchanged. Existing member detail still requires local workspace.read.
 The new Workspace immediately appears in anonymous registration options, under the existing public visibility rule.
 
@@ -160,3 +160,26 @@ during this correction session; the approved inventory remains exactly 26 files.
 - `tests/SmartProperty.UnitTests/Application/Workspaces/AdminWorkspaceQueryHandlerTests.cs`
 - `tests/SmartProperty.UnitTests/Application/Workspaces/CreateWorkspaceCommandHandlerTests.cs`
 - `tests/SmartProperty.UnitTests/TestDoubles/FakeWorkspaceRepository.cs`
+
+## Workspace members created by the workspace admin
+
+`POST /api/workspaces/members` creates a member account in the caller's own workspace. The request names no
+workspace: it is the one in which the signed-in caller holds the workspace permission `workspace.members.create`, so an
+administrator can only add members to their own workspace and a `workspaceId` in the body is ignored. The "Workspace Admin" role created together with a
+workspace (see above) holds it; the default "Member" role does not, and a platform role never satisfies it.
+A caller who holds the permission in no workspace gets 403. A caller who holds it in more than one workspace gets 409
+`workspace_members.ambiguous_workspace`, because the request cannot say which.
+
+Body: `{"email","password","firstName","lastName"}`, validated by the registration rules (no phone number).
+The administrator vouches for the account, so it is created `Active` and can sign in at once, with no verification
+or approval. One save creates the user, its credential, the membership, and the assignment of the workspace's
+"Member" role, which carries exactly `workspace.read`. The Member role is created with the workspace's first member.
+An existing Member role is reused only if it carries exactly `workspace.read`; otherwise the request fails closed
+with 409 `workspace_members.member_role_misconfigured` and nothing is saved.
+
+Responses: 201 `{userId, membershipId, workspaceId, email, firstName, lastName, role, createdAt}` (no `Location`:
+no endpoint reads a single member yet); 401; 403; 409 `users.email_already_exists`; 409
+`workspace_members.concurrent_provisioning` (retry); 422 `workspace_members.validation_failed`.
+
+Workspace Admin roles created before `workspace.members.create` existed do not hold it. Granting it to them is a
+separate, explicitly approved data change; nothing provisions it automatically.

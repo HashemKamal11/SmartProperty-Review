@@ -5,10 +5,6 @@ namespace SmartProperty.Application.Workspaces.Administration.Create;
 
 internal static class CreateWorkspaceCommandValidator
 {
-    // The admin account is created without a phone number (the platform admin vouches for it), but registration
-    // validation requires one, so a valid placeholder satisfies that rule without being stored.
-    private const string ValidationPhoneNumber = "+201000000000";
-
     public static Error? Validate(CreateWorkspaceCommand command)
     {
         if (string.IsNullOrWhiteSpace(command.Name))
@@ -21,12 +17,7 @@ internal static class CreateWorkspaceCommandValidator
         if (command.Admin is { } admin)
         {
             // Same email, password and name rules as registration.
-            var error = RegisterCommandValidator.Validate(new RegisterCommand(
-                admin.Email ?? string.Empty,
-                admin.Password ?? string.Empty,
-                admin.FirstName ?? string.Empty,
-                admin.LastName ?? string.Empty,
-                ValidationPhoneNumber));
+            var error = NewAccountValidator.Validate(admin.Email, admin.Password, admin.FirstName, admin.LastName);
             if (error is not null)
                 return AdminWorkspaceErrors.ValidationFailed("Admin account: " + error.Description);
         }

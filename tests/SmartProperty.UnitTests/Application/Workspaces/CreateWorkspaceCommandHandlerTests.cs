@@ -114,9 +114,13 @@ public sealed class CreateWorkspaceCommandHandlerTests
         Assert.Equal(WorkspaceRoles.AdminRoleName, role.Name);
         Assert.Equal(RoleScope.Workspace, role.Scope);
         Assert.Equal(result.Value.Id, role.WorkspaceId);
-        var permission = Assert.Single(permissions.Added);
-        Assert.Equal(PermissionCodes.WorkspaceRead, permission.Code);
-        Assert.Equal(permission.Id, Assert.Single(roles.AddedRolePermissions).PermissionId);
+        // The admin role holds exactly workspace.read and workspace.members.create.
+        Assert.Equal(
+            [PermissionCodes.WorkspaceMembersCreate, PermissionCodes.WorkspaceRead],
+            permissions.Added.Select(permission => permission.Code).Order(StringComparer.Ordinal));
+        Assert.Equal(
+            permissions.Added.Select(permission => permission.Id).Order(),
+            roles.AddedRolePermissions.Select(link => link.PermissionId).Order());
         var membership = Assert.Single(memberships.Added);
         Assert.Equal(userId, membership.UserId);
         Assert.Equal(result.Value.Id, membership.WorkspaceId);
@@ -135,8 +139,9 @@ public sealed class CreateWorkspaceCommandHandlerTests
         var handler = Handler(new FakeWorkspaceRepository(), new FakeDateTimeProvider(Now), new FakeUnitOfWork(),
             roles: roles, permissions: permissions);
         Assert.True((await handler.Handle(new("Name", ValidAdmin()))).IsSuccess);
-        Assert.Empty(permissions.Added);
-        Assert.Equal(existing.Id, Assert.Single(roles.AddedRolePermissions).PermissionId);
+        Assert.Equal(PermissionCodes.WorkspaceMembersCreate, Assert.Single(permissions.Added).Code);
+        Assert.Equal(2, roles.AddedRolePermissions.Count);
+        Assert.Contains(roles.AddedRolePermissions, link => link.PermissionId == existing.Id);
     }
 
     [Fact]

@@ -135,4 +135,12 @@ public static class PermissionCodes
     public const string WorkspaceRead = "workspace.read";
 
     public const string WorkspaceReadDescription = "Read the workspace itself.";
+
+    /// <summary>
+    /// Create a member account in a workspace. Workspace-scoped: held through a role in that workspace, so it is
+    /// satisfied only for that workspace and never by a platform role.
+    /// </summary>
+    public const string WorkspaceMembersCreate = "workspace.members.create";
+
+    public const string WorkspaceMembersCreateDescription = "Create member accounts in the workspace.";
 }
