@@ -83,6 +83,23 @@ public sealed class User
         UpdatedAt = updatedAt;
     }
 
+    /// <summary>
+    /// Activates a Pending account once it has proved every contact it registered with, so no administrator has to
+    /// activate it. Any other status (Active, Suspended, Deactivated) is left alone, and so is a Pending account that
+    /// still has an unverified contact. Returns whether the account was activated.
+    /// </summary>
+    public bool ActivateWhenContactVerified(DateTimeOffset updatedAt)
+    {
+        if (Status != UserStatus.Pending || !IsContactVerificationComplete)
+        {
+            return false;
+        }
+
+        Activate(updatedAt);
+
+        return true;
+    }
+
     public void Suspend(DateTimeOffset updatedAt)
     {
         ValidateUpdatedAt(updatedAt);

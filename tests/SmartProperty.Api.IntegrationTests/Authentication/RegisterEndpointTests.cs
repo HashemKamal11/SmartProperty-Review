@@ -41,23 +41,19 @@ public sealed class RegisterEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidRegistration_Returns201WithAPendingUserAndAPendingAccessRequest()
+    public async Task ValidRegistration_Returns201WithAPendingUserAndNoAccessRequest()
     {
-        var workspaceId = await _scenario.CreateWorkspaceAsync();
         var email = AuthScenario.UniqueEmail("register-valid");
 
         using var client = _factory.CreateClient();
-        using var response = await AuthScenario.PostRegisterAsync(client, email, workspaceId);
+        using var response = await AuthScenario.PostRegisterAsync(client, email);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
         var body = (await response.Content.ReadFromJsonAsync<RegisterResponse>())!;
 
         Assert.Equal(nameof(UserStatus.Pending), body.Status);
-        Assert.Equal(nameof(WorkspaceAccessRequestStatus.Pending), body.WorkspaceAccessStatus);
-        Assert.Equal(workspaceId, body.WorkspaceId);
         Assert.NotEqual(Guid.Empty, body.UserId);
-        Assert.NotEqual(Guid.Empty, body.WorkspaceAccessRequestId);
 
         // No token is issued by registration, so nothing in the response may look like one.
         Assert.DoesNotContain("token", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
@@ -71,37 +67,74 @@ public sealed class RegisterEndpointTests : IDisposable
         // The credential row must exist. Its hash is never read, compared, or printed by any assertion.
         Assert.True(await context.UserCredentials.AnyAsync(candidate => candidate.UserId == body.UserId));
 
-        var accessRequest = await context.WorkspaceAccessRequests
-            .SingleAsync(candidate => candidate.UserId == body.UserId);
-
-        Assert.Equal(body.WorkspaceAccessRequestId, accessRequest.Id);
-        Assert.Equal(workspaceId, accessRequest.WorkspaceId);
-        Assert.Equal(WorkspaceAccessRequestStatus.Pending, accessRequest.Status);
+        // Registration is not tied to a workspace: no access request, membership or role is created.
+        Assert.False(await context.WorkspaceAccessRequests.AnyAsync(candidate => candidate.UserId == body.UserId));
+        Assert.False(await context.WorkspaceMemberships.AnyAsync(candidate => candidate.UserId == body.UserId));
     }
 
     [Fact]
-    public async Task UnknownWorkspace_Returns404AndPersistsNothing()
+    public async Task RegisteredUser_CannotSignInUntilPhoneAndEmailAreVerified_ThenSignsInWithNoAdministrator()
     {
-        var unknownWorkspaceId = Guid.NewGuid();
-        var email = AuthScenario.UniqueEmail("register-unknown-workspace");
+        var email = AuthScenario.UniqueEmail("register-login");
+        var phone = AuthScenario.UniquePhone();
 
         using var client = _factory.CreateClient();
-        using var response = await AuthScenario.PostRegisterAsync(client, email, unknownWorkspaceId);
+        using var response = await AuthScenario.PostRegisterAsync(client, email, phone);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var registered = (await response.Content.ReadFromJsonAsync<RegisterResponse>())!;
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        async Task<HttpStatusCode> LoginStatusAsync()
+        {
+            using var login = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, AuthScenario.Password));
+            return login.StatusCode;
+        }
 
-        var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
-        Assert.Equal("workspaces.not_found", error.Code);
-        Assert.Equal(StatusCodes.Status404NotFound, error.Status);
+        // Nothing verified yet: the right password is still refused.
+        Assert.Equal(HttpStatusCode.Forbidden, await LoginStatusAsync());
+
+        // The phone alone is not enough.
+        using (var verifyPhone = await client.PostAsJsonAsync(
+            "/api/auth/verify-phone", new VerifyPhoneRequest(phone, _factory.SmsSender.LatestCodeFor(phone))))
+        {
+            Assert.Equal(HttpStatusCode.OK, verifyPhone.StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, await LoginStatusAsync());
+
+        // Verifying the email too activates the account; nobody approves or activates it.
+        using (var verifyEmail = await client.PostAsJsonAsync(
+            "/api/auth/verify-email", new VerifyEmailRequest(email, _factory.EmailSender.LatestCodeFor(email))))
+        {
+            Assert.Equal(HttpStatusCode.OK, verifyEmail.StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.OK, await LoginStatusAsync());
 
         await using var context = _fixture.CreateContext();
+        var user = await context.Users.SingleAsync(candidate => candidate.Id == registered.UserId);
+        Assert.Equal(UserStatus.Active, user.Status);
+    }
 
-        var normalizedEmail = email.ToLowerInvariant();
-        var user = await context.Users.SingleOrDefaultAsync(candidate => candidate.Email == normalizedEmail);
+    [Fact]
+    public async Task AWorkspaceIdInTheBodyIsIgnored()
+    {
+        var workspaceId = await _scenario.CreateWorkspaceAsync();
+        var email = AuthScenario.UniqueEmail("register-ignored-workspace");
 
-        Assert.Null(user);
-        Assert.False(await context.WorkspaceAccessRequests
-            .AnyAsync(candidate => candidate.WorkspaceId == unknownWorkspaceId));
+        using var client = _factory.CreateClient();
+        using var content = JsonContent.Create(new
+        {
+            email,
+            password = AuthScenario.Password,
+            firstName = "Test",
+            lastName = "User",
+            phoneNumber = AuthScenario.UniquePhone(),
+            workspaceId,
+        });
+        using var response = await client.PostAsync(Endpoint, content);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = (await response.Content.ReadFromJsonAsync<RegisterResponse>())!;
+        await using var context = _fixture.CreateContext();
+        Assert.False(await context.WorkspaceAccessRequests.AnyAsync(candidate => candidate.UserId == body.UserId));
     }
 
     [Fact]
@@ -115,7 +148,7 @@ public sealed class RegisterEndpointTests : IDisposable
         var first = await _scenario.RegisterAsync(client, workspaceId, email);
 
         // User normalizes the stored email to lower case, so a different casing is the same account.
-        using var response = await AuthScenario.PostRegisterAsync(client, email.ToUpperInvariant(), workspaceId);
+        using var response = await AuthScenario.PostRegisterAsync(client, email.ToUpperInvariant());
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
 
@@ -131,9 +164,6 @@ public sealed class RegisterEndpointTests : IDisposable
         var user = await context.Users.SingleAsync(candidate => candidate.Email == normalizedEmail);
         Assert.Equal(first.UserId, user.Id);
 
-        Assert.Single(await context.WorkspaceAccessRequests
-            .Where(candidate => candidate.UserId == first.UserId)
-            .ToListAsync());
     }
 
     [Fact]

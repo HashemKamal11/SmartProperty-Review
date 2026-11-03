@@ -32,12 +32,11 @@ public sealed class FreshEnvironmentSmokeTests(ApiPostgreSqlFixture fixture)
         {
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
 
-            using var registration = await AuthScenario.PostRegisterAsync(client, email, workspaceId);
+            using var registration = await AuthScenario.PostRegisterAsync(client, email);
             Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
 
             var registered = (await registration.Content.ReadFromJsonAsync<RegisterResponse>())!;
             Assert.Equal(nameof(UserStatus.Pending), registered.Status);
-            Assert.Equal(workspaceId, registered.WorkspaceId);
             userId = registered.UserId;
         }
 

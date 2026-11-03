@@ -10,12 +10,11 @@ public sealed record RegisterRequest(
     string? Password,
     string? FirstName,
     string? LastName,
-    string? PhoneNumber,
-    Guid? WorkspaceId)
+    string? PhoneNumber)
 {
     // Keeps the plaintext password and personal data out of logs and debugger displays of the record.
     public override string ToString()
     {
-        return $"{nameof(RegisterRequest)} {{ {nameof(WorkspaceId)} = {WorkspaceId} }}";
+        return nameof(RegisterRequest);
     }
 }

@@ -34,8 +34,7 @@ public sealed class AuthController : ControllerBase
             request.Password ?? string.Empty,
             request.FirstName ?? string.Empty,
             request.LastName ?? string.Empty,
-            request.PhoneNumber ?? string.Empty,
-            request.WorkspaceId ?? Guid.Empty);
+            request.PhoneNumber ?? string.Empty);
 
         var result = await handler.Handle(command, cancellationToken);
 
@@ -50,9 +49,6 @@ public sealed class AuthController : ControllerBase
         var response = new RegisterResponse(
             registration.UserId,
             registration.UserStatus.ToString(),
-            registration.WorkspaceId,
-            registration.WorkspaceAccessRequestId,
-            registration.WorkspaceAccessRequestStatus.ToString(),
             registration.PhoneVerificationExpiresAt,
             registration.EmailVerificationExpiresAt);
 

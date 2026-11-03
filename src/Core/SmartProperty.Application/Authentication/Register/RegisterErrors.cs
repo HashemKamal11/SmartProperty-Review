@@ -14,11 +14,6 @@ internal static class RegisterErrors
         "A user with this phone number already exists.",
         ErrorType.Conflict);
 
-    public static readonly Error WorkspaceNotFound = new(
-        "workspaces.not_found",
-        "The selected workspace was not found.",
-        ErrorType.NotFound);
-
     public static Error ValidationFailed(string description)
     {
         return new Error("validation.failed", description, ErrorType.Validation);

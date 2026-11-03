@@ -56,16 +56,10 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
             "/api/workspaces/registration-options"))!;
         var chosen = Assert.Single(options, option => option.Id == workspaceId);
 
-        // 2. Register with the chosen workspace.
-        using var registerResponse = await anonymous.PostAsJsonAsync(
-            "/api/auth/register",
-            new RegisterRequest(email, AuthScenario.Password, "Lifecycle", "Applicant", phoneNumber, chosen.Id));
-        Assert.Equal(HttpStatusCode.Created, registerResponse.StatusCode);
-
-        var registered = (await registerResponse.Content.ReadFromJsonAsync<RegisterResponse>())!;
-        Assert.Equal(nameof(UserStatus.Pending), registered.Status);
-        Assert.Equal(workspaceId, registered.WorkspaceId);
-        Assert.Equal(nameof(WorkspaceAccessRequestStatus.Pending), registered.WorkspaceAccessStatus);
+        // 2. Registration itself is workspace-free now and yields an Active user, so this approval-workflow test
+        //    rebuilds the state a join request is reviewed from: a Pending user with a pending request.
+        var registered = await _scenario.RegisterAsync(
+            anonymous, chosen.Id, email, verifyPhone: false, phoneNumber: phoneNumber);
 
         // 3. Both the user and the request are stored as Pending.
         await using (var context = _fixture.CreateContext())
@@ -99,8 +93,8 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
         Assert.Equal(registered.WorkspaceAccessRequestId, queued.RequestId);
         Assert.Equal(registered.UserId, queued.UserId);
         Assert.Equal(email, queued.UserEmail);
-        Assert.Equal("Lifecycle", queued.UserFirstName);
-        Assert.Equal("Applicant", queued.UserLastName);
+        Assert.Equal("Test", queued.UserFirstName);
+        Assert.Equal("User", queued.UserLastName);
         Assert.Equal(chosen.Name, queued.WorkspaceName);
         Assert.Equal(nameof(WorkspaceAccessRequestStatus.Pending), queued.Status);
         Assert.Null(queued.ReviewedAt);
@@ -195,7 +189,7 @@ public sealed class RegistrationLifecycleEndToEndTests : IDisposable
             Assert.Equal(HttpStatusCode.OK, meResponse.StatusCode);
 
             var me = (await meResponse.Content.ReadFromJsonAsync<MeResponse>())!;
-            Assert.Equal(new MeResponse(registered.UserId, email, "Lifecycle", "Applicant"), me);
+            Assert.Equal(new MeResponse(registered.UserId, email, "Test", "User"), me);
 
             // The approved user's context: the Member role and only workspace.read in that workspace, and
             // nothing at platform level.

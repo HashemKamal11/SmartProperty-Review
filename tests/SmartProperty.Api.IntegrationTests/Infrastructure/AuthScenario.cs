@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using SmartProperty.Api.Contracts.Authentication;
+using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.Workspaces;
 using SmartProperty.Persistence.Context;
 
@@ -68,16 +69,17 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
     public static Task<HttpResponseMessage> PostRegisterAsync(
         HttpClient client,
         string email,
-        Guid workspaceId,
         string? phoneNumber = null)
     {
         return client.PostAsJsonAsync(
             "/api/auth/register",
-            new RegisterRequest(email, Password, "Test", "User", phoneNumber ?? UniquePhone(), workspaceId));
+            new RegisterRequest(email, Password, "Test", "User", phoneNumber ?? UniquePhone()));
     }
 
     /// <summary>
-    /// Registers a new user through the API and requires it to have succeeded. The phone number and email are marked verified
+    /// Registers a new user through the API and requires it to have succeeded, then rebuilds the state registration
+    /// used to leave behind for the approval workflow tests: a Pending user and a pending access request for
+    /// <paramref name="workspaceId"/>, written directly because registration no longer creates either. The phone number and email are marked verified
     /// through the domain model, like activation below, so a test that is not about phone verification is not
     /// blocked by it; pass <paramref name="verifyPhone"/> false to leave it unverified.
     /// </summary>
@@ -85,15 +87,25 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
         HttpClient client,
         Guid workspaceId,
         string? email = null,
-        bool verifyPhone = true)
+        bool verifyPhone = true,
+        string? phoneNumber = null)
     {
         email ??= UniqueEmail("user");
-        var phoneNumber = UniquePhone();
+        phoneNumber ??= UniquePhone();
 
-        using var response = await PostRegisterAsync(client, email, workspaceId, phoneNumber);
+        using var response = await PostRegisterAsync(client, email, phoneNumber);
         response.EnsureSuccessStatusCode();
 
         var body = (await response.Content.ReadFromJsonAsync<RegisterResponse>())!;
+
+        var accessRequest = new WorkspaceAccessRequest(Guid.NewGuid(), body.UserId, workspaceId, DateTimeOffset.UtcNow);
+        await using (var context = fixture.CreateContext())
+        {
+            var user = await context.Users.SingleAsync(candidate => candidate.Id == body.UserId);
+            context.Entry(user).Property(candidate => candidate.Status).CurrentValue = UserStatus.Pending;
+            context.WorkspaceAccessRequests.Add(accessRequest);
+            await context.SaveChangesAsync();
+        }
 
         if (verifyPhone)
         {
@@ -104,11 +116,11 @@ internal sealed class AuthScenario(ApiPostgreSqlFixture fixture)
             });
         }
 
-        return new RegisteredUser(body.UserId, email, workspaceId, body.WorkspaceAccessRequestId, phoneNumber);
+        return new RegisteredUser(body.UserId, email, workspaceId, accessRequest.Id, phoneNumber);
     }
 
     /// <summary>
-    /// A registered user promoted to Active. Registration deliberately produces a Pending user, and this calls the
+    /// A registered user promoted to Active. RegisterAsync leaves a Pending user, and this calls the
     /// same domain method the approval workflow calls rather than going through that endpoint — an authentication
     /// test must not fail because workspace approval broke.
     /// </summary>

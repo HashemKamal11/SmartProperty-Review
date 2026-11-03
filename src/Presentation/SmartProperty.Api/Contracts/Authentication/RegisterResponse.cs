@@ -4,8 +4,5 @@ namespace SmartProperty.Api.Contracts.Authentication;
 public sealed record RegisterResponse(
     Guid UserId,
     string Status,
-    Guid WorkspaceId,
-    Guid WorkspaceAccessRequestId,
-    string WorkspaceAccessStatus,
     DateTimeOffset PhoneVerificationExpiresAt,
     DateTimeOffset EmailVerificationExpiresAt);

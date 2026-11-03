@@ -67,11 +67,6 @@ internal static class RegisterCommandValidator
                 "Phone number must be in international format, for example +201012345678.");
         }
 
-        if (command.WorkspaceId == Guid.Empty)
-        {
-            return RegisterErrors.ValidationFailed("Workspace is required.");
-        }
-
         return null;
     }
 

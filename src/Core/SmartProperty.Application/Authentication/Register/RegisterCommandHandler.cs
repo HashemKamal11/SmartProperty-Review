@@ -7,20 +7,18 @@ using SmartProperty.Application.Abstractions.Time;
 using SmartProperty.Application.Authentication.OneTimeCodes;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Identity;
-using SmartProperty.Domain.Workspaces;
 
 namespace SmartProperty.Application.Authentication.Register;
 
 /// <summary>
-/// Registers a pending user with a credential, an unverified phone number and email, and one pending access request for an
-/// existing workspace, then sends a verification code to the phone number and another to the email.
-/// Grants no workspace access, roles, or permissions, and issues no tokens.
+/// Registers a Pending user with a credential and an unverified phone number and email, then sends a verification
+/// code to the phone number and another to the email. The account cannot sign in until both are verified; verifying
+/// the last one activates it, with no administrator involved. Registration is not tied to a workspace: it creates no
+/// access request, grants no workspace access, roles, or permissions, and issues no tokens.
 /// </summary>
 public sealed class RegisterCommandHandler(
     IUserRepository userRepository,
     IUserCredentialRepository userCredentialRepository,
-    IWorkspaceRepository workspaceRepository,
-    IWorkspaceAccessRequestRepository workspaceAccessRequestRepository,
     IOneTimeCodeRepository oneTimeCodeRepository,
     IPasswordHasher passwordHasher,
     ISmsSender smsSender,
@@ -38,14 +36,6 @@ public sealed class RegisterCommandHandler(
         if (RegisterCommandValidator.Validate(command) is { } validationError)
         {
             return Result<RegisterResult>.Failure(validationError);
-        }
-
-        // Checked before the email, so a request with an unknown workspace reveals nothing about registered emails.
-        var workspace = await workspaceRepository.GetByIdAsync(command.WorkspaceId, cancellationToken);
-
-        if (workspace is null)
-        {
-            return Result<RegisterResult>.Failure(RegisterErrors.WorkspaceNotFound);
         }
 
         var registeredAt = dateTimeProvider.UtcNow;
@@ -73,7 +63,6 @@ public sealed class RegisterCommandHandler(
         }
 
         var credential = new UserCredential(user.Id, passwordHasher.Hash(command.Password), registeredAt);
-        var accessRequest = new WorkspaceAccessRequest(Guid.NewGuid(), user.Id, workspace.Id, registeredAt);
         var phoneCode = OneTimeCodePolicy.GenerateCode();
         var phoneVerification = OneTimeCodePolicy.Issue(
             user.Id,
@@ -89,7 +78,6 @@ public sealed class RegisterCommandHandler(
 
         await userRepository.AddAsync(user, cancellationToken);
         await userCredentialRepository.AddAsync(credential, cancellationToken);
-        await workspaceAccessRequestRepository.AddAsync(accessRequest, cancellationToken);
         await oneTimeCodeRepository.AddAsync(phoneVerification, cancellationToken);
         await oneTimeCodeRepository.AddAsync(emailVerification, cancellationToken);
 
@@ -119,9 +107,6 @@ public sealed class RegisterCommandHandler(
         return Result<RegisterResult>.Success(new RegisterResult(
             user.Id,
             user.Status,
-            accessRequest.WorkspaceId,
-            accessRequest.Id,
-            accessRequest.Status,
             phoneVerification.ExpiresAt,
             emailVerification.ExpiresAt));
     }

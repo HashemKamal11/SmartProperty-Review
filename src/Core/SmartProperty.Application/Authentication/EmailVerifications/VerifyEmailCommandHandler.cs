@@ -60,6 +60,7 @@ public sealed class VerifyEmailCommandHandler(
         }
 
         user.VerifyEmail(now);
+        user.ActivateWhenContactVerified(now);
 
         if (!await OneTimeCodeFlow.TrySaveAsync(unitOfWork, cancellationToken))
         {

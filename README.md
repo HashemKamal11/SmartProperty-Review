@@ -18,7 +18,7 @@ The backend currently provides JWT authentication, persisted permission authoriz
 | Refresh tokens | Implemented | Issued by Login, persisted as hashes, rotated single-use by `POST /api/auth/refresh`, and revoked by `POST /api/auth/logout` |
 | Current user (`ICurrentUser`) | Implemented | Reads the user id from a validated access token for Me and review decisions |
 | Commit boundary (`IUnitOfWork`) | Implemented | One save per use case |
-| `POST /api/auth/register` | Implemented | Creates `Pending` users |
+| `POST /api/auth/register` | Implemented | Creates `Pending` users that activate themselves once phone and email are verified; takes no workspace |
 | `POST /api/auth/login` | Implemented | Active users only; returns access and refresh tokens |
 | `POST /api/auth/refresh` | Implemented | Active users only; single-use rotation returning a new token pair |
 | `GET /api/auth/me` | Implemented | First protected endpoint; Active users only |
@@ -240,11 +240,11 @@ Request, sent with `Content-Type: application/json`:
   "password": "example-password",
   "firstName": "First",
   "lastName": "Last",
-  "workspaceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  "phoneNumber": "+201012345678"
 }
 ```
 
-`example-password` is a placeholder for this document, not a recommended password. `workspaceId` must be the id of an existing workspace.
+`example-password` is a placeholder for this document, not a recommended password. `phoneNumber` must be in international format. Registration takes no workspace: a `workspaceId` sent in the body is ignored.
 
 Successful response, `201 Created` without a `Location` header:
 
@@ -252,20 +252,19 @@ Successful response, `201 Created` without a `Location` header:
 {
   "userId": "...",
   "status": "Pending",
-  "workspaceId": "...",
-  "workspaceAccessRequestId": "...",
-  "workspaceAccessStatus": "Pending"
+  "phoneVerificationExpiresAt": "...",
+  "emailVerificationExpiresAt": "..."
 }
 ```
 
 Registration:
 
-- creates a `User` with status `Pending`
+- creates a `User` with status `Pending`; it cannot sign in yet
 - creates the user's `UserCredential`, which stores only the password hash
-- creates one `WorkspaceAccessRequest` with status `Pending` for the selected workspace
-- saves all three together, or none of them
+- sends a verification code to the phone number and to the email. When both are verified (`POST /api/auth/verify-phone` and `POST /api/auth/verify-email`), the account becomes `Active` automatically and can sign in; no administrator activates it
+- saves the user, credential and codes together, or none of them
 
-Registration does **not** create a `WorkspaceMembership`, assign roles or permissions, activate the user, or issue an access token or refresh token.
+Registration does **not** create a `WorkspaceAccessRequest` or a `WorkspaceMembership`, assign roles or permissions, or issue an access token or refresh token. Before both contacts are verified, login returns `403 authentication.account_unavailable`.
 
 ### Validation
 
@@ -276,7 +275,7 @@ Only the first failing rule is reported.
 | `email` | Required; at most 320 characters after trimming; exactly one `@` with text on both sides; no whitespace or control characters. Stored trimmed and lower-cased. |
 | `password` | Required and not only whitespace; at most 128 characters. Not trimmed. No strength rules yet. |
 | `firstName`, `lastName` | Required; at most 100 characters after trimming. |
-| `workspaceId` | Required; must not be the empty GUID. |
+| `phoneNumber` | Required; international format, for example `+201012345678`. |
 
 ### Status Codes
 
@@ -285,11 +284,10 @@ Only the first failing rule is reported.
 | `201` | | The user was registered. |
 | `400` | `request.malformed` | The body is empty, is not valid JSON, is not a JSON object, or has a value of the wrong type. |
 | `422` | `validation.failed` | A validation rule failed, including a missing field. |
-| `404` | `workspaces.not_found` | No workspace exists with the given `workspaceId`. |
 | `409` | `users.email_already_exists` | The email is already registered. |
 | `500` | `server.unexpected_error` | An unexpected server failure occurred. |
 
-Checks run in this order: request format (`400`), validation (`422`), workspace (`404`), then email (`409`).
+Checks run in this order: request format (`400`), validation (`422`), then email and phone number (`409`).
 
 Duplicate detection ignores letter case and surrounding whitespace, so `User@Example.com` conflicts with `user@example.com`. If two registrations for the same new email arrive at the same time, the database unique index rejects the later one, and it returns the same `409` as a sequential duplicate.
 
@@ -497,7 +495,7 @@ Available now:
 | --- | --- |
 | `GET /health/live` | Responds whenever the API is running. |
 | `GET /health/ready` | Returns `200` only when the database is reachable and has no pending migrations. |
-| `POST /api/auth/register` | Needs the database schema and an existing workspace id. |
+| `POST /api/auth/register` | Needs the database schema only; registration takes no workspace. |
 | `POST /api/auth/login` | Needs the database schema and an `Active` user. Frontend and QA can test sign-in with it. |
 | `POST /api/auth/refresh` | Needs a refresh token from a login or an earlier refresh. Frontend and QA can test session renewal with it. |
 | `GET /api/auth/me` | Needs an access token from a login or refresh. Frontend and QA can test the protected-endpoint flow with it. |
@@ -514,7 +512,7 @@ Integration notes:
 - CORS is fail-closed when no origins are configured. Development supplies local frontend origins; deployments supply exact origins through configuration. The policy uses neither `AllowAnyOrigin` nor credentials, and empty origins do not affect server-to-server requests.
 - OpenAPI and Scalar are mapped in `Development` and `Staging`, and are absent in other environments under the current `Program.cs` check. This is an exposure fact, not a production-safety claim.
 - JSON property names are camelCase, and identifiers are GUID strings.
-- Registered users stay `Pending` until an authorized reviewer approves their access request or the deliberate one-time Platform Admin bootstrap activates the intended existing account. Do not activate users with manual write SQL.
+- Self-registered users are `Pending` until they verify their phone and email, which activates them with no administrator involved. Workspace access is separate: it comes from an approved access request or, for an account created with a workspace, from the admin who created the workspace. Do not change user status with manual write SQL.
 
 ## Testing
 

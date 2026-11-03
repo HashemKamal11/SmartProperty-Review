@@ -11,7 +11,7 @@ namespace SmartProperty.Application.Authentication.PhoneVerifications;
 /// <summary>
 /// Checks a submitted code against the latest phone verification code of the account with this phone number and marks
 /// it verified. A code allows <see cref="OneTimeCode.MaxFailedAttempts"/> wrong guesses, then is locked.
-/// Verifying a phone grants no workspace access and issues no tokens.
+/// Verifying the last unverified contact activates a Pending account; verifying a phone grants no workspace access and issues no tokens.
 /// </summary>
 /// <remarks>
 /// The account is found by phone number, which anyone can type, so an unknown number, an account with nothing left to
@@ -62,6 +62,7 @@ public sealed class VerifyPhoneCommandHandler(
         }
 
         user.VerifyPhone(now);
+        user.ActivateWhenContactVerified(now);
 
         if (!await OneTimeCodeFlow.TrySaveAsync(unitOfWork, cancellationToken))
         {

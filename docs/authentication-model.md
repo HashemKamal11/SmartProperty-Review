@@ -182,17 +182,17 @@ Repositories query and track entities but never call `SaveChangesAsync`. The App
   "password": "...",
   "firstName": "Ada",
   "lastName": "Lovelace",
-  "workspaceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  "phoneNumber": "+201012345678"
 }
 ```
 
-A successful registration tracks three entities and commits them with one `IUnitOfWork.SaveChangesAsync` call, so they are saved together or not at all:
+A successful registration tracks the user, its credential and the two verification codes, and commits them with one `IUnitOfWork.SaveChangesAsync` call, so they are saved together or not at all:
 
-- a `User` with status `Pending`. The `User` constructor trims the names and normalizes the email (trimmed, lower-case invariant).
+- a `User` with status `Pending`. It cannot sign in until it has verified both its phone number and its email. The `User` constructor trims the names and normalizes the email (trimmed, lower-case invariant).
 - its `UserCredential`, holding only the hash returned by `IPasswordHasher`. The password is hashed exactly as sent and is never persisted or returned.
-- one `WorkspaceAccessRequest` with status `Pending` for the selected existing workspace.
+- a phone and an email verification code, sent after the commit. Verifying the last unverified contact (`verify-phone` or `verify-email`) activates the account through `User.ActivateWhenContactVerified`, so no administrator is involved.
 
-All three use the same `IDateTimeProvider.UtcNow` timestamp. Registration does not activate the user, create a `WorkspaceMembership`, assign roles or permissions, approve the request, or issue access or refresh tokens. Workspace access is granted only by the permission-protected approval workflow, which now exists: `POST /api/admin/workspace-access-requests/{id}/approve` activates a `Pending` applicant and creates the membership. See [authorization-model.md](authorization-model.md).
+Registration is not tied to a workspace: it creates no `WorkspaceAccessRequest`, no `WorkspaceMembership`, no roles or permissions, and issues no tokens.
 
 Success returns `201 Created` without a `Location` header. No endpoint reads a registration back; the closest thing, `GET /api/admin/workspace-access-requests`, is an authorized review queue rather than this registration's own resource:
 
@@ -200,9 +200,8 @@ Success returns `201 Created` without a `Location` header. No endpoint reads a r
 {
   "userId": "...",
   "status": "Pending",
-  "workspaceId": "...",
-  "workspaceAccessRequestId": "...",
-  "workspaceAccessStatus": "Pending"
+  "phoneVerificationExpiresAt": "...",
+  "emailVerificationExpiresAt": "..."
 }
 ```
 
@@ -212,17 +211,15 @@ Checks run in this order. A failing check returns before any entity is tracked, 
 | --- | --- | --- | --- |
 | 1 | Body is not valid JSON, not an object, or has a wrongly typed value | 400 | `request.malformed` |
 | 2 | Input validation fails | 422 | `validation.failed` |
-| 3 | `workspaceId` does not identify an existing workspace | 404 | `workspaces.not_found` |
-| 4 | The normalized email is already registered | 409 | `users.email_already_exists` |
-
-The workspace is checked before the email, so a request with an unknown workspace reveals nothing about registered emails. Registration never creates a workspace.
+| 3 | The normalized email is already registered | 409 | `users.email_already_exists` |
+| 4 | The normalized phone number is already registered | 409 | `users.phone_number_already_exists` |
 
 Validation reports the first failing rule in `message` and returns `fieldErrors` as `null`, because `Error` cannot carry field-level errors yet. A missing or `null` member is a validation failure (422), not a malformed request.
 
 - `email`: required; at most 320 characters after trimming; exactly one `@` between a non-empty local part and domain, with no whitespace or control characters. This is a structural check only; it does not prove that the address exists or belongs to the caller.
 - `password`: required and not only whitespace; at most 128 characters.
 - `firstName`, `lastName`: required; at most 100 characters after trimming.
-- `workspaceId`: required and not the empty GUID.
+- `phoneNumber`: required; international format.
 
 The email and name limits match the `identity.users` column lengths.
 

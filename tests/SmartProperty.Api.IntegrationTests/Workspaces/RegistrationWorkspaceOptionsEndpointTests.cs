@@ -155,25 +155,16 @@ public sealed class RegistrationWorkspaceOptionsEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task AReturnedWorkspaceId_RegistersAPendingUserWithAPendingAccessRequest()
+    public async Task Registration_NeedsNoWorkspaceFromTheOptionsList()
     {
-        var workspaceId = await _scenario.CreateWorkspaceAsync();
         using var client = _factory.CreateClient();
 
-        var options = (await client.GetFromJsonAsync<RegistrationWorkspaceOptionResponse[]>(Route))!;
-        var chosen = Assert.Single(options, option => option.Id == workspaceId);
-
-        using var registration = await AuthScenario.PostRegisterAsync(
-            client,
-            AuthScenario.UniqueEmail("options"),
-            chosen.Id);
+        using var registration = await AuthScenario.PostRegisterAsync(client, AuthScenario.UniqueEmail("options"));
 
         Assert.Equal(HttpStatusCode.Created, registration.StatusCode);
 
         var body = (await registration.Content.ReadFromJsonAsync<RegisterResponse>())!;
         Assert.Equal(nameof(UserStatus.Pending), body.Status);
-        Assert.Equal(chosen.Id, body.WorkspaceId);
-        Assert.Equal(nameof(WorkspaceAccessRequestStatus.Pending), body.WorkspaceAccessStatus);
     }
 
     private async Task<string> CreateMigratedDatabaseAsync()
