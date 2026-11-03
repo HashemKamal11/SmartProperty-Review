@@ -31,17 +31,17 @@ public sealed class PropertyImagesMigrationTests(PostgreSqlFixture fixture) : Da
                 "ck_registry_property_images_sort_order"
             ],
             (await ColumnAsync(
-                "SELECT conname FROM pg_constraint WHERE conrelid = 'registry.property_images'::regclass ORDER BY 1 COLLATE \"C\";"))
+                "SELECT conname FROM pg_constraint WHERE conrelid = 'registry.property_images'::regclass ORDER BY conname COLLATE \"C\";"))
                 .Select(value => (string)value!));
         Assert.Equal(
             ["IX_property_images_property_id_sort_order", "PK_property_images", "ux_registry_property_images_storage_key"],
             (await ColumnAsync(
-                "SELECT indexname FROM pg_indexes WHERE schemaname = 'registry' AND tablename = 'property_images' ORDER BY 1 COLLATE \"C\";"))
+                "SELECT indexname FROM pg_indexes WHERE schemaname = 'registry' AND tablename = 'property_images' ORDER BY indexname COLLATE \"C\";"))
                 .Select(value => (string)value!));
         Assert.Equal(
             ["content_type", "created_at", "file_name", "id", "property_id", "size_bytes", "sort_order", "storage_key"],
             (await ColumnAsync(
-                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'registry' AND table_name = 'property_images' ORDER BY 1 COLLATE \"C\";"))
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'registry' AND table_name = 'property_images' ORDER BY column_name COLLATE \"C\";"))
                 .Select(value => (string)value!));
     }
 

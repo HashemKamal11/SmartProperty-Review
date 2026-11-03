@@ -84,15 +84,20 @@ public sealed class LocationsAndViewsHandlerTests
     [InlineData(" Compound ", LocationLevel.Area)]
     public async Task ALowerLevelIsFetchedUnderTheAiIdOfItsParentAndStoredUnderOurId(string level, LocationLevel parentLevel)
     {
+        // Only the parent and its ancestors are stored: a stored child at the requested level would be served
+        // from our tables and the AI service would never be asked.
         var country = _locations.SeedCountry(aiId: 10);
-        var city = _locations.SeedCity(country, aiId: 20);
-        var area = _locations.SeedArea(city, aiId: 30);
-        var (parentId, parentAiId) = parentLevel switch
+        var (parentId, parentAiId) = (country.Id, 10);
+        if (parentLevel >= LocationLevel.City)
         {
-            LocationLevel.Country => (country.Id, 10),
-            LocationLevel.City => (city.Id, 20),
-            _ => (area.Id, 30)
-        };
+            var city = _locations.SeedCity(country, aiId: 20);
+            (parentId, parentAiId) = (city.Id, 20);
+            if (parentLevel >= LocationLevel.Area)
+            {
+                var area = _locations.SeedArea(city, aiId: 30);
+                (parentId, parentAiId) = (area.Id, 30);
+            }
+        }
         _gateway.Places = [new AiPlace(99, "Somewhere", "مكان")];
 
         var result = await CreateHandler().Handle(new GetLocationsQuery(level, parentId));
@@ -113,14 +118,16 @@ public sealed class LocationsAndViewsHandlerTests
         var egypt = _locations.SeedCountry(1);
         var cairo = _locations.SeedCity(egypt, 3, "Cairo", "القاهرة");
         var giza = _locations.SeedCity(egypt, 4, "Giza", "الجيزة");
+        // The AI service gives each area its own id, so each city is answered with its own places.
         _gateway.Places = [new AiPlace(30, "Helwan", "حلوان")];
-
         await CreateHandler().Handle(new GetLocationsQuery("area", cairo.Id));
+        _gateway.Places = [new AiPlace(40, "Haram", "الهرم")];
         var inGiza = await CreateHandler().Handle(new GetLocationsQuery("area", giza.Id));
 
-        Assert.Single(_locations.Areas);
-        Assert.Equal(cairo.Id, _locations.Areas[0].CityId);
-        Assert.Single(inGiza.Value);
+        Assert.Equal(2, _locations.Areas.Count);
+        Assert.Equal(cairo.Id, _locations.Areas.Single(area => area.AiId == 30).CityId);
+        Assert.Equal(giza.Id, _locations.Areas.Single(area => area.AiId == 40).CityId);
+        Assert.Equal("Haram", Assert.Single(inGiza.Value).NameEn);
         Assert.Equal(2, _gateway.LocationCalls.Count);
     }
 

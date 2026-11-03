@@ -292,6 +292,8 @@ public sealed class FavoriteHandlerTests
             new PropertyAddressDetails("EG", null, null, null, null, null, null, null),
             Now.AddDays(-30),
             Now.AddDays(-30));
+        // The favorites list reads the same property read model through its own repository.
+        _favorites.Details[id] = _properties.Details[id];
 
         return id;
     }

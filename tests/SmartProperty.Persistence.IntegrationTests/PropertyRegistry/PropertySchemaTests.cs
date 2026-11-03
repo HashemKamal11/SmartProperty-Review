@@ -88,7 +88,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = 'locations'
-            ORDER BY 1 COLLATE "C";
+            ORDER BY table_name COLLATE "C";
             """);
 
         Assert.Equal(["areas", "cities", "compounds", "countries"], actual);
@@ -135,7 +135,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             SELECT conname
             FROM pg_constraint
             WHERE conrelid = 'registry.properties'::regclass AND contype = 'c'
-            ORDER BY 1 COLLATE "C";
+            ORDER BY conname COLLATE "C";
             """);
 
         Assert.Equal(expected, actual);
@@ -149,7 +149,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             SELECT conname
             FROM pg_constraint
             WHERE conrelid = 'registry.properties'::regclass AND contype = 'f'
-            ORDER BY 1 COLLATE "C";
+            ORDER BY conname COLLATE "C";
             """);
 
         var indexes = await QueryStringsAsync(
@@ -158,7 +158,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             FROM pg_index i
             JOIN pg_class c ON c.oid = i.indexrelid
             WHERE i.indrelid = 'registry.properties'::regclass AND NOT i.indisprimary
-            ORDER BY 1 COLLATE "C";
+            ORDER BY c.relname COLLATE "C";
             """);
 
         Assert.Equal(["FK_properties_areas_area_id", "FK_properties_compounds_compound_id"], foreignKeys);
