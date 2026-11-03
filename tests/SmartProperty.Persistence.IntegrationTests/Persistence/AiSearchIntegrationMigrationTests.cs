@@ -120,7 +120,7 @@ public sealed class AiSearchIntegrationMigrationTests(PostgreSqlFixture fixture)
     {
         await MigrateToLatestFromScratchAsync();
 
-        var codes = (await QueryAsync("SELECT DISTINCT ai_code FROM registry.amenities WHERE ai_code IS NOT NULL ORDER BY 1 COLLATE \"C\";"))
+        var codes = (await QueryAsync("SELECT DISTINCT ai_code COLLATE \"C\" AS ai_code FROM registry.amenities WHERE ai_code IS NOT NULL ORDER BY ai_code;"))
             .Select(row => (string)row[0]!)
             .ToArray();
 

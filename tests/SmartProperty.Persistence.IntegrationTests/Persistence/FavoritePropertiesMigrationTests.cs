@@ -24,17 +24,17 @@ public sealed class FavoritePropertiesMigrationTests(PostgreSqlFixture fixture) 
         Assert.Equal(
             ["FK_favorite_properties_properties_property_id", "FK_favorite_properties_users_user_id", "PK_favorite_properties"],
             (await ColumnAsync(
-                "SELECT conname FROM pg_constraint WHERE conrelid = 'registry.favorite_properties'::regclass ORDER BY 1 COLLATE \"C\";"))
+                "SELECT conname FROM pg_constraint WHERE conrelid = 'registry.favorite_properties'::regclass ORDER BY conname COLLATE \"C\";"))
                 .Select(value => (string)value!));
         Assert.Equal(
             ["IX_favorite_properties_property_id", "IX_favorite_properties_user_id_created_at", "PK_favorite_properties"],
             (await ColumnAsync(
-                "SELECT indexname FROM pg_indexes WHERE schemaname = 'registry' AND tablename = 'favorite_properties' ORDER BY 1 COLLATE \"C\";"))
+                "SELECT indexname FROM pg_indexes WHERE schemaname = 'registry' AND tablename = 'favorite_properties' ORDER BY indexname COLLATE \"C\";"))
                 .Select(value => (string)value!));
         Assert.Equal(
             ["created_at", "property_id", "user_id"],
             (await ColumnAsync(
-                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'registry' AND table_name = 'favorite_properties' ORDER BY 1 COLLATE \"C\";"))
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'registry' AND table_name = 'favorite_properties' ORDER BY column_name COLLATE \"C\";"))
                 .Select(value => (string)value!));
     }
 

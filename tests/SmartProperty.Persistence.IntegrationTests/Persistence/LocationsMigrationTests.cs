@@ -26,17 +26,17 @@ public sealed class LocationsMigrationTests(PostgreSqlFixture fixture) : Databas
 
         Assert.Equal(
             ["areas", "cities", "compounds", "countries"],
-            (await QueryAsync("SELECT table_name FROM information_schema.tables WHERE table_schema = 'locations' ORDER BY 1 COLLATE \"C\";"))
+            (await QueryAsync("SELECT table_name FROM information_schema.tables WHERE table_schema = 'locations' ORDER BY table_name COLLATE \"C\";"))
                 .Select(row => (string)row[0]!));
         Assert.Equal(
             ["area_id", "compound_id"],
             (await QueryAsync(
-                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'registry' AND table_name = 'properties' AND column_name IN ('area_id', 'compound_id') ORDER BY 1 COLLATE \"C\";"))
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = 'registry' AND table_name = 'properties' AND column_name IN ('area_id', 'compound_id') ORDER BY column_name COLLATE \"C\";"))
                 .Select(row => (string)row[0]!));
         Assert.Equal(
             ["FK_properties_areas_area_id", "FK_properties_compounds_compound_id"],
             (await QueryAsync(
-                "SELECT conname FROM pg_constraint WHERE conrelid = 'registry.properties'::regclass AND contype = 'f' ORDER BY 1 COLLATE \"C\";"))
+                "SELECT conname FROM pg_constraint WHERE conrelid = 'registry.properties'::regclass AND contype = 'f' ORDER BY conname COLLATE \"C\";"))
                 .Select(row => (string)row[0]!));
     }
 

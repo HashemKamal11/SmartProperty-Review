@@ -22,6 +22,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
     {
         string[] expected =
         [
+            "identity.one_time_codes",
             "identity.permissions",
             "identity.refresh_tokens",
             "identity.role_permissions",
@@ -72,6 +73,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ux_identity_roles_platform_name",
             "ux_identity_roles_workspace_name",
             "ux_identity_users_email",
+            "ux_identity_users_phone_number",
             "ux_identity_workspace_memberships_user_workspace"
         ];
 
@@ -91,19 +93,54 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
     {
         string[] expected =
         [
+            "ck_identity_one_time_codes_expires_after_created",
+            "ck_identity_one_time_codes_failed_attempts_not_negative",
             "ck_identity_refresh_tokens_expires_after_created",
             "ck_identity_refresh_tokens_revoked_after_created",
             "ck_identity_roles_scope_workspace",
             "ck_identity_user_credentials_updated_after_created",
+            "ck_marketplace_decisions_identity",
+            "ck_marketplace_decisions_reason",
+            "ck_marketplace_decisions_snapshots",
+            "ck_marketplace_discard_audits_identity",
+            "ck_marketplace_discard_audits_values",
+            "ck_marketplace_listings_history",
+            "ck_marketplace_listings_ids",
+            "ck_marketplace_listings_reservation_closure",
+            "ck_marketplace_listings_state",
+            "ck_marketplace_property_reservations_ids",
+            "ck_marketplace_property_reservations_purpose",
+            "ck_marketplace_property_reservations_winner",
+            "ck_marketplace_purchase_requests_history",
+            "ck_marketplace_purchase_requests_ids",
+            "ck_marketplace_purchase_requests_state",
+            "ck_marketplace_rental_requests_history",
+            "ck_marketplace_rental_requests_ids",
+            "ck_marketplace_rental_requests_state",
+            "ck_marketplace_submissions_content",
+            "ck_marketplace_submissions_evidence",
+            "ck_marketplace_submissions_identity",
+            "ck_marketplace_submissions_revision",
+            "ck_marketplace_submissions_state",
             "ck_matching_property_matches_match_percentage",
             "ck_registry_properties_address_country_code",
+            "ck_registry_properties_ai_sync_status",
+            "ck_registry_properties_area_sqm_range",
             "ck_registry_properties_bathrooms_range",
             "ck_registry_properties_bedrooms_range",
             "ck_registry_properties_finishing_status",
+            "ck_registry_properties_floor_range",
             "ck_registry_properties_latitude_range",
+            "ck_registry_properties_listing_status",
             "ck_registry_properties_longitude_range",
+            "ck_registry_properties_place",
+            "ck_registry_properties_price_positive",
             "ck_registry_properties_status",
-            "ck_registry_properties_type"
+            "ck_registry_properties_transaction_type",
+            "ck_registry_properties_type",
+            "ck_registry_property_images_content_type",
+            "ck_registry_property_images_size",
+            "ck_registry_property_images_sort_order"
         ];
 
         var actual = await QueryStringsAsync(

@@ -325,9 +325,13 @@ public sealed class UpdatePropertyCommandHandlerTests
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
-        // The amenity list is compared by content: a record compares collections by reference.
-        Assert.Equal(first.Value with { Amenities = null }, second.Value with { Amenities = null });
+        // The lists are compared by content: a record compares collections by reference.
+        Assert.Equal(
+            first.Value with { Amenities = null, Views = null, Images = null },
+            second.Value with { Amenities = null, Views = null, Images = null });
         Assert.Equal(first.Value.Amenities, second.Value.Amenities);
+        Assert.Equal(first.Value.Views, second.Value.Views);
+        Assert.Equal(first.Value.Images, second.Value.Images);
         Assert.Equal(UpdatedAt, property.UpdatedAt);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
     }
