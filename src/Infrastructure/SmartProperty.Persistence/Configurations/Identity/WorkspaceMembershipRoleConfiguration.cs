@@ -7,6 +7,10 @@ namespace SmartProperty.Persistence.Configurations.Identity;
 
 internal sealed class WorkspaceMembershipRoleConfiguration : IEntityTypeConfiguration<WorkspaceMembershipRole>
 {
+    // The name EF already generates and InitialCreate already uses; stated so UnitOfWork can translate a
+    // violation of this key by exact name without changing the schema.
+    public const string PrimaryKeyName = "PK_workspace_membership_roles";
+
     public void Configure(EntityTypeBuilder<WorkspaceMembershipRole> builder)
     {
         builder.ToTable("workspace_membership_roles", "identity");
@@ -15,7 +19,7 @@ internal sealed class WorkspaceMembershipRoleConfiguration : IEntityTypeConfigur
         {
             workspaceMembershipRole.WorkspaceMembershipId,
             workspaceMembershipRole.RoleId
-        });
+        }).HasName(PrimaryKeyName);
 
         builder.Property(workspaceMembershipRole => workspaceMembershipRole.WorkspaceMembershipId)
             .HasColumnName("workspace_membership_id");

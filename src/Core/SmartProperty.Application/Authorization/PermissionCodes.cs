@@ -20,6 +20,12 @@ namespace SmartProperty.Application.Authorization;
 /// </remarks>
 public static class PermissionCodes
 {
+    // Definition only: no bootstrap provisioning or implicit Platform Admin grants.
+    public const string WorkspaceAdminRead = "workspace.admin.read";
+    public const string WorkspaceAdminReadDescription = "Read the administrative workspace directory and details.";
+    public const string WorkspaceAdminCreate = "workspace.admin.create";
+    public const string WorkspaceAdminCreateDescription = "Create workspaces.";
+
     /// <summary>Create a canonical platform-global property.</summary>
     public const string PropertyCreate = "property.create";
 

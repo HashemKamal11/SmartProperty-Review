@@ -10,6 +10,20 @@ namespace SmartProperty.UnitTests.TestDoubles;
 /// </summary>
 internal sealed class FakeWorkspaceRepository : IWorkspaceRepository
 {
+    public int LastSkip { get; private set; }
+    public int LastTake { get; private set; }
+
+    public Task<SmartProperty.Application.Workspaces.Administration.AdminWorkspacePage> ListAdministrativeAsync(
+        int skip, int take, CancellationToken cancellationToken = default)
+    {
+        LastSkip = skip;
+        LastTake = take;
+        LastCancellationToken = cancellationToken;
+        var items = _workspacesById.Values.OrderBy(x => x.Name).ThenBy(x => x.Id).Skip(skip).Take(take)
+            .Select(x => new SmartProperty.Application.Workspaces.Administration.AdminWorkspaceDetails(x.Id, x.Name, x.CreatedAt, x.UpdatedAt)).ToArray();
+        return Task.FromResult(new SmartProperty.Application.Workspaces.Administration.AdminWorkspacePage(items, _workspacesById.Count));
+    }
+
     private readonly Dictionary<Guid, Workspace> _workspacesById = [];
 
     public List<RegistrationWorkspaceOption> RegistrationOptions { get; } = [];

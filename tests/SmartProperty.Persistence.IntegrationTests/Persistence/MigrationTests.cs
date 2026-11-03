@@ -20,6 +20,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string LocationsMigration = "20261102180000_AddLocations";
     private const string FavoritePropertiesMigration = "20261103090000_AddFavoriteProperties";
     private const string PropertyImagesMigration = "20261104090000_AddPropertyImages";
+    private const string ListingDraftDiscardAuditMigration = "20261028072837_AddListingDraftDiscardAudit";
 
     [Fact]
     public async Task PlatformRoleInvariantMigration_AppliesFromPreviousMigration()
@@ -69,6 +70,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         Assert.Contains(PropertyAmenitiesMigration, applied);
         Assert.Contains(PropertyMatchesMigration, applied);
         Assert.Contains(WorkspaceRoleNameMigration, applied);
+        Assert.Contains(ListingDraftDiscardAuditMigration, applied);
         Assert.Contains(PropertyStatusConcurrencyMigration, applied);
         Assert.Empty(await context.Database.GetPendingMigrationsAsync());
         Assert.True(await PropertiesTableExistsAsync());

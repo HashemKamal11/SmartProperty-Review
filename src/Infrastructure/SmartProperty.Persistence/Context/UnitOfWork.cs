@@ -92,6 +92,9 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
             LocationIndexNames.Country or LocationIndexNames.City or LocationIndexNames.Area or LocationIndexNames.Compound =>
                 PersistenceConstraint.LocationAiId,
             FavoritePropertyConfiguration.PrimaryKeyName => PersistenceConstraint.FavoriteProperty,
+            RolePermissionConfiguration.PrimaryKeyName => PersistenceConstraint.RolePermissionKey,
+            WorkspaceMembershipRoleConfiguration.PrimaryKeyName =>
+                PersistenceConstraint.WorkspaceMembershipRoleKey,
             _ => null
         };
     }

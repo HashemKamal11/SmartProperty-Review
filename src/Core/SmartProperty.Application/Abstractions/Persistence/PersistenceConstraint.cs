@@ -39,5 +39,15 @@ public enum PersistenceConstraint
     /// <summary>
     /// A user can mark a property as a favorite once; the second mark is the same favorite.
     /// </summary>
-    FavoriteProperty = 7
+    FavoriteProperty = 7,
+
+    /// <summary>
+    /// A role can carry a given permission at most once (the role_permissions composite key).
+    /// </summary>
+    RolePermissionKey = 8,
+
+    /// <summary>
+    /// A workspace membership can hold a given role at most once (the workspace_membership_roles composite key).
+    /// </summary>
+    WorkspaceMembershipRoleKey = 9
 }

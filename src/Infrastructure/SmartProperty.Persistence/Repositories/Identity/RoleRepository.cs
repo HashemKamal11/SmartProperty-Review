@@ -76,6 +76,18 @@ internal sealed class RoleRepository(ApplicationDbContext dbContext) : IRoleRepo
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Guid>> GetPermissionIdsAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateRequiredId(roleId, nameof(roleId));
+
+        return await dbContext.RolePermissions
+            .Where(rolePermission => rolePermission.RoleId == roleId)
+            .Select(rolePermission => rolePermission.PermissionId)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task AddPermissionAsync(
         RolePermission rolePermission,
         CancellationToken cancellationToken = default)
@@ -117,6 +129,15 @@ internal sealed class RoleRepository(ApplicationDbContext dbContext) : IRoleRepo
 
         return dbContext.WorkspaceMembershipRoles.AnyAsync(
             assignment => assignment.WorkspaceMembershipId == workspaceMembershipId && assignment.RoleId == roleId,
+            cancellationToken);
+    }
+
+    public Task<bool> HasAnyMembershipAssignmentAsync(Guid roleId, CancellationToken cancellationToken = default)
+    {
+        ValidateRequiredId(roleId, nameof(roleId));
+
+        return dbContext.WorkspaceMembershipRoles.AnyAsync(
+            assignment => assignment.RoleId == roleId,
             cancellationToken);
     }
 

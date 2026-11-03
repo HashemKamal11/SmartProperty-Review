@@ -39,6 +39,12 @@ public interface IRoleRepository
         Guid permissionId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The ids of every permission this role carries, with no filtering. Approval compares the complete set, so
+    /// an unexpected permission can never be hidden by a narrower query.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetPermissionIdsAsync(Guid roleId, CancellationToken cancellationToken = default);
+
     Task AddPermissionAsync(RolePermission rolePermission, CancellationToken cancellationToken = default);
 
     /// <summary>True when this user already holds this role at platform scope.</summary>
@@ -54,6 +60,9 @@ public interface IRoleRepository
         Guid workspaceMembershipId,
         Guid roleId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>True when any workspace membership holds this role.</summary>
+    Task<bool> HasAnyMembershipAssignmentAsync(Guid roleId, CancellationToken cancellationToken = default);
 
     Task AddMembershipAssignmentAsync(
         WorkspaceMembershipRole workspaceMembershipRole,

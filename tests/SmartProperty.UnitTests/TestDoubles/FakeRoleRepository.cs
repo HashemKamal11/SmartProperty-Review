@@ -25,6 +25,20 @@ internal sealed class FakeRoleRepository : IRoleRepository
     private readonly List<WorkspaceMembershipRole> _membershipAssignments = [];
     private readonly List<WorkspaceMembershipRole> _addedMembershipAssignments = [];
 
+    /// <summary>
+    /// Runs at the start of each <see cref="GetPermissionIdsAsync"/> call, before its result is computed, with the
+    /// 1-based call number. Lets a test commit another writer's rows, or fail, at an exact point between two policy
+    /// reads. Null by default, so it is inert unless a test sets it.
+    /// </summary>
+    public Action<int>? OnGetPermissionIds { get; set; }
+
+    /// <summary>Same as <see cref="OnGetPermissionIds"/>, for <see cref="HasAnyMembershipAssignmentAsync"/>.</summary>
+    public Action<int>? OnHasAnyMembershipAssignment { get; set; }
+
+    public int GetPermissionIdsCallCount { get; private set; }
+
+    public int HasAnyMembershipAssignmentCallCount { get; private set; }
+
     public IReadOnlyList<Role> AddedRoles => _addedRoles;
 
     public IReadOnlyList<RolePermission> AddedRolePermissions => _addedRolePermissions;
@@ -155,6 +169,31 @@ internal sealed class FakeRoleRepository : IRoleRepository
     {
         return Task.FromResult(_rolePermissions.Any(
             rolePermission => rolePermission.RoleId == roleId && rolePermission.PermissionId == permissionId));
+    }
+
+    // Unfiltered, like the real query: every permission the role carries, seeded or added, whatever its code.
+    public Task<IReadOnlyList<Guid>> GetPermissionIdsAsync(
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        GetPermissionIdsCallCount++;
+        OnGetPermissionIds?.Invoke(GetPermissionIdsCallCount);
+
+        IReadOnlyList<Guid> permissionIds = _rolePermissions
+            .Where(rolePermission => rolePermission.RoleId == roleId)
+            .Select(rolePermission => rolePermission.PermissionId)
+            .ToList();
+
+        return Task.FromResult(permissionIds);
+    }
+
+    // Any membership at all, like the real query: a role shared by other memberships counts as assigned.
+    public Task<bool> HasAnyMembershipAssignmentAsync(Guid roleId, CancellationToken cancellationToken = default)
+    {
+        HasAnyMembershipAssignmentCallCount++;
+        OnHasAnyMembershipAssignment?.Invoke(HasAnyMembershipAssignmentCallCount);
+
+        return Task.FromResult(_membershipAssignments.Any(assignment => assignment.RoleId == roleId));
     }
 
     public Task AddPermissionAsync(RolePermission rolePermission, CancellationToken cancellationToken = default)

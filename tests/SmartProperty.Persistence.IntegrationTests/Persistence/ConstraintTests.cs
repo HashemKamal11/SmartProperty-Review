@@ -4,6 +4,7 @@ using Npgsql;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.Workspaces;
 using SmartProperty.Persistence.IntegrationTests.Infrastructure;
 using Xunit;
 
@@ -17,10 +18,11 @@ namespace SmartProperty.Persistence.IntegrationTests.Persistence;
 /// Every duplicate is attempted from a context that did not write the original row, so the rejection comes from
 /// PostgreSQL rather than from the change tracker.
 ///
-/// Only the user email, workspace membership (user, workspace), workspace role name and permission code
-/// constraints are translated into a provider-neutral exception today; the others surface as
-/// <see cref="DbUpdateException"/> wrapping a <see cref="PostgresException"/>. That asymmetry is current
-/// behaviour, and these tests record it rather than change it.
+/// Only the user email, workspace membership (user, workspace), workspace role name, permission code,
+/// role_permissions primary key and workspace_membership_roles primary key constraints are translated into a
+/// provider-neutral exception today; the others surface as <see cref="DbUpdateException"/> wrapping a
+/// <see cref="PostgresException"/>. That asymmetry is current behaviour, and these tests record it rather than
+/// change it.
 /// </remarks>
 public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
@@ -104,8 +106,8 @@ public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fi
     public async Task ADuplicateRefreshTokenHashIsNotTranslatedIntoANeutralException()
     {
         // Current behaviour, recorded rather than designed here: UnitOfWork recognizes only the user email,
-        // workspace membership, workspace role name and permission code constraints, so every other unique
-        // violation reaches the caller as the provider exception it was.
+        // workspace membership, workspace role name, permission code and the two approval composite keys, so
+        // every other unique violation reaches the caller as the provider exception it was.
         const string TokenHash = "test-token-hash-not-translated";
 
         Guid userId;
@@ -356,6 +358,106 @@ public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fi
     }
 
     [Fact]
+    public async Task ARepeatedRolePermissionLinkIsRejectedByTheDatabaseUnderItsPrimaryKeyName()
+    {
+        var (roleId, permissionId) = await SeedRolePermissionAsync();
+
+        await using var writing = Host.CreateVerificationContext();
+        writing.RolePermissions.Add(new RolePermission(roleId, permissionId));
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => writing.SaveChangesAsync());
+        var postgres = Assert.IsType<PostgresException>(exception.InnerException);
+
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
+        Assert.Equal("PK_role_permissions", postgres.ConstraintName);
+    }
+
+    [Fact]
+    public async Task ARepeatedRolePermissionLinkReachesTheApplicationAsRolePermissionKey()
+    {
+        var (roleId, permissionId) = await SeedRolePermissionAsync();
+
+        using var scope = Host.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<IRoleRepository>()
+            .AddPermissionAsync(new RolePermission(roleId, permissionId));
+
+        var exception = await Assert.ThrowsAsync<UniqueConstraintViolationException>(
+            () => scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync());
+
+        Assert.Equal(PersistenceConstraint.RolePermissionKey, exception.Constraint);
+
+        // Translated from the exact constraint name PostgreSQL reported, kept only as diagnostics below.
+        var wrapped = Assert.IsType<DbUpdateException>(exception.InnerException);
+        Assert.Equal("PK_role_permissions", Assert.IsType<PostgresException>(wrapped.InnerException).ConstraintName);
+    }
+
+    [Fact]
+    public async Task ARepeatedMembershipRoleAssignmentIsRejectedByTheDatabaseUnderItsPrimaryKeyName()
+    {
+        var (membershipId, roleId) = await SeedMembershipRoleAsync();
+
+        await using var writing = Host.CreateVerificationContext();
+        writing.WorkspaceMembershipRoles.Add(new WorkspaceMembershipRole(membershipId, roleId));
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => writing.SaveChangesAsync());
+        var postgres = Assert.IsType<PostgresException>(exception.InnerException);
+
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
+        Assert.Equal("PK_workspace_membership_roles", postgres.ConstraintName);
+    }
+
+    [Fact]
+    public async Task ARepeatedMembershipRoleAssignmentReachesTheApplicationAsWorkspaceMembershipRoleKey()
+    {
+        var (membershipId, roleId) = await SeedMembershipRoleAsync();
+
+        using var scope = Host.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<IRoleRepository>()
+            .AddMembershipAssignmentAsync(new WorkspaceMembershipRole(membershipId, roleId));
+
+        var exception = await Assert.ThrowsAsync<UniqueConstraintViolationException>(
+            () => scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync());
+
+        Assert.Equal(PersistenceConstraint.WorkspaceMembershipRoleKey, exception.Constraint);
+
+        var wrapped = Assert.IsType<DbUpdateException>(exception.InnerException);
+        Assert.Equal(
+            "PK_workspace_membership_roles",
+            Assert.IsType<PostgresException>(wrapped.InnerException).ConstraintName);
+    }
+
+    [Fact]
+    public async Task ARepeatedPlatformRoleAssignmentIsNotTranslatedIntoAnApprovalConstraint()
+    {
+        // Another composite-key violation that UnitOfWork does not recognize. Only the two exact approval key
+        // names are mapped, so this must stay the provider exception it was.
+        var user = AccessGraph.ActiveUser($"platform-{Guid.NewGuid():n}@example.test");
+        var role = AccessGraph.NewPlatformRole($"Platform {Guid.NewGuid():n}");
+
+        await using (var seeding = Host.CreateVerificationContext())
+        {
+            seeding.Users.Add(user);
+            seeding.Roles.Add(role);
+            seeding.UserPlatformRoles.Add(new UserPlatformRole(user.Id, role.Id));
+            await seeding.SaveChangesAsync();
+        }
+
+        using var scope = Host.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<IRoleRepository>()
+            .AddUserAssignmentAsync(new UserPlatformRole(user.Id, role.Id));
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(
+            () => scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync());
+
+        Assert.IsNotType<UniqueConstraintViolationException>(exception);
+
+        var postgres = Assert.IsType<PostgresException>(exception.InnerException);
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
+        Assert.NotEqual("PK_role_permissions", postgres.ConstraintName);
+        Assert.NotEqual("PK_workspace_membership_roles", postgres.ConstraintName);
+    }
+
+    [Fact]
     public async Task OneUserCannotHoldTwoCredentialRows()
     {
         // user_credentials is keyed by user_id, so the primary key is what enforces one secret per user.
@@ -378,5 +480,39 @@ public sealed class ConstraintTests(PostgreSqlFixture fixture) : DatabaseTest(fi
         var postgres = Assert.IsType<PostgresException>(exception.InnerException);
 
         Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
+    }
+
+    private async Task<(Guid RoleId, Guid PermissionId)> SeedRolePermissionAsync()
+    {
+        var workspace = AccessGraph.NewWorkspace($"Workspace {Guid.NewGuid():n}");
+        var role = AccessGraph.NewWorkspaceRole(workspace.Id, "Member");
+        var permission = AccessGraph.NewPermission($"test.{Guid.NewGuid():n}");
+
+        await using var seeding = Host.CreateVerificationContext();
+        seeding.Workspaces.Add(workspace);
+        seeding.Roles.Add(role);
+        seeding.Permissions.Add(permission);
+        seeding.RolePermissions.Add(new RolePermission(role.Id, permission.Id));
+        await seeding.SaveChangesAsync();
+
+        return (role.Id, permission.Id);
+    }
+
+    private async Task<(Guid MembershipId, Guid RoleId)> SeedMembershipRoleAsync()
+    {
+        var user = AccessGraph.ActiveUser($"member-{Guid.NewGuid():n}@example.test");
+        var workspace = AccessGraph.NewWorkspace($"Workspace {Guid.NewGuid():n}");
+        var membership = AccessGraph.NewMembership(user.Id, workspace.Id);
+        var role = AccessGraph.NewWorkspaceRole(workspace.Id, "Member");
+
+        await using var seeding = Host.CreateVerificationContext();
+        seeding.Users.Add(user);
+        seeding.Workspaces.Add(workspace);
+        seeding.WorkspaceMemberships.Add(membership);
+        seeding.Roles.Add(role);
+        seeding.WorkspaceMembershipRoles.Add(new WorkspaceMembershipRole(membership.Id, role.Id));
+        await seeding.SaveChangesAsync();
+
+        return (membership.Id, role.Id);
     }
 }

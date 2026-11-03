@@ -37,6 +37,23 @@ internal sealed class WorkspaceRepository(ApplicationDbContext dbContext) : IWor
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<SmartProperty.Application.Workspaces.Administration.AdminWorkspacePage> ListAdministrativeAsync(
+        int skip, int take, CancellationToken cancellationToken = default)
+    {
+        if (skip < 0 || skip > SmartProperty.Common.Pagination.PageParameters.MaxOffset)
+            throw new ArgumentOutOfRangeException(nameof(skip));
+        if (take < 1 || take > SmartProperty.Common.Pagination.PageParameters.MaxPageSize)
+            throw new ArgumentOutOfRangeException(nameof(take));
+
+        var query = dbContext.Workspaces.AsNoTracking();
+        var count = await query.LongCountAsync(cancellationToken);
+        var items = await query.OrderBy(x => x.Name).ThenBy(x => x.Id).Skip(skip).Take(take)
+            .Select(x => new SmartProperty.Application.Workspaces.Administration.AdminWorkspaceDetails(
+                x.Id, x.Name, x.CreatedAt, x.UpdatedAt))
+            .ToArrayAsync(cancellationToken);
+        return new(items, count);
+    }
+
     private static void ValidateRequiredId(Guid id, string parameterName)
     {
         if (id == Guid.Empty)
