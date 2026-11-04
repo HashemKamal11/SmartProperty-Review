@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkspaceRepository, WorkspaceRepository>();
         services.AddScoped<IPropertyRepository, PropertyRepository>();
         services.AddScoped<IPublicListingReadRepository, PublicListingReadRepository>();
+        services.AddScoped<IReviewerListingSubmissionReadRepository, ReviewerListingSubmissionReadRepository>();
         services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();
         services.AddScoped<IWorkspaceMembershipRepository, WorkspaceMembershipRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();

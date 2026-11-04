@@ -54,10 +54,9 @@ public sealed class GetReviewQueueQueryHandler(
             pageParameters.PageSize = pageSize;
         }
 
-        // The reviewer id is the only identity the repository receives, and only to establish independence. Scoping,
-        // counting, ordering and paging are its job and happen in the database; the handler adds nothing.
+        // The repository receives no identity: reading does not depend on reviewer independence. Scoping, counting,
+        // ordering and paging are its job and happen in the database; the handler adds nothing.
         var result = await submissions.ListForReviewAsync(
-            reviewerUserId,
             query.Purpose,
             status,
             pageParameters.Offset,

@@ -5,13 +5,9 @@ using SmartProperty.Domain.Marketplace;
 namespace SmartProperty.UnitTests.TestDoubles;
 
 /// <summary>
-/// An in-memory stand-in that applies the independence rule the real repository must apply to the queue: a
-/// submission the reviewer acted on, or is the linked owner of, is never listed.
+/// An in-memory stand-in for the reviewer read repository. It receives no user identity and applies no
+/// independence rule: reading does not depend on who submitted or owns a submission.
 /// </summary>
-/// <remarks>
-/// Because it works from the reviewer id it is given, a handler that passed the wrong id, or none, would see the
-/// wrong rows or none, and the test would fail.
-/// </remarks>
 internal sealed class FakeReviewerListingSubmissionReadRepository : IReviewerListingSubmissionReadRepository
 {
     private readonly List<(ReviewQueueItem Item, Guid Submitter, Guid? LinkedOwner)> _rows = [];
@@ -41,7 +37,6 @@ internal sealed class FakeReviewerListingSubmissionReadRepository : IReviewerLis
     }
 
     public Task<ReviewQueuePage> ListForReviewAsync(
-        Guid reviewerUserId,
         ListingPurpose? purpose,
         ListingSubmissionStatus status,
         int skip,
@@ -49,7 +44,7 @@ internal sealed class FakeReviewerListingSubmissionReadRepository : IReviewerLis
         CancellationToken cancellationToken = default)
     {
         ListCallCount++;
-        LastListCall = new ListCall(reviewerUserId, purpose, status, skip, take);
+        LastListCall = new ListCall(purpose, status, skip, take);
         CancellationToken = cancellationToken;
 
         if (ExceptionToThrow is not null)
@@ -58,7 +53,6 @@ internal sealed class FakeReviewerListingSubmissionReadRepository : IReviewerLis
         }
 
         var matches = _rows
-            .Where(row => row.Submitter != reviewerUserId && row.LinkedOwner != reviewerUserId)
             .Select(row => row.Item)
             .Where(item => item.Status == status)
             .Where(item => purpose is null || item.Purpose == purpose)
@@ -74,12 +68,11 @@ internal sealed class FakeReviewerListingSubmissionReadRepository : IReviewerLis
     }
 
     public Task<ReviewDetailLookup> GetForReviewAsync(
-        Guid reviewerUserId,
         Guid submissionId,
         CancellationToken cancellationToken = default)
     {
         GetCallCount++;
-        LastGetCall = new GetCall(reviewerUserId, submissionId);
+        LastGetCall = new GetCall(submissionId);
         CancellationToken = cancellationToken;
 
         if (ExceptionToThrow is not null)
@@ -91,11 +84,10 @@ internal sealed class FakeReviewerListingSubmissionReadRepository : IReviewerLis
     }
 
     internal sealed record ListCall(
-        Guid ReviewerUserId,
         ListingPurpose? Purpose,
         ListingSubmissionStatus Status,
         int Skip,
         int Take);
 
-    internal sealed record GetCall(Guid ReviewerUserId, Guid SubmissionId);
+    internal sealed record GetCall(Guid SubmissionId);
 }

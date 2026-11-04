@@ -19,8 +19,7 @@ public sealed class MarketplaceConstraintTests(PostgreSqlFixture fixture) : Data
         var graph = MarketplaceGraph.Create();
         await using (var context = Host.CreateVerificationContext())
         {
-            graph.Track(context);
-            await context.SaveChangesAsync();
+            await graph.SeedPrincipalsAsync(context);
         }
         var sql = scenario switch
         {
@@ -31,6 +30,14 @@ public sealed class MarketplaceConstraintTests(PostgreSqlFixture fixture) : Data
         };
         await using var connection = new NpgsqlConnection(Host.ConnectionString);
         await connection.OpenAsync();
+        if (scenario == "property")
+        {
+            // The winning purchase is also referenced by the reservation's winner foreign key. Release the reservation so
+            // this scenario violates only the listing foreign key it asserts. Disposable test database, this fixture's rows only.
+            await using var release = new NpgsqlCommand("DELETE FROM marketplace.property_reservations WHERE property_id = @property", connection);
+            release.Parameters.AddWithValue("property", graph.Property.Id);
+            await release.ExecuteNonQueryAsync();
+        }
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("id", graph.Purchase.Id);
         command.Parameters.AddWithValue("property", graph.Property.Id);
@@ -45,8 +52,7 @@ public sealed class MarketplaceConstraintTests(PostgreSqlFixture fixture) : Data
     {
         var graph = MarketplaceGraph.Create();
         await using var context = Host.CreateVerificationContext();
-        graph.Track(context);
-        await context.SaveChangesAsync();
+        await graph.SeedPrincipalsAsync(context);
         await using var connection = new NpgsqlConnection(Host.ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("DELETE FROM registry.properties WHERE id = @id", connection);

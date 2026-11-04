@@ -66,7 +66,7 @@ public sealed class GetReviewSubmissionQueryHandlerTests
     }
 
     [Fact]
-    public async Task AFoundSubmissionIsReturnedAndTheRepositoryIsAskedForTheAuthenticatedReviewer()
+    public async Task AFoundSubmissionIsReturnedAfterTheAuthenticatedReviewerIsAuthorized()
     {
         var detail = Detail(decision: null);
         _submissions.SetLookup(detail.SubmissionId, ReviewDetailLookup.Found(detail));
@@ -77,8 +77,7 @@ public sealed class GetReviewSubmissionQueryHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(detail, result.Value);
         Assert.Equal(Reviewer, authorizer.LastUserId);
-        Assert.Equal(Reviewer, _submissions.LastGetCall!.ReviewerUserId);
-        Assert.Equal(detail.SubmissionId, _submissions.LastGetCall.SubmissionId);
+        Assert.Equal(detail.SubmissionId, _submissions.LastGetCall!.SubmissionId);
     }
 
     [Fact]
@@ -109,66 +108,53 @@ public sealed class GetReviewSubmissionQueryHandlerTests
     }
 
     [Fact]
-    public async Task AReviewerWhoIsNotIndependentIsRefusedWithItsOwnCode()
+    public async Task ReadingDoesNotDependOnIndependenceSoTheSubmitterOrOwnerReadsTheSameDetail()
     {
-        var id = Guid.NewGuid();
-        _submissions.SetLookup(id, ReviewDetailLookup.NotIndependent());
-
-        var result = await CreateHandler(Reviewer).Handle(new GetReviewSubmissionQuery(id));
-
-        Assert.Same(ReviewErrors.NotIndependent, result.Error);
-        AssertError(result, "listing_submissions.reviewer_not_independent", ErrorType.Forbidden);
-    }
-
-    [Fact]
-    public async Task UnverifiableIndependenceIsRefusedWithItsOwnCode()
-    {
-        var id = Guid.NewGuid();
-        _submissions.SetLookup(id, ReviewDetailLookup.IndependenceUnverifiable());
-
-        var result = await CreateHandler(Reviewer).Handle(new GetReviewSubmissionQuery(id));
-
-        Assert.Same(ReviewErrors.IndependenceUnverifiable, result.Error);
-        AssertError(result, "listing_submissions.independence_unverifiable", ErrorType.Forbidden);
-    }
-
-    [Fact]
-    public void ThreeRefusalOutcomesAreThreeDistinctErrors()
-    {
-        var notFound = ListingSubmissionErrors.NotFound;
-        var notIndependent = ReviewErrors.NotIndependent;
-        var unverifiable = ReviewErrors.IndependenceUnverifiable;
-
-        Assert.Equal(3, new[] { notFound.Code, notIndependent.Code, unverifiable.Code }.Distinct().Count());
-        Assert.NotEqual(ErrorType.Forbidden, notFound.Type);
-        Assert.Equal(ErrorType.Forbidden, notIndependent.Type);
-        Assert.Equal(ErrorType.Forbidden, unverifiable.Type);
-    }
-
-    [Fact]
-    public async Task ARejectionKeepsItsReason()
-    {
-        var detail = Detail(new ReviewDecisionSummary(Approved: false, "The deed does not cover this parcel.", Submitted.AddDays(1)));
+        // The repository is never told who is reading, so it cannot answer differently for a submitter or owner.
+        // Whoever holds the read permission gets the same redacted detail; independence governs decisions only.
+        var detail = Detail(decision: null);
         _submissions.SetLookup(detail.SubmissionId, ReviewDetailLookup.Found(detail));
 
         var result = await CreateHandler(Reviewer).Handle(new GetReviewSubmissionQuery(detail.SubmissionId));
 
-        Assert.False(result.Value.Decision!.Approved);
-        Assert.Equal("The deed does not cover this parcel.", result.Value.Decision.Reason);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(detail, result.Value);
     }
 
     [Fact]
-    public async Task AnApprovalNeverCarriesAReasonWhateverIsStored()
+    public void TheIndependenceErrorsRemainDistinctStableCodesForDecisions()
     {
-        var detail = Detail(new ReviewDecisionSummary(Approved: true, "Internal approval note.", Submitted.AddDays(1)));
+        Assert.Equal(3, new[] { ListingSubmissionErrors.NotFound.Code, ReviewErrors.NotIndependent.Code, ReviewErrors.IndependenceUnverifiable.Code }.Distinct().Count());
+        Assert.Equal("listing_submissions.reviewer_not_independent", ReviewErrors.NotIndependent.Code);
+        Assert.Equal("listing_submissions.independence_unverifiable", ReviewErrors.IndependenceUnverifiable.Code);
+    }
+
+    [Theory]
+    [InlineData(false, "The deed does not cover this parcel.")]
+    [InlineData(true, "Internal approval note.")]
+    [InlineData(false, "Passport 123456789, owner Jane Q. Public.")]
+    public async Task NoDecisionReasonIsEverReturnedByAnAdministrativeRead(bool approved, string storedReason)
+    {
+        var detail = Detail(new ReviewDecisionSummary(approved, storedReason, Submitted.AddDays(1)));
         _submissions.SetLookup(detail.SubmissionId, ReviewDetailLookup.Found(detail));
 
         var result = await CreateHandler(Reviewer).Handle(new GetReviewSubmissionQuery(detail.SubmissionId));
 
-        Assert.True(result.Value.Decision!.Approved);
+        Assert.Equal(approved, result.Value.Decision!.Approved);
         Assert.Null(result.Value.Decision.Reason);
+        Assert.Equal(detail.Decision!.DecidedAt, result.Value.Decision.DecidedAt);
     }
 
+    [Fact]
+    public async Task ADetailWithoutADecisionStaysWithoutOne()
+    {
+        var detail = Detail(decision: null);
+        _submissions.SetLookup(detail.SubmissionId, ReviewDetailLookup.Found(detail));
+
+        var result = await CreateHandler(Reviewer).Handle(new GetReviewSubmissionQuery(detail.SubmissionId));
+
+        Assert.Null(result.Value.Decision);
+    }
     [Fact]
     public async Task AFoundLookupForADifferentSubmissionIsAFaultNotAnAnswer()
     {
@@ -194,8 +180,6 @@ public sealed class GetReviewSubmissionQueryHandlerTests
         Assert.Empty(typeof(ReviewDetailLookup).GetConstructors(BindingFlags.Public | BindingFlags.Instance));
         Assert.Equal(ReviewDetailOutcome.NotFound, ReviewDetailLookup.NotFound().Outcome);
         Assert.Null(ReviewDetailLookup.NotFound().Detail);
-        Assert.Null(ReviewDetailLookup.NotIndependent().Detail);
-        Assert.Null(ReviewDetailLookup.IndependenceUnverifiable().Detail);
         Assert.NotNull(ReviewDetailLookup.Found(Detail(decision: null)).Detail);
         Assert.Throws<ArgumentNullException>(() => ReviewDetailLookup.Found(null!));
     }

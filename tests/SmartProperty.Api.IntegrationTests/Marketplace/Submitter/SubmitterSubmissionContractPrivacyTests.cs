@@ -18,6 +18,7 @@ using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Discard;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Submit;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Update;
+using SmartProperty.Application.Abstractions.Authorization;
 using SmartProperty.Application.Marketplace.PublicListings;
 using SmartProperty.Common.Pagination;
 using SmartProperty.Domain.Marketplace;
@@ -334,9 +335,11 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         Assert.Contains(routes, route => route.StartsWith("api/admin/workspace-access-requests", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(routes, route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
 
-        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase));
+        // The only listing-submissions routes are the two Platform Admin review reads; nothing is a submitter route.
+        string[] reviewReads = ["api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}"];
+        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase) && !reviewReads.Contains(route));
         Assert.DoesNotContain(routes, route => route.Contains("marketplace/me", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(routes, route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(routes, route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase) && !reviewReads.Contains(route));
     }
 
     [Fact]
@@ -377,6 +380,54 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         Assert.Empty(host.Services.GetServices<UpdateListingDraftCommandHandler>());
         Assert.Empty(host.Services.GetServices<DiscardListingDraftCommandHandler>());
         Assert.Empty(host.Services.GetServices<SubmitListingDraftCommandHandler>());
+    }
+
+    [Fact]
+    public void TheProductionContainerRegistersNeitherTheReviewDecisionHandlersNorTheirSeams()
+    {
+        using var root = new SmartPropertyApiFactory(UnusedConnectionString);
+        using var host = root.WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("ConnectionStrings:Database", UnusedConnectionString);
+        });
+        using var scope = host.Services.CreateScope();
+        var provider = scope.ServiceProvider;
+
+        AssertNoCommandHandler(provider, "ApproveListingSubmissionCommand", "ApproveListingSubmissionResult");
+        AssertNoCommandHandler(provider, "RejectListingSubmissionCommand", "RejectListingSubmissionResult");
+        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Persistence.Repositories.IListingReviewWriteRepository");
+        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer");
+        AssertNotResolvable(host.Services, DecisionTypes + "ApproveListingSubmissionCommandHandler");
+        AssertNotResolvable(host.Services, DecisionTypes + "RejectListingSubmissionCommandHandler");
+    }
+
+    // The decision stack is excluded from this build, so its types are named, not referenced. A named type that exists
+    // must not be resolvable; one that does not exist cannot be registered. The anchor proves the lookup searches the
+    // assembly that would define them, so an absence is real and not a lookup mistake.
+    private const string DecisionTypes = "SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decision.";
+
+    private static Type? ApplicationType(string fullName)
+    {
+        var assembly = typeof(ICommandHandler<,>).Assembly;
+        Assert.NotNull(assembly.GetType("SmartProperty.Application.Abstractions.Authorization.IReviewReadAuthorizer", throwOnError: false));
+        return assembly.GetType(fullName, throwOnError: false);
+    }
+
+    private static void AssertNotResolvable(IServiceProvider provider, string fullName)
+    {
+        if (ApplicationType(fullName) is { } type)
+        {
+            Assert.Null(provider.GetService(type));
+            Assert.Empty(provider.GetServices(type));
+        }
+    }
+
+    private static void AssertNoCommandHandler(IServiceProvider provider, string command, string result)
+    {
+        if (ApplicationType(DecisionTypes + command) is { } commandType && ApplicationType(DecisionTypes + result) is { } resultType)
+        {
+            Assert.Null(provider.GetService(typeof(ICommandHandler<,>).MakeGenericType(commandType, resultType)));
+        }
     }
 
     [Fact]

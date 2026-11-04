@@ -226,7 +226,7 @@ public sealed class AdminListingSubmissionReviewEndpointTests
     }
 
     [Fact]
-    public async Task OnlyTheAuthenticatedUserIsEverTheReviewerTheRepositoryIsToldAbout()
+    public async Task ClientSuppliedReviewerValuesAreIgnoredAndTheRepositoryIsToldNoUser()
     {
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository());
         var id = Guid.NewGuid();
@@ -238,8 +238,8 @@ public sealed class AdminListingSubmissionReviewEndpointTests
 
         Assert.Equal(HttpStatusCode.OK, list.StatusCode);
         Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
-        Assert.Equal(Reviewer, host.Stub.LastListCall!.ReviewerUserId);
-        Assert.Equal(Reviewer, host.Stub.LastGetCall!.ReviewerUserId);
+        Assert.Equal(id, host.Stub.LastGetCall!.SubmissionId);
+        Assert.NotNull(host.Stub.LastListCall);
     }
 
     // ----- the queue
@@ -286,25 +286,25 @@ public sealed class AdminListingSubmissionReviewEndpointTests
     }
 
     [Fact]
-    public async Task TheQueueNeverListsASubmissionTheReviewerSubmittedOrOwns()
+    public async Task TheQueueListsEverySubmissionToAnAuthorizedReaderEvenOnesTheReaderSubmittedOrOwns()
     {
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository());
-        var visible = Guid.NewGuid();
-        host.Stub.Add(Pending(visible, title: "Visible"), Submitter);
-        host.Stub.Add(Pending(Guid.NewGuid(), title: "SENTINEL-OWN"), Reviewer);
-        host.Stub.Add(Pending(Guid.NewGuid(), title: "SENTINEL-OWNED"), Submitter, linkedOwner: Reviewer);
+        host.Stub.Add(Pending(Guid.NewGuid(), title: "Someone else", submittedAt: Submitted), Submitter);
+        host.Stub.Add(Pending(Guid.NewGuid(), title: "Own", submittedAt: Submitted.AddMinutes(1)), Reviewer);
+        host.Stub.Add(Pending(Guid.NewGuid(), title: "Owned", submittedAt: Submitted.AddMinutes(2)), Submitter, linkedOwner: Reviewer);
         using var client = host.CreateReviewerClientFor(Reviewer);
 
         using var response = await client.GetAsync(Route);
 
         var body = await response.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.DoesNotContain("SENTINEL", body, StringComparison.Ordinal);
         using var document = JsonDocument.Parse(body);
-        Assert.Equal(visible.ToString(), Assert.Single(document.RootElement.GetProperty("items").EnumerateArray()).GetProperty("submissionId").GetString());
-        Assert.Equal(1, document.RootElement.GetProperty("totalCount").GetInt64());
+        Assert.Equal(
+            new[] { "Someone else", "Own", "Owned" },
+            document.RootElement.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("title").GetString()).ToArray());
+        Assert.Equal(3, document.RootElement.GetProperty("totalCount").GetInt64());
+        AssertNoForbiddenNames(body);
     }
-
     [Fact]
     public async Task AnEmptyQueueIsAnEmptyPage()
     {
@@ -474,13 +474,12 @@ public sealed class AdminListingSubmissionReviewEndpointTests
         Assert.Equal("PendingReview", root.GetProperty("status").GetString());
         Assert.Equal("Close to the centre.", root.GetProperty("description").GetString());
         Assert.False(root.GetProperty("isCurrentlyPublished").GetBoolean());
-        Assert.Equal(Reviewer, host.Stub.LastGetCall!.ReviewerUserId);
-        Assert.Equal(id, host.Stub.LastGetCall.SubmissionId);
+        Assert.Equal(id, host.Stub.LastGetCall!.SubmissionId);
         AssertNoForbiddenNames(body);
     }
 
     [Fact]
-    public async Task ARejectedDetailShowsItsReasonAndNothingPrivate()
+    public async Task ARejectedDetailNeverShowsItsReasonAndNothingPrivate()
     {
         var id = Guid.NewGuid();
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository());
@@ -491,14 +490,13 @@ public sealed class AdminListingSubmissionReviewEndpointTests
 
         var body = await response.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain("The deed does not cover this parcel.", body, StringComparison.Ordinal);
         using var document = JsonDocument.Parse(body);
         var decision = document.RootElement.GetProperty("decision");
-        Assert.Equal(new[] { "approved", "decidedAt", "reason" }, SortedNames(decision));
+        Assert.Equal(new[] { "approved", "decidedAt" }, SortedNames(decision));
         Assert.False(decision.GetProperty("approved").GetBoolean());
-        Assert.Equal("The deed does not cover this parcel.", decision.GetProperty("reason").GetString());
         AssertNoForbiddenNames(body);
     }
-
     [Fact]
     public async Task AnApprovedDetailNeverShowsAReasonWhateverIsStored()
     {
@@ -595,17 +593,17 @@ public sealed class AdminListingSubmissionReviewEndpointTests
         Assert.Equal(0, host.Stub.GetCallCount);
     }
 
-    // ----- independence
+    // ----- independence does not gate reading
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task AReviewerWhoSubmittedOrOwnsTheSubmissionIsA403NotIndependentAndSeesNothingOfIt(bool isSubmitter)
+    public async Task AReaderWhoSubmittedOrOwnsTheSubmissionStillReadsItsRedactedDetail(bool isSubmitter)
     {
         var id = Guid.NewGuid();
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository());
         host.Stub.Add(
-            Pending(id, title: "SENTINEL-TITLE"),
+            Pending(id, title: "Visible to any authorized reader"),
             isSubmitter ? Reviewer : Submitter,
             linkedOwner: isSubmitter ? null : Reviewer);
         using var client = host.CreateReviewerClientFor(Reviewer);
@@ -613,44 +611,38 @@ public sealed class AdminListingSubmissionReviewEndpointTests
         using var response = await client.GetAsync($"{Route}/{id}");
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var document = JsonDocument.Parse(body);
-        Assert.Equal("listing_submissions.reviewer_not_independent", document.RootElement.GetProperty("code").GetString());
-        Assert.Equal(403, document.RootElement.GetProperty("status").GetInt32());
-        Assert.DoesNotContain("SENTINEL", body, StringComparison.Ordinal);
-        Assert.DoesNotContain(id.ToString(), body, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(id.ToString(), document.RootElement.GetProperty("submissionId").GetString());
+        Assert.DoesNotContain("independen", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("canDecide", body, StringComparison.OrdinalIgnoreCase);
+        AssertNoForbiddenNames(body);
     }
 
-    [Fact]
-    public async Task AReviewerWhoseIndependenceCannotBeEstablishedIsRefusedAndSeesNothing()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task NoStoredDecisionReasonEverReachesAnAdministrativeResponse(bool approved)
     {
         var id = Guid.NewGuid();
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository());
-        host.Stub.Add(Pending(id, title: "SENTINEL-TITLE"), Submitter, unverifiable: true);
+        var stored = approved
+            ? Approved(id, Decided, storedReason: "SENTINEL-STORED-REASON passport 123456789")
+            : Rejected(id, Decided) with { Decision = new ReviewDecisionSummary(false, "SENTINEL-STORED-REASON passport 123456789", Decided) };
+        host.Stub.Add(stored, Submitter);
         using var client = host.CreateReviewerClientFor(Reviewer);
 
-        using var response = await client.GetAsync($"{Route}/{id}");
+        using var detail = await client.GetAsync($"{Route}/{id}");
+        using var list = await client.GetAsync($"{Route}?status={(approved ? "Approved" : "Rejected")}");
 
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        using var document = JsonDocument.Parse(body);
-        Assert.Equal("listing_submissions.independence_unverifiable", document.RootElement.GetProperty("code").GetString());
-        Assert.DoesNotContain("SENTINEL", body, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task AnotherReviewerWhoIsIndependentStillSeesTheSubmission()
-    {
-        var id = Guid.NewGuid();
-        var other = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
-        using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository());
-        host.Stub.Add(Pending(id), Reviewer);
-        using var client = host.CreateReviewerClientFor(other);
-
-        using var response = await client.GetAsync($"{Route}/{id}");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(other, host.Stub.LastGetCall!.ReviewerUserId);
+        foreach (var response in new[] { detail, list })
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.DoesNotContain("SENTINEL", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("123456789", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("reason", body, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     // ----- failures
@@ -741,11 +733,11 @@ public sealed class AdminListingSubmissionReviewEndpointTests
     }
 
     [Fact]
-    public void TheControllerRequiresAuthenticationAndExactlyTheReviewReadPermissionAndIsNotPublic()
+    public void TheControllerIsPublicAndRequiresAuthenticationAndExactlyTheReviewReadPermission()
     {
         var type = typeof(AdminListingSubmissionReviewController);
 
-        Assert.False(type.IsVisible);
+        Assert.True(type.IsVisible);
         var requirements = type.GetCustomAttributes(typeof(RequirePermissionAttribute), inherit: true)
             .Cast<RequirePermissionAttribute>()
             .ToArray();
@@ -761,32 +753,65 @@ public sealed class AdminListingSubmissionReviewEndpointTests
     }
 
     [Fact]
-    public async Task TheProductionCompositionHasNoReviewRouteAndNoReviewServiceAtAll()
+    public void TheProductionCompositionExposesExactlyTheTwoReadRoutesWithTheRealHandlersAndRepositoryAndNoDecisionService()
     {
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository(), mount: false);
-        host.Permissions.AllowedPermissionCodes.Add(PermissionCodes.MarketplaceSubmissionsReviewRead);
-        using var client = host.CreateClientFor(Reviewer);
 
         var routes = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
             .Select(endpoint => endpoint.RoutePattern.RawText ?? string.Empty)
             .ToArray();
-        using var list = await client.GetAsync(Route);
-        using var detail = await client.GetAsync($"{Route}/{Guid.NewGuid()}");
 
-        // The inventory is real: existing routes are visible to it.
+        // The inventory is real: existing routes are visible to it, and the review reads are exactly the two GETs.
         Assert.Contains(routes, route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(routes, route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(HttpStatusCode.NotFound, list.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, detail.StatusCode);
-        Assert.Equal(0, host.Stub.ListCallCount);
-        Assert.Equal(0, host.Stub.GetCallCount);
-        Assert.Equal(0, host.Permissions.CallCount);
+        Assert.Equal(
+            new[] { "api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}" },
+            routes.Where(route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
 
-        Assert.Null(host.Services.GetService<IQueryHandler<GetReviewQueueQuery, PagedList<ReviewQueueItem>>>());
-        Assert.Null(host.Services.GetService<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>>());
-        Assert.Null(host.Services.GetService<IReviewReadAuthorizer>());
-        Assert.Null(host.Services.GetService<IReviewerListingSubmissionReadRepository>());
+        using var scope = host.Services.CreateScope();
+        var provider = scope.ServiceProvider;
+        Assert.IsType<GetReviewQueueQueryHandler>(provider.GetRequiredService<IQueryHandler<GetReviewQueueQuery, PagedList<ReviewQueueItem>>>());
+        Assert.IsType<GetReviewSubmissionQueryHandler>(provider.GetRequiredService<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>>());
+        Assert.IsType<PlatformReviewReadAuthorizer>(provider.GetRequiredService<IReviewReadAuthorizer>());
+
+        // Nothing that decides, writes, verifies or publishes is registered.
+        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer");
+        AssertNoCommandHandler(provider, "ApproveListingSubmissionCommand", "ApproveListingSubmissionResult");
+        AssertNoCommandHandler(provider, "RejectListingSubmissionCommand", "RejectListingSubmissionResult");
+
+        // The repository is the Persistence one, scoped, not the stub.
+        var repository = provider.GetRequiredService<IReviewerListingSubmissionReadRepository>();
+        Assert.Same(typeof(SmartProperty.Persistence.AssemblyMarker).Assembly, repository.GetType().Assembly);
+        Assert.Equal("ReviewerListingSubmissionReadRepository", repository.GetType().Name);
+    }
+
+    // The decision stack is excluded from this build, so its types are named, not referenced. A named type that exists
+    // must not be resolvable; one that does not exist cannot be registered. The anchor proves the lookup searches the
+    // assembly that would define them, so an absence is real and not a lookup mistake.
+    private const string DecisionTypes = "SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decision.";
+
+    private static Type? ApplicationType(string fullName)
+    {
+        var assembly = typeof(IReviewReadAuthorizer).Assembly;
+        Assert.NotNull(assembly.GetType("SmartProperty.Application.Abstractions.Authorization.IReviewReadAuthorizer", throwOnError: false));
+        return assembly.GetType(fullName, throwOnError: false);
+    }
+
+    private static void AssertNotResolvable(IServiceProvider provider, string fullName)
+    {
+        if (ApplicationType(fullName) is { } type)
+        {
+            Assert.Null(provider.GetService(type));
+            Assert.Empty(provider.GetServices(type));
+        }
+    }
+
+    private static void AssertNoCommandHandler(IServiceProvider provider, string command, string result)
+    {
+        if (ApplicationType(DecisionTypes + command) is { } commandType && ApplicationType(DecisionTypes + result) is { } resultType)
+        {
+            Assert.Null(provider.GetService(typeof(ICommandHandler<,>).MakeGenericType(commandType, resultType)));
+        }
     }
 
     // ----- helpers

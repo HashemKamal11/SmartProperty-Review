@@ -8,17 +8,17 @@ namespace SmartProperty.Application.Abstractions.Persistence.Repositories;
 /// enforced in the query itself, never by the caller.
 /// </summary>
 /// <remarks>
-/// <c>reviewerUserId</c> always comes from the authenticated principal and is used only to establish independence;
-/// it is never a filter the caller chooses. Authorization to read at all is decided before the repository is
-/// called, by <see cref="Authorization.IReviewReadAuthorizer"/>.
+/// The repository receives no user identity. Authorization to read at all is decided before it is called, by
+/// <see cref="Authorization.IReviewReadAuthorizer"/>, and reading does not depend on reviewer independence: an
+/// authorized reader sees the queue and the redacted detail whoever submitted or owns the submission. Independence
+/// governs decisions only: any future Approve/Reject operation must enforce it from locked reads. No decision
+/// operation exists in this build.
 ///
-/// The queue never contains a Draft, and never contains a submission the reviewer acted on or is the linked owner
-/// of. A detail lookup reports, as an explicit outcome, when the reviewer is not independent of the submission or
-/// when independence cannot be established from the available facts; it never reports "found" in either case.
+/// The queue never contains a Draft. A detail lookup is either found or not found.
 ///
 /// Results are projected into the read models only. Submissions, snapshots and decisions are immutable and are
-/// read, never changed. No legal-party reference, evidence digest, internal assessment, reviewer snapshot or
-/// user identity is selected. Filtering, counting, ordering and paging all happen in the database. Ordering is
+/// read, never changed. No legal-party reference, evidence digest, internal assessment, reviewer snapshot, user identity
+/// or rejection reason is selected. Filtering, counting, ordering and paging all happen in the database. Ordering is
 /// deterministic: a pending queue is oldest submitted first, any other status is most recently updated first, and
 /// every order ends in the submission id.
 /// </remarks>
@@ -29,7 +29,6 @@ public interface IReviewerListingSubmissionReadRepository
     /// purpose, plus the total number of matches.
     /// </summary>
     Task<ReviewQueuePage> ListForReviewAsync(
-        Guid reviewerUserId,
         ListingPurpose? purpose,
         ListingSubmissionStatus status,
         int skip,
@@ -37,10 +36,9 @@ public interface IReviewerListingSubmissionReadRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The submission for review, or the reason it cannot be shown to this reviewer.
+    /// The submission for review, or that it was not found.
     /// </summary>
     Task<ReviewDetailLookup> GetForReviewAsync(
-        Guid reviewerUserId,
         Guid submissionId,
         CancellationToken cancellationToken = default);
 }
