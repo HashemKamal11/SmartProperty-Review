@@ -23,6 +23,7 @@ public sealed class RegisterCommandHandler(
     IPasswordHasher passwordHasher,
     ISmsSender smsSender,
     IEmailSender emailSender,
+    IContactVerificationPolicy contactVerificationPolicy,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
     : ICommandHandler<RegisterCommand, RegisterResult>
@@ -63,12 +64,26 @@ public sealed class RegisterCommandHandler(
         }
 
         var credential = new UserCredential(user.Id, passwordHasher.Hash(command.Password), registeredAt);
-        var phoneCode = OneTimeCodePolicy.GenerateCode();
-        var phoneVerification = OneTimeCodePolicy.Issue(
-            user.Id,
-            OneTimeCodePurpose.PhoneVerification,
-            phoneCode,
-            registeredAt);
+
+        // With auto-verification on, the phone is trusted as entered: no code is issued and no SMS is sent.
+        var autoVerifyPhone = contactVerificationPolicy.AutoVerifyPhone;
+        string? phoneCode = null;
+        OneTimeCode? phoneVerification = null;
+
+        if (autoVerifyPhone)
+        {
+            user.VerifyPhone(registeredAt);
+        }
+        else
+        {
+            phoneCode = OneTimeCodePolicy.GenerateCode();
+            phoneVerification = OneTimeCodePolicy.Issue(
+                user.Id,
+                OneTimeCodePurpose.PhoneVerification,
+                phoneCode,
+                registeredAt);
+        }
+
         var emailCode = OneTimeCodePolicy.GenerateCode();
         var emailVerification = OneTimeCodePolicy.Issue(
             user.Id,
@@ -78,7 +93,11 @@ public sealed class RegisterCommandHandler(
 
         await userRepository.AddAsync(user, cancellationToken);
         await userCredentialRepository.AddAsync(credential, cancellationToken);
-        await oneTimeCodeRepository.AddAsync(phoneVerification, cancellationToken);
+        if (phoneVerification is not null)
+        {
+            await oneTimeCodeRepository.AddAsync(phoneVerification, cancellationToken);
+        }
+
         await oneTimeCodeRepository.AddAsync(emailVerification, cancellationToken);
 
         try
@@ -99,7 +118,10 @@ public sealed class RegisterCommandHandler(
 
         // Sent only after the registration is committed, so a rejected registration never texts or emails anyone.
         // If a send fails the account still exists, and the caller can request another code.
-        await smsSender.SendAsync(user.PhoneNumber!, OneTimeCodePolicy.BuildPhoneMessage(phoneCode), cancellationToken);
+        if (phoneCode is not null)
+        {
+            await smsSender.SendAsync(user.PhoneNumber!, OneTimeCodePolicy.BuildPhoneMessage(phoneCode), cancellationToken);
+        }
 
         var (subject, body) = OneTimeCodePolicy.BuildEmailVerificationMessage(emailCode);
         await emailSender.SendAsync(user.Email, subject, body, cancellationToken);
@@ -107,7 +129,7 @@ public sealed class RegisterCommandHandler(
         return Result<RegisterResult>.Success(new RegisterResult(
             user.Id,
             user.Status,
-            phoneVerification.ExpiresAt,
+            phoneVerification?.ExpiresAt,
             emailVerification.ExpiresAt));
     }
 }

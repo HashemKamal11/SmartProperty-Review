@@ -4,5 +4,5 @@ namespace SmartProperty.Api.Contracts.Authentication;
 public sealed record RegisterResponse(
     Guid UserId,
     string Status,
-    DateTimeOffset PhoneVerificationExpiresAt,
+    DateTimeOffset? PhoneVerificationExpiresAt,
     DateTimeOffset EmailVerificationExpiresAt);

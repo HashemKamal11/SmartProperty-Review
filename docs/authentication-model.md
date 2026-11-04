@@ -190,7 +190,7 @@ A successful registration tracks the user, its credential and the two verificati
 
 - a `User` with status `Pending`. It cannot sign in until it has verified both its phone number and its email. The `User` constructor trims the names and normalizes the email (trimmed, lower-case invariant).
 - its `UserCredential`, holding only the hash returned by `IPasswordHasher`. The password is hashed exactly as sent and is never persisted or returned.
-- a phone and an email verification code, sent after the commit. Verifying the last unverified contact (`verify-phone` or `verify-email`) activates the account through `User.ActivateWhenContactVerified`, so no administrator is involved.
+- a phone and an email verification code, sent after the commit. With `ContactVerification:AutoVerifyPhone` on (see [contact-verification-and-password-reset.md](contact-verification-and-password-reset.md)), the phone number is marked verified at registration instead: no phone code is stored or sent, and only the email code is. Verifying the last unverified contact (`verify-phone` or `verify-email`) activates the account through `User.ActivateWhenContactVerified`, so no administrator is involved.
 
 Registration is not tied to a workspace: it creates no `WorkspaceAccessRequest`, no `WorkspaceMembership`, no roles or permissions, and issues no tokens.
 
@@ -200,7 +200,7 @@ Success returns `201 Created` without a `Location` header. No endpoint reads a r
 {
   "userId": "...",
   "status": "Pending",
-  "phoneVerificationExpiresAt": "...",
+  "phoneVerificationExpiresAt": "...",   // null when ContactVerification:AutoVerifyPhone is on
   "emailVerificationExpiresAt": "..."
 }
 ```

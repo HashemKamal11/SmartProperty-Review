@@ -60,6 +60,8 @@ services:
       ImageStorage__RootPath: ${IMAGE_STORAGE_PATH:-/data/images}
       Bootstrap__Enabled: ${BOOTSTRAP_ENABLED:-false}
       Bootstrap__PlatformAdminEmail: ${BOOTSTRAP_PLATFORM_ADMIN_EMAIL:-}
+      # TEMPORARY: true marks a registered phone number as verified without sending an SMS. Keep false once SMS works.
+      ContactVerification__AutoVerifyPhone: ${AUTO_VERIFY_PHONE:-false}
       # Email through SMTP. Leave SMTP_HOST empty to use the logging stand-in that sends nothing.
       Smtp__Host: ${SMTP_HOST:-}
       Smtp__Port: ${SMTP_PORT:-587}

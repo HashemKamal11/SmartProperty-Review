@@ -171,6 +171,8 @@ internal static class ServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddOptions<ContactVerificationOptions>().BindConfiguration(ContactVerificationOptions.SectionName);
+        services.AddSingleton<IContactVerificationPolicy, ConfiguredContactVerificationPolicy>();
         services.AddSingleton<ISmsSender, LoggingSmsSender>();
 
         // Real SMTP when Smtp:Host is set, otherwise the logging stand-in, so a developer can run without a mail server.

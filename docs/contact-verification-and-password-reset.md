@@ -12,6 +12,12 @@ The shared logic lives in `Application/Authentication/OneTimeCodes` (`OneTimeCod
 
 `POST /api/auth/register` requires `phoneNumber` in international format (`+`, a country code that does not start with 0, up to 15 digits; spaces, dashes, dots, and parentheses are stripped). The number must be unique. The response is `201` with `userId` and the two expiry times. The phone code is sent through `ISmsSender` and the email code through `IEmailSender`, both after the registration is saved.
 
+### Temporary: auto-verifying the phone
+
+While no SMS provider is integrated, set `ContactVerification:AutoVerifyPhone` to `true` (environment variable `ContactVerification__AutoVerifyPhone`, or `AUTO_VERIFY_PHONE=true` in `.env` for Docker). Registration then marks the phone number verified at once: no phone code is stored, no SMS is sent, and `phoneVerificationExpiresAt` in the response is `null`. The email is unchanged: it still gets a code, and verifying it (`verify-email`) activates the account. The setting is off by default and the API logs a warning each time it is used.
+
+This proves nothing about the number, so anyone can register with a phone they do not own, and the "both contacts verified" rule that gates workspace access approval is then effectively an email check. Turn it off as soon as real SMS delivery is in place. Accounts registered while it was on stay phone-verified.
+
 | Endpoint | Body | Success | Errors |
 |---|---|---|---|
 | `POST /api/auth/verify-phone` | `phoneNumber`, `code` | `200` with `userId`, `phoneVerified`, `verifiedAt`, `status`, `message` | `422 phone_verification.invalid_code`, `409 phone_verification.too_many_attempts` |
