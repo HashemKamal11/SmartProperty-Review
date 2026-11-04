@@ -1,6 +1,8 @@
 #nullable enable
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using SmartProperty.Api.Infrastructure.Security;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.Authentication;
 using SmartProperty.Api.Infrastructure.Errors;
@@ -20,6 +22,10 @@ namespace SmartProperty.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
+// Tokens and one-time-code outcomes must never be stored by a browser cache or an intermediary.
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+// Open to anyone and expensive to abuse: guessing, and email/SMS flooding. See RateLimitingOptions.
+[EnableRateLimiting(RateLimitingOptions.AuthPolicyName)]
 public sealed class AuthController : ControllerBase
 {
     [AllowAnonymous]
@@ -294,6 +300,7 @@ public sealed class AuthController : ControllerBase
     // The first protected endpoint. The identity comes only from the validated principal: no user id, email,
     // or subject is accepted from the route, query string, headers, or a body.
     [Authorize]
+    [DisableRateLimiting]
     [HttpGet("me")]
     public async Task<IActionResult> Me(
         [FromServices] IQueryHandler<GetMeQuery, MeResult> handler,
@@ -319,6 +326,7 @@ public sealed class AuthController : ControllerBase
     }
 
     [Authorize]
+    [DisableRateLimiting]
     [HttpGet("context")]
     [ProducesResponseType<AuthContextResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]

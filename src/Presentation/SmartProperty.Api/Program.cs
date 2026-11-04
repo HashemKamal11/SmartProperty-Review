@@ -8,6 +8,7 @@ using SmartProperty.Api.Infrastructure.AiSearch;
 using SmartProperty.Api.Infrastructure.Storage;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Http;
+using SmartProperty.Api.Infrastructure.Security;
 using SmartProperty.Persistence;
 
 const string BearerSecuritySchemeName = "Bearer";
@@ -58,6 +59,7 @@ builder.Services.AddOpenApi(options =>
 
 builder.Services.AddApiConventions();
 builder.Services.AddDateTimeProvider();
+builder.Services.AddApiRateLimiting(builder.Configuration);
 builder.Services.AddApiAuthentication(builder.Configuration);
 builder.Services.AddApiAuthorization();
 builder.Services.AddPersistence(builder.Configuration);
@@ -69,6 +71,7 @@ builder.Services.AddPlatformAdminBootstrap(builder.Configuration);
 var app = builder.Build();
 
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 
 app.UseExceptionHandler(exceptionHandlerApp =>
 {
@@ -91,6 +94,8 @@ if (app.Environment.IsDevelopment() || app.Environment.IsStaging())
 }
 
 app.UseCors(ServiceCollectionExtensions.FrontendCorsPolicyName);
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

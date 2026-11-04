@@ -1,6 +1,8 @@
 #nullable enable
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using SmartProperty.Api.Infrastructure.Security;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.PropertyMatching;
 using SmartProperty.Api.Infrastructure.Errors;
@@ -22,6 +24,8 @@ namespace SmartProperty.Api.Controllers;
 /// </remarks>
 [ApiController]
 [Route("api/property-search")]
+// Anonymous callers trigger a paid upstream AI call and (when signed in) stored rows, so each address is limited.
+[EnableRateLimiting(RateLimitingOptions.SearchPolicyName)]
 public sealed class PropertySearchController : ControllerBase
 {
     [HttpPost]

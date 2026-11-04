@@ -125,6 +125,8 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
                 new KeyValuePair<string, string?>("ConnectionStrings:Database", databaseConnectionString),
                 .. TestJwt.Configuration(),
                 new KeyValuePair<string, string?>("Bootstrap:Enabled", "false"),
+                // Many tests sign in from the one in-memory client; the dedicated rate-limit tests turn this back on.
+                new KeyValuePair<string, string?>("RateLimiting:Enabled", "false"),
                 new KeyValuePair<string, string?>("Bootstrap:PlatformAdminEmail", string.Empty),
                 new KeyValuePair<string, string?>("ImageStorage:RootPath", ImageRoot),
                 .. extraConfiguration

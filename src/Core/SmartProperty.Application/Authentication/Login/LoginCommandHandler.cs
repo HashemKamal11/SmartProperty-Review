@@ -17,6 +17,7 @@ public sealed class LoginCommandHandler(
     IUserCredentialRepository userCredentialRepository,
     IRefreshTokenRepository refreshTokenRepository,
     IPasswordHasher passwordHasher,
+    ILoginAttemptLimiter loginAttemptLimiter,
     ITokenProvider tokenProvider,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
@@ -33,6 +34,13 @@ public sealed class LoginCommandHandler(
             return Result<LoginResult>.Failure(validationError);
         }
 
+        // Refused before any lookup or hashing, so a locked email costs the server nothing and the answer is the
+        // same for registered and unregistered emails.
+        if (loginAttemptLimiter.IsLockedOut(command.Email))
+        {
+            return Result<LoginResult>.Failure(LoginErrors.TooManyAttempts);
+        }
+
         // The repository normalizes the email the same way User stores it.
         var user = await userRepository.GetByEmailAsync(command.Email, cancellationToken);
 
@@ -41,6 +49,7 @@ public sealed class LoginCommandHandler(
             // Spends the same password-hashing work a real attempt costs, so an unregistered email is not
             // distinguishable from a wrong password by response time alone.
             passwordHasher.PerformDummyVerification(command.Password);
+            loginAttemptLimiter.RegisterFailure(command.Email);
 
             return Result<LoginResult>.Failure(LoginErrors.InvalidCredentials);
         }
@@ -50,6 +59,7 @@ public sealed class LoginCommandHandler(
         if (credential is null)
         {
             passwordHasher.PerformDummyVerification(command.Password);
+            loginAttemptLimiter.RegisterFailure(command.Email);
 
             return Result<LoginResult>.Failure(LoginErrors.InvalidCredentials);
         }
@@ -59,6 +69,8 @@ public sealed class LoginCommandHandler(
         // Anything other than a successful verification, including an unrecognized value, fails closed.
         if (verification is not (PasswordVerificationStatus.Success or PasswordVerificationStatus.SuccessRehashNeeded))
         {
+            loginAttemptLimiter.RegisterFailure(command.Email);
+
             return Result<LoginResult>.Failure(LoginErrors.InvalidCredentials);
         }
 
@@ -68,6 +80,8 @@ public sealed class LoginCommandHandler(
         {
             return Result<LoginResult>.Failure(LoginErrors.AccountUnavailable);
         }
+
+        loginAttemptLimiter.Reset(command.Email);
 
         var loggedInAt = dateTimeProvider.UtcNow;
 

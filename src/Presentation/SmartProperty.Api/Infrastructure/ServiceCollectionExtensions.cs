@@ -171,6 +171,7 @@ internal static class ServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddSingleton<ILoginAttemptLimiter, InMemoryLoginAttemptLimiter>();
         services.AddOptions<ContactVerificationOptions>().BindConfiguration(ContactVerificationOptions.SectionName);
         services.AddSingleton<IContactVerificationPolicy, ConfiguredContactVerificationPolicy>();
         services.AddSingleton<ISmsSender, LoggingSmsSender>();

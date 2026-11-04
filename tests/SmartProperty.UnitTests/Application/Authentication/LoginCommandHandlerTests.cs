@@ -29,6 +29,12 @@ public sealed class LoginCommandHandlerTests
     private readonly FakeTokenProvider _tokenProvider = new(Now.AddDays(7));
     private readonly FakeDateTimeProvider _dateTimeProvider = new(Now);
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly InMemoryLoginAttemptLimiter _limiter;
+
+    public LoginCommandHandlerTests()
+    {
+        _limiter = new InMemoryLoginAttemptLimiter(_dateTimeProvider);
+    }
 
     [Fact]
     public async Task UnknownUser_ReturnsGenericInvalidCredentials()
@@ -294,6 +300,105 @@ public sealed class LoginCommandHandlerTests
         await Assert.ThrowsAsync<ArgumentNullException>(() => CreateHandler().Handle(null!));
     }
 
+    [Fact]
+    public async Task RepeatedWrongPasswords_LockTheEmail_EvenForTheCorrectPassword()
+    {
+        SeedUserWithCredential(UserStatus.Active);
+        _passwordHasher.VerifyResult = PasswordVerificationStatus.Failed;
+        var handler = CreateHandler();
+
+        for (var attempt = 0; attempt < InMemoryLoginAttemptLimiter.MaxFailures; attempt++)
+        {
+            var failed = await handler.Handle(new LoginCommand(Email, "wrong-guess-" + attempt));
+            Assert.Same(LoginErrors.InvalidCredentials, failed.Error);
+        }
+
+        // The attacker finally guesses right: the lock still holds, and nothing is verified or issued.
+        _passwordHasher.VerifyResult = PasswordVerificationStatus.Success;
+        var verifyCallsBefore = _passwordHasher.VerifyCallCount;
+
+        var locked = await handler.Handle(new LoginCommand(Email, Password));
+
+        Assert.True(locked.IsFailure);
+        Assert.Same(LoginErrors.TooManyAttempts, locked.Error);
+        Assert.Equal(verifyCallsBefore, _passwordHasher.VerifyCallCount);
+        AssertNothingWasIssuedOrSaved();
+    }
+
+    [Fact]
+    public async Task UnknownEmail_IsLockedLikeARegisteredOne()
+    {
+        var handler = CreateHandler();
+
+        for (var attempt = 0; attempt < InMemoryLoginAttemptLimiter.MaxFailures; attempt++)
+        {
+            await handler.Handle(new LoginCommand(Email, Password));
+        }
+
+        var locked = await handler.Handle(new LoginCommand(Email, Password));
+
+        Assert.Same(LoginErrors.TooManyAttempts, locked.Error);
+    }
+
+    [Fact]
+    public async Task Lock_IgnoresCaseAndPaddingOfTheEmail()
+    {
+        SeedUserWithCredential(UserStatus.Active);
+        _passwordHasher.VerifyResult = PasswordVerificationStatus.Failed;
+        var handler = CreateHandler();
+
+        for (var attempt = 0; attempt < InMemoryLoginAttemptLimiter.MaxFailures; attempt++)
+        {
+            await handler.Handle(new LoginCommand(Email, "wrong"));
+        }
+
+        var locked = await handler.Handle(new LoginCommand("  " + Email.ToUpperInvariant() + " ", Password));
+
+        Assert.Same(LoginErrors.TooManyAttempts, locked.Error);
+    }
+
+    [Fact]
+    public async Task Lock_ExpiresAfterTheLockoutDuration_AndLegitimateLoginWorksAgain()
+    {
+        SeedUserWithCredential(UserStatus.Active);
+        _passwordHasher.VerifyResult = PasswordVerificationStatus.Failed;
+        var handler = CreateHandler();
+
+        for (var attempt = 0; attempt < InMemoryLoginAttemptLimiter.MaxFailures; attempt++)
+        {
+            await handler.Handle(new LoginCommand(Email, "wrong"));
+        }
+
+        _dateTimeProvider.UtcNow = Now.Add(InMemoryLoginAttemptLimiter.LockoutDuration).AddSeconds(1);
+        _passwordHasher.VerifyResult = PasswordVerificationStatus.Success;
+
+        var result = await handler.Handle(new LoginCommand(Email, Password));
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task FailuresBelowTheAllowance_DoNotLock_AndASuccessClearsThem()
+    {
+        SeedUserWithCredential(UserStatus.Active);
+        var handler = CreateHandler();
+
+        for (var round = 0; round < 3; round++)
+        {
+            _passwordHasher.VerifyResult = PasswordVerificationStatus.Failed;
+
+            for (var attempt = 0; attempt < InMemoryLoginAttemptLimiter.MaxFailures - 1; attempt++)
+            {
+                await handler.Handle(new LoginCommand(Email, "wrong"));
+            }
+
+            _passwordHasher.VerifyResult = PasswordVerificationStatus.Success;
+            var ok = await handler.Handle(new LoginCommand(Email, Password));
+
+            Assert.True(ok.IsSuccess);
+        }
+    }
+
     private LoginCommandHandler CreateHandler()
     {
         return new LoginCommandHandler(
@@ -301,6 +406,7 @@ public sealed class LoginCommandHandlerTests
             _credentials,
             _refreshTokens,
             _passwordHasher,
+            _limiter,
             _tokenProvider,
             _dateTimeProvider,
             _unitOfWork);

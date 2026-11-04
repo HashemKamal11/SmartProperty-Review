@@ -54,6 +54,12 @@ public sealed class ResetPasswordCommandHandler(
             return Result.Failure(OneTimeCodeErrors.ValidationFailed("New password is required."));
         }
 
+        if (command.NewPassword.Length < RegisterCommandValidator.PasswordMinLength)
+        {
+            return Result.Failure(OneTimeCodeErrors.ValidationFailed(
+                $"New password must be at least {RegisterCommandValidator.PasswordMinLength} characters."));
+        }
+
         if (command.NewPassword.Length > RegisterCommandValidator.PasswordMaxLength)
         {
             return Result.Failure(OneTimeCodeErrors.ValidationFailed(

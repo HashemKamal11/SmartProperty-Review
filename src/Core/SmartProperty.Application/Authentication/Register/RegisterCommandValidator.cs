@@ -12,7 +12,10 @@ internal static class RegisterCommandValidator
     internal const int EmailMaxLength = 320;
     private const int NameMaxLength = 100;
 
-    // Defensive bound on input passed to the password hasher. Not a strength policy; none is approved yet.
+    // Shortest accepted password (NIST SP 800-63B minimum for user-chosen secrets). No composition rules.
+    internal const int PasswordMinLength = 8;
+
+    // Defensive bound on input passed to the password hasher.
     internal const int PasswordMaxLength = 128;
 
     public static Error? Validate(RegisterCommand command)
@@ -39,6 +42,11 @@ internal static class RegisterCommandValidator
         if (string.IsNullOrWhiteSpace(command.Password))
         {
             return RegisterErrors.ValidationFailed("Password is required.");
+        }
+
+        if (command.Password.Length < PasswordMinLength)
+        {
+            return RegisterErrors.ValidationFailed($"Password must be at least {PasswordMinLength} characters.");
         }
 
         if (command.Password.Length > PasswordMaxLength)

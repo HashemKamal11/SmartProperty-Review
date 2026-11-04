@@ -18,6 +18,12 @@ internal static class LoginErrors
         "This account is not currently allowed to sign in.",
         ErrorType.Forbidden);
 
+    // Returned once an email has used up its failed-attempt allowance, for any email, registered or not.
+    public static readonly Error TooManyAttempts = new(
+        "authentication.too_many_attempts",
+        "Too many failed sign-in attempts. Try again later.",
+        ErrorType.TooManyRequests);
+
     public static Error ValidationFailed(string description)
     {
         return new Error("validation.failed", description, ErrorType.Validation);

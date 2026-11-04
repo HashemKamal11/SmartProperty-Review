@@ -30,6 +30,7 @@ internal static class ApiErrorResponseFactory
             ErrorType.Conflict => StatusCodes.Status409Conflict,
             ErrorType.Forbidden => StatusCodes.Status403Forbidden,
             ErrorType.Unauthorized => StatusCodes.Status401Unauthorized,
+            ErrorType.TooManyRequests => StatusCodes.Status429TooManyRequests,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(error.Type),
                 error.Type,
@@ -84,6 +85,19 @@ internal static class ApiErrorResponseFactory
             ApiErrorCodes.Forbidden,
             "You do not have permission to access this resource.",
             StatusCodes.Status403Forbidden,
+            FieldErrors: null,
+            GetCorrelationId(httpContext));
+    }
+
+    /// <summary>The public response when a client address has used up its request allowance.</summary>
+    public static ApiErrorResponse TooManyRequests(HttpContext httpContext)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        return new ApiErrorResponse(
+            ApiErrorCodes.TooManyRequests,
+            "Too many requests. Try again later.",
+            StatusCodes.Status429TooManyRequests,
             FieldErrors: null,
             GetCorrelationId(httpContext));
     }
