@@ -59,6 +59,26 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<PropertyDetails>> GetDetailsByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var wanted = ids.ToList();
+
+        return await dbContext.Properties
+            .AsNoTracking()
+            .Where(property => wanted.Contains(property.Id))
+            .Select(PropertyDetailsProjection.Expression)
+            .ToListAsync(cancellationToken);
+    }
+
     /// <remarks>
     /// Two commands: one count over the filter, one page of projected rows. No entity is materialized or tracked.
     ///

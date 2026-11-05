@@ -3,6 +3,7 @@ using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.PropertyMatching;
 
@@ -70,6 +71,12 @@ public sealed class SearchPropertiesCommandHandler(
             ? new HashSet<Guid>()
             : (await propertyRepository.GetExistingIdsAsync(candidateIds, cancellationToken)).ToHashSet();
 
+        // The property itself, in the shape GET /api/properties/{id} returns, for each result that is one of ours.
+        var ownDetails = existing.Count == 0
+            ? new Dictionary<Guid, PropertyDetails>()
+            : (await propertyRepository.GetDetailsByIdsAsync(existing.ToList(), cancellationToken))
+                .ToDictionary(details => details.Id);
+
         // A match belongs to a user: an anonymous search (no user id) is answered but never stored.
         Guid? userId = command.UserId is { } id0 && id0 != Guid.Empty ? id0 : null;
 
@@ -90,7 +97,14 @@ public sealed class SearchPropertiesCommandHandler(
                     cancellationToken);
             }
 
-            items.Add(new PropertySearchItem(propertyId, item.ExternalId, item.PropertyId, percentage, description, item));
+            items.Add(new PropertySearchItem(
+                propertyId,
+                item.ExternalId,
+                item.PropertyId,
+                percentage,
+                description,
+                item,
+                propertyId is { } found && ownDetails.TryGetValue(found, out var details) ? details : null));
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

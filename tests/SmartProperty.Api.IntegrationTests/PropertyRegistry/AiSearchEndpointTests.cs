@@ -62,6 +62,35 @@ public sealed class AiSearchEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task EachOfOurResultsCarriesTheSamePropertyObjectGetByIdReturnsAndOthersCarryNone()
+    {
+        var ours = await SeedPropertyAsync();
+        _factory.AiGateway.SearchOutcome = new AiSearchOutcome(
+            "flat",
+            "a flat",
+            2,
+            [Item(ours.ToString(), "PF-OURS-1", 0.9, "وصف"), Item(null, "EGY-SALE-APT-007694", 0.4, "someone else's")]);
+        using var client = _factory.CreateClient();
+
+        using var search = await client.PostAsJsonAsync(SearchRoute, new PropertySearchRequest("flat"));
+        var body = (await search.Content.ReadFromJsonAsync<PropertySearchResponse>())!;
+        var byId = await client.GetStringAsync($"/api/properties/{ours}");
+
+        Assert.Equal(HttpStatusCode.OK, search.StatusCode);
+        var mine = body.Items.Single(item => item.PropertyId == ours);
+        Assert.NotNull(mine.Property);
+        Assert.Equal(ours, mine.Property.Id);
+        // The same JSON as the by-id endpoint, field for field.
+        Assert.Equal(byId, System.Text.Json.JsonSerializer.Serialize(
+            mine.Property,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+            {
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            }));
+        Assert.Null(body.Items.Single(item => item.PropertyId is null).Property);
+    }
+
+    [Fact]
     public async Task SearchStoresAMatchForTheSignedInUserAndReturnsEveryResult()
     {
         var userId = await SeedUserAsync();

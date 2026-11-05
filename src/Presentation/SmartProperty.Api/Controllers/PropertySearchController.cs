@@ -93,6 +93,7 @@ public sealed class PropertySearchController : ControllerBase
                     item.Details.TitleAr,
                     item.Details.TitleEn,
                     item.Details.DescriptionAr,
-                    item.Details.DescriptionEn))).ToArray()));
+                    item.Details.DescriptionEn),
+                item.Property is null ? null : PropertiesController.ToResponse(item.Property))).ToArray()));
     }
 }
