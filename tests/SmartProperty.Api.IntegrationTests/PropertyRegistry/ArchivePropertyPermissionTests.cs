@@ -70,7 +70,7 @@ public sealed class ArchivePropertyPermissionTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task PropertyArchiveAloneDoesNotAuthorizeCreateReadOrUpdate()
+    public async Task PropertyArchiveAloneDoesNotAuthorizeCreateOrUpdate()
     {
         var property = await SeedPropertyAsync();
         using var factory = CreateFactory();
@@ -87,8 +87,9 @@ public sealed class ArchivePropertyPermissionTests(ApiPostgreSqlFixture fixture)
             new UpdatePropertyRequest("Apartment", "SA"));
 
         Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, getById.StatusCode);
+        // Reading is public, so these two are open to everyone.
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, getById.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
     }
 

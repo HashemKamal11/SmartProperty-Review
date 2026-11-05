@@ -75,7 +75,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task PropertyUpdateAloneDoesNotAuthorizeCreateOrRead()
+    public async Task PropertyUpdateAloneDoesNotAuthorizeCreate()
     {
         var property = await SeedPropertyAsync();
         using var factory = CreateFactory();
@@ -89,8 +89,9 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
         using var getById = await client.GetAsync($"/api/properties/{property.Id}");
 
         Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, getById.StatusCode);
+        // Reading is public, so these two are open to everyone.
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, getById.StatusCode);
     }
 
     private SmartPropertyApiFactory CreateFactory()

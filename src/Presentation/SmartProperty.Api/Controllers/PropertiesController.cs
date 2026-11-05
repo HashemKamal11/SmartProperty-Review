@@ -1,4 +1,5 @@
 #nullable enable
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.PropertyRegistry;
@@ -26,8 +27,8 @@ namespace SmartProperty.Api.Controllers;
 /// <remarks>
 /// Each action declares its own permission rather than the controller declaring one for all: the attribute allows
 /// multiples and every one must pass, so a controller-level requirement would silently be added to every action.
-/// Reading must not require <c>property.create</c>, and creating must not require <c>property.read</c>. Updating
-/// requires <c>property.update</c> alone, and archiving requires <c>property.archive</c> alone.
+/// Reading is public: listing and getting one property need no sign-in and no permission. Creating requires
+/// <c>property.create</c> alone, updating <c>property.update</c> alone, and archiving <c>property.archive</c> alone.
 /// </remarks>
 [ApiController]
 [Route("api/properties")]
@@ -121,11 +122,9 @@ public sealed class PropertiesController : ControllerBase
     /// <c>400 request.malformed</c>; an invalid country code is a <c>422 validation.failed</c> from the use case.
     /// </remarks>
     [HttpGet]
-    [RequirePermission(PermissionCodes.PropertyRead)]
+    [AllowAnonymous]
     [ProducesResponseType<PagedResponse<PropertyResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> List(
         [FromServices] IQueryHandler<GetPropertiesQuery, PagedList<PropertyDetails>> handler,
@@ -161,10 +160,8 @@ public sealed class PropertiesController : ControllerBase
 
     /// <summary>One property, whatever its status. An Archived property is returned, not hidden.</summary>
     [HttpGet("{id:guid}")]
-    [RequirePermission(PermissionCodes.PropertyRead)]
+    [AllowAnonymous]
     [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
-    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(
         Guid id,
