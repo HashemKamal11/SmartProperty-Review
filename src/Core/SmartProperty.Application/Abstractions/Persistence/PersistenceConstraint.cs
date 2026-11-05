@@ -49,5 +49,15 @@ public enum PersistenceConstraint
     /// <summary>
     /// A workspace membership can hold a given role at most once (the workspace_membership_roles composite key).
     /// </summary>
-    WorkspaceMembershipRoleKey = 9
+    WorkspaceMembershipRoleKey = 9,
+
+    /// <summary>
+    /// A user has at most one owner profile.
+    /// </summary>
+    OwnerProfileUser = 10,
+
+    /// <summary>
+    /// A national ID belongs to at most one owner profile.
+    /// </summary>
+    OwnerProfileNationalId = 11
 }

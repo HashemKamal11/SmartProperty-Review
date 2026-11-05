@@ -229,6 +229,17 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
             .HasForeignKey(property => property.CompoundId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // Who registered it. Nullable: rows from before owners were recorded have none. Users are never deleted.
+        builder.Property(property => property.OwnerUserId)
+            .HasColumnName("owner_user_id");
+
+        builder.HasOne<SmartProperty.Domain.Identity.User>()
+            .WithMany()
+            .HasForeignKey(property => property.OwnerUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(property => property.OwnerUserId);
+
         // Bookkeeping about the copy held by the AI search service; it never moves updated_at.
         builder.Property(property => property.AiSyncStatus)
             .HasColumnName("ai_sync_status")

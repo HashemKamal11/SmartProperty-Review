@@ -29,4 +29,5 @@ public sealed record CreatePropertyCommand(
     string? DescriptionAr = null,
     string? DescriptionEn = null,
     Guid? AreaId = null,
-    Guid? CompoundId = null) : ICommand<CreatePropertyResult>;
+    Guid? CompoundId = null,
+    Guid? OwnerUserId = null) : ICommand<CreatePropertyResult>;

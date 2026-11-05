@@ -188,7 +188,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyCreate);
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyRead);
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyUpdate);
-        return _factory.CreateAuthenticatedClient(Guid.NewGuid());
+        return _factory.CreateAuthenticatedClient(TestUsers.Seed(_fixture));
     }
 
     private async Task<Property> SeedAsync(params string[] amenityCodes)

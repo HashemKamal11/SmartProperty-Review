@@ -222,4 +222,14 @@ internal sealed class FakeRoleRepository : IRoleRepository
 
         return Task.CompletedTask;
     }
+
+    public Task<bool> RemoveUserAssignmentAsync(
+        Guid userId,
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        var removed = _userAssignments.RemoveAll(assignment => assignment.UserId == userId && assignment.RoleId == roleId) > 0;
+
+        return Task.FromResult(removed);
+    }
 }
