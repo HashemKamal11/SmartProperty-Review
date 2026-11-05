@@ -481,6 +481,11 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("ai_id");
 
+                    b.Property<string>("Code")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("code");
+
                     b.Property<string>("NameAr")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -499,7 +504,10 @@ namespace SmartProperty.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_locations_countries_ai_id");
 
-                    b.ToTable("countries", "locations");
+                    b.ToTable("countries", "locations", t =>
+                        {
+                            t.HasCheckConstraint("ck_locations_countries_code", "code IS NULL OR code ~ '^[A-Z]{2}$'");
+                        });
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.ListingReviewDecision", b =>

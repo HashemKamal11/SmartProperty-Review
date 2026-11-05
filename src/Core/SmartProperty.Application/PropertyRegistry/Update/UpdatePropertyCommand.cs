@@ -8,10 +8,7 @@ namespace SmartProperty.Application.PropertyRegistry.Update;
 public sealed record UpdatePropertyCommand(
     Guid Id,
     string? Type,
-    string? CountryCode,
-    string? City = null,
-    string? Region = null,
-    string? District = null,
+    Guid? AreaId,
     string? AddressLine = null,
     string? PostalCode = null,
     decimal? Latitude = null,
@@ -32,5 +29,4 @@ public sealed record UpdatePropertyCommand(
     string? TitleEn = null,
     string? DescriptionAr = null,
     string? DescriptionEn = null,
-    Guid? AreaId = null,
     Guid? CompoundId = null) : ICommand<PropertyDetails>;

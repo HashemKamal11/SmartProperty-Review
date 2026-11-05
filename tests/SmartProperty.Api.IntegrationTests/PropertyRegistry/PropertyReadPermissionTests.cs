@@ -94,7 +94,7 @@ public sealed class PropertyReadPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PostAsJsonAsync(
             "/api/properties",
-            new CreatePropertyRequest("Land", "SA"));
+            new CreatePropertyRequest("Land", Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

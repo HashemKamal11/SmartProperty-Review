@@ -1,6 +1,7 @@
 using SmartProperty.Application.PropertyRegistry.Amenities;
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Application.PropertyRegistry.Update;
+using SmartProperty.Domain.Locations;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.UnitTests.TestDoubles;
 using Xunit;
@@ -17,6 +18,7 @@ public sealed class PropertyAmenitiesHandlerTests
     private readonly FakeLocationRepository _locations = new();
     private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private Area? _place;
     private readonly Amenity _pool;
     private readonly Amenity _gym;
     private readonly Amenity _balcony;
@@ -32,7 +34,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CreateAttachesTheChosenAmenitiesAndReturnsThemInDisplayOrder()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["SwimmingPool", "Balcony"]));
+            new CreatePropertyCommand("Apartment", Place.Id, AmenityCodes: ["SwimmingPool", "Balcony"]));
 
         Assert.True(result.IsSuccess);
         var property = Assert.Single(_properties.Added);
@@ -43,7 +45,7 @@ public sealed class PropertyAmenitiesHandlerTests
     [Fact]
     public async Task CreateWithoutAmenityCodesAttachesNothingAndDoesNotAskTheRepository()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", "EG"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", Place.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Empty(Assert.Single(_properties.Added).Amenities);
@@ -55,7 +57,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CreateCollapsesDuplicateAndPaddedCodes()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["Balcony", " Balcony ", "Balcony"]));
+            new CreatePropertyCommand("Apartment", Place.Id, AmenityCodes: ["Balcony", " Balcony ", "Balcony"]));
 
         Assert.True(result.IsSuccess);
         Assert.Single(Assert.Single(_properties.Added).Amenities);
@@ -65,7 +67,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CreateRejectsAnUnknownCodeNamingItAndStoresNothing()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["Balcony", "Helipad", "Moat"]));
+            new CreatePropertyCommand("Apartment", Place.Id, AmenityCodes: ["Balcony", "Helipad", "Moat"]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -82,7 +84,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CreateRejectsABlankCode(string code)
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["Balcony", code]));
+            new CreatePropertyCommand("Apartment", Place.Id, AmenityCodes: ["Balcony", code]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -93,7 +95,7 @@ public sealed class PropertyAmenitiesHandlerTests
     public async Task CodesAreMatchedExactlyIncludingCase()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Apartment", "EG", AmenityCodes: ["balcony"]));
+            new CreatePropertyCommand("Apartment", Place.Id, AmenityCodes: ["balcony"]));
 
         Assert.True(result.IsFailure);
     }
@@ -104,7 +106,7 @@ public sealed class PropertyAmenitiesHandlerTests
         var property = SeedProperty(_pool, _gym);
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Apartment", "EG", AmenityCodes: ["SharedGym", "Balcony"]));
+            new UpdatePropertyCommand(property.Id, "Apartment", Place.Id, AmenityCodes: ["SharedGym", "Balcony"]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, property.Amenities.Count);
@@ -120,7 +122,7 @@ public sealed class PropertyAmenitiesHandlerTests
     {
         var property = SeedProperty(_pool);
 
-        var result = await UpdateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "EG"));
+        var result = await UpdateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", Place.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Empty(property.Amenities);
@@ -133,7 +135,7 @@ public sealed class PropertyAmenitiesHandlerTests
         var property = SeedProperty(_pool, _gym);
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Apartment", "EG", AmenityCodes: ["SwimmingPool", "SharedGym"]));
+            new UpdatePropertyCommand(property.Id, "Apartment", Place.Id, AmenityCodes: ["SwimmingPool", "SharedGym"]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
@@ -145,7 +147,7 @@ public sealed class PropertyAmenitiesHandlerTests
         var property = SeedProperty(_pool);
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Apartment", "EG", AmenityCodes: ["Helipad"]));
+            new UpdatePropertyCommand(property.Id, "Apartment", Place.Id, AmenityCodes: ["Helipad"]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -168,11 +170,16 @@ public sealed class PropertyAmenitiesHandlerTests
     private Property SeedProperty(params Amenity[] amenities)
     {
         var property = new Property(
-            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), Now.AddDays(-5), amenities: amenities);
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG", "Cairo", region: null, district: "Helwan"),
+            Now.AddDays(-5),
+            amenities: amenities,
+            area: Place);
         _properties.Tracked.Add(property.Id, property);
 
         return property;
     }
+
+    private Area Place => _place ??= _locations.SeedArea(_locations.SeedCity(_locations.SeedCountry()));
 
     private CreatePropertyCommandHandler CreateHandler()
     {

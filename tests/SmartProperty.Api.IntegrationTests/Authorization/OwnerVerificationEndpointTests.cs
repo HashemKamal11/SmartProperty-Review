@@ -377,7 +377,8 @@ public sealed class OwnerVerificationEndpointTests : IDisposable
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyCreate);
         using var client = _factory.CreateAuthenticatedClient(ownerId);
 
-        using var response = await client.PostAsJsonAsync("/api/properties", new CreatePropertyRequest("Land", "SA"));
+        var place = TestPlaces.Seed(_fixture);
+        using var response = await client.PostAsJsonAsync("/api/properties", new CreatePropertyRequest("Land", place.AreaId));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = (await response.Content.ReadFromJsonAsync<CreatePropertyResponse>())!;

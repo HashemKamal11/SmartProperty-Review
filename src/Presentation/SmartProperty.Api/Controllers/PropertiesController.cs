@@ -49,10 +49,7 @@ public sealed class PropertiesController : ControllerBase
     {
         var command = new CreatePropertyCommand(
             request.Type,
-            request.CountryCode,
-            request.City,
-            request.Region,
-            request.District,
+            request.AreaId,
             request.AddressLine,
             request.PostalCode,
             request.Latitude,
@@ -73,7 +70,6 @@ public sealed class PropertiesController : ControllerBase
             request.TitleEn,
             request.DescriptionAr,
             request.DescriptionEn,
-            request.AreaId,
             request.CompoundId,
             currentUser.UserId);
 
@@ -204,10 +200,7 @@ public sealed class PropertiesController : ControllerBase
         var command = new UpdatePropertyCommand(
             id,
             request.Type,
-            request.CountryCode,
-            request.City,
-            request.Region,
-            request.District,
+            request.AreaId,
             request.AddressLine,
             request.PostalCode,
             request.Latitude,
@@ -228,7 +221,6 @@ public sealed class PropertiesController : ControllerBase
             request.TitleEn,
             request.DescriptionAr,
             request.DescriptionEn,
-            request.AreaId,
             request.CompoundId);
 
         var result = await handler.Handle(command, cancellationToken);

@@ -24,7 +24,7 @@ public sealed class CreatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PostAsJsonAsync(
             "/api/properties",
-            new CreatePropertyRequest("Land", "SA"));
+            new CreatePropertyRequest("Land", TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
@@ -43,7 +43,7 @@ public sealed class CreatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PostAsJsonAsync(
             "/api/properties",
-            new CreatePropertyRequest("Land", "SA"));
+            new CreatePropertyRequest("Land", Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

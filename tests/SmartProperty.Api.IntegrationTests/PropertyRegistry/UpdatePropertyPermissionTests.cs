@@ -33,7 +33,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PutAsJsonAsync(
             $"/api/properties/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "SA"));
+            new UpdatePropertyRequest("Apartment", TestPlaces.Seed(fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -50,7 +50,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PutAsJsonAsync(
             $"/api/properties/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "SA"));
+            new UpdatePropertyRequest("Apartment", Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -69,7 +69,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PutAsJsonAsync(
             $"/api/properties/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "SA"));
+            new UpdatePropertyRequest("Apartment", Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -84,7 +84,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
         await scenario.GrantPlatformPermissionAsync(user.UserId, PermissionCodes.PropertyUpdate);
         using var client = factory.CreateAuthenticatedClient(user.UserId);
 
-        using var create = await client.PostAsJsonAsync("/api/properties", new CreatePropertyRequest("Land", "SA"));
+        using var create = await client.PostAsJsonAsync("/api/properties", new CreatePropertyRequest("Land", Guid.NewGuid()));
         using var list = await client.GetAsync("/api/properties");
         using var getById = await client.GetAsync($"/api/properties/{property.Id}");
 

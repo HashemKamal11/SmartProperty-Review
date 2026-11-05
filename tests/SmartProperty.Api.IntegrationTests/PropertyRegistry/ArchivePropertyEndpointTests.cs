@@ -216,7 +216,7 @@ public sealed class ArchivePropertyEndpointTests : IDisposable
         var archived = (await archive.Content.ReadFromJsonAsync<PropertyResponse>())!;
         using var update = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "AE"));
+            new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, update.StatusCode);

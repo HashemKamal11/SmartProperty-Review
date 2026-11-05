@@ -39,7 +39,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
         using var client = AuthorizedClient();
         var request = new CreatePropertyRequest(
             "Apartment",
-            "EG",
+            TestPlaces.Seed(_fixture).AreaId,
             Bedrooms: 3,
             Bathrooms: 2,
             BuiltDate: new DateOnly(2021, 6, 30),
@@ -66,7 +66,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
 
-        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", "EG"));
+        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<CreatePropertyResponse>())!;
@@ -94,7 +94,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
         using var response = await client.PostAsJsonAsync(
             Route,
             new CreatePropertyRequest(
-                "Apartment", "EG", Bedrooms: bedrooms, Bathrooms: bathrooms, FinishingStatus: finishingStatus));
+                "Apartment", TestPlaces.Seed(_fixture).AreaId, Bedrooms: bedrooms, Bathrooms: bathrooms, FinishingStatus: finishingStatus));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -109,7 +109,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
 
         using var response = await client.PostAsJsonAsync(
             Route,
-            new CreatePropertyRequest("Apartment", "EG", BuiltDate: new DateOnly(1799, 12, 31)));
+            new CreatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId, BuiltDate: new DateOnly(1799, 12, 31)));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -123,7 +123,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
         using var set = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
             new UpdatePropertyRequest(
-                "Apartment", "EG", Bedrooms: 4, Bathrooms: 3, BuiltDate: new DateOnly(2015, 1, 2), FinishingStatus: "LuxuryFinished"));
+                "Apartment", TestPlaces.Seed(_fixture).AreaId, Bedrooms: 4, Bathrooms: 3, BuiltDate: new DateOnly(2015, 1, 2), FinishingStatus: "LuxuryFinished"));
 
         Assert.Equal(HttpStatusCode.OK, set.StatusCode);
         var updated = (await set.Content.ReadFromJsonAsync<PropertyResponse>())!;
@@ -132,7 +132,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
         Assert.Equal(new DateOnly(2015, 1, 2), updated.BuiltDate);
         Assert.Equal("LuxuryFinished", updated.FinishingStatus);
 
-        using var cleared = await client.PutAsJsonAsync($"{Route}/{property.Id}", new UpdatePropertyRequest("Apartment", "EG"));
+        using var cleared = await client.PutAsJsonAsync($"{Route}/{property.Id}", new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
         var persisted = await LoadAsync(property.Id);
@@ -150,7 +150,7 @@ public sealed class PropertySpecificationsEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "EG", Bedrooms: 5, FinishingStatus: "Shiny"));
+            new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId, Bedrooms: 5, FinishingStatus: "Shiny"));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal(2, (await LoadAsync(property.Id)).Bedrooms);

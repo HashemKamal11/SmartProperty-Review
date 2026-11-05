@@ -1,6 +1,7 @@
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.PropertyRegistry.Update;
 using SmartProperty.Common.Results;
+using SmartProperty.Domain.Locations;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.UnitTests.TestDoubles;
 using Xunit;
@@ -19,6 +20,14 @@ public sealed class UpdatePropertyCommandHandlerTests
     private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeDateTimeProvider _clock = new(UpdatedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly Area _olaya;
+    private readonly Area _downtown;
+
+    public UpdatePropertyCommandHandlerTests()
+    {
+        _olaya = SeedPlace("Saudi Arabia", "Riyadh", "Al Olaya");
+        _downtown = SeedPlace("United Arab Emirates", "Dubai", "Downtown");
+    }
 
     [Fact]
     public async Task ValidCommandCorrectsEveryMutableFieldAndCommitsOnce()
@@ -30,10 +39,7 @@ public sealed class UpdatePropertyCommandHandlerTests
             new UpdatePropertyCommand(
                 property.Id,
                 "Building",
-                " ae ",
-                " Dubai ",
-                " Dubai Emirate ",
-                " Downtown ",
+                _downtown.Id,
                 " Sheikh Zayed Road ",
                 " 00000 ",
                 25.1972m,
@@ -44,7 +50,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         Assert.Equal(PropertyType.Building, property.Type);
         Assert.Equal("AE", property.Address.CountryCode);
         Assert.Equal("Dubai", property.Address.City);
-        Assert.Equal("Dubai Emirate", property.Address.Region);
+        Assert.Null(property.Address.Region);
         Assert.Equal("Downtown", property.Address.District);
         Assert.Equal("Sheikh Zayed Road", property.Address.AddressLine);
         Assert.Equal("00000", property.Address.PostalCode);
@@ -67,7 +73,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         Assert.Equal(PropertyStatus.Active, details.Status);
         Assert.Equal("AE", details.Address.CountryCode);
         Assert.Equal("Dubai", details.Address.City);
-        Assert.Equal("Dubai Emirate", details.Address.Region);
+        Assert.Null(details.Address.Region);
         Assert.Equal("Downtown", details.Address.District);
         Assert.Equal("Sheikh Zayed Road", details.Address.AddressLine);
         Assert.Equal("00000", details.Address.PostalCode);
@@ -78,7 +84,7 @@ public sealed class UpdatePropertyCommandHandlerTests
     }
 
     [Fact]
-    public async Task OmittedOrBlankOptionalValuesClearTheStoredOnes()
+    public async Task OmittedOrBlankStreetPostalCodeAndCoordinatesClearTheStoredOnes()
     {
         var property = SeedProperty(new PropertyAddress(
             "SA",
@@ -93,14 +99,13 @@ public sealed class UpdatePropertyCommandHandlerTests
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             "Land",
-            "SA",
-            City: "   ",
-            Region: ""));
+            _olaya.Id,
+            AddressLine: "   "));
 
         Assert.True(result.IsSuccess);
-        Assert.Null(property.Address.City);
+        Assert.Equal("Riyadh", property.Address.City);
         Assert.Null(property.Address.Region);
-        Assert.Null(property.Address.District);
+        Assert.Equal("Al Olaya", property.Address.District);
         Assert.Null(property.Address.AddressLine);
         Assert.Null(property.Address.PostalCode);
         Assert.Null(property.Address.Latitude);
@@ -116,7 +121,7 @@ public sealed class UpdatePropertyCommandHandlerTests
     {
         var property = SeedProperty();
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, type, "SA"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, type, _olaya.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(Enum.Parse<PropertyType>(type), property.Type);
@@ -124,15 +129,68 @@ public sealed class UpdatePropertyCommandHandlerTests
     }
 
     [Fact]
-    public async Task CountryCodeCanBeCorrectedAndIsNormalized()
+    public async Task TheAddressIsRebuiltFromTheChosenAreaWhenThePropertyMovesToAnotherCountry()
     {
         var property = SeedProperty();
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Land", " eg "));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Land", _downtown.Id));
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("EG", property.Address.CountryCode);
-        Assert.Equal("EG", result.Value.Address.CountryCode);
+        Assert.Equal("AE", property.Address.CountryCode);
+        Assert.Equal("Dubai", property.Address.City);
+        Assert.Equal("Downtown", property.Address.District);
+        Assert.Null(property.Address.Region);
+        Assert.Equal("AE", result.Value.Address.CountryCode);
+        Assert.Equal(_downtown.Id, property.AreaId);
+    }
+
+    [Fact]
+    public async Task AMissingAreaIsRejectedWithoutLoadingSavingOrReadingTheClock()
+    {
+        var property = SeedProperty();
+
+        var missing = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Land", null));
+        var empty = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Land", Guid.Empty));
+
+        Assert.True(missing.IsFailure);
+        Assert.True(empty.IsFailure);
+        Assert.Equal("validation.failed", missing.Error!.Code);
+        Assert.Contains("Area is required", missing.Error.Description);
+        Assert.Contains("Area is required", empty.Error!.Description);
+        Assert.Equal(0, _properties.GetByIdCallCount);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+        Assert.Equal(0, _clock.UtcNowCallCount);
+    }
+
+    [Fact]
+    public async Task AnUnknownAreaIsRejectedAndNothingChanges()
+    {
+        var property = SeedProperty();
+
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", Guid.NewGuid()));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation.failed", result.Error!.Code);
+        Assert.Equal("Unknown area.", result.Error.Description);
+        Assert.Equal(PropertyType.Land, property.Type);
+        Assert.Equal("SA", property.Address.CountryCode);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task AnAreaWhoseCountryHasNoCodeIsRejectedAndNothingChanges()
+    {
+        var property = SeedProperty();
+        var atlantis = _locations.SeedArea(_locations.SeedCity(_locations.SeedCountry(9, "Atlantis", "أطلنطس")));
+
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", atlantis.Id));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation.failed", result.Error!.Code);
+        Assert.Contains("'Atlantis' has no country code", result.Error.Description);
+        Assert.Equal(PropertyType.Land, property.Type);
+        Assert.Equal("SA", property.Address.CountryCode);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
     }
 
     [Theory]
@@ -148,7 +206,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             "Land",
-            "SA",
+            _olaya.Id,
             Latitude: Parse(latitude),
             Longitude: Parse(longitude)));
 
@@ -158,24 +216,17 @@ public sealed class UpdatePropertyCommandHandlerTests
     }
 
     [Theory]
-    [InlineData(null, "SA", null, null)]
-    [InlineData("", "SA", null, null)]
-    [InlineData("House", "SA", null, null)]
-    [InlineData("land", "SA", null, null)]
-    [InlineData("1", "SA", null, null)]
-    [InlineData("Land", null, null, null)]
-    [InlineData("Land", "", null, null)]
-    [InlineData("Land", "   ", null, null)]
-    [InlineData("Land", "S", null, null)]
-    [InlineData("Land", "SAU", null, null)]
-    [InlineData("Land", "S1", null, null)]
-    [InlineData("Land", "SA", "-90.1", null)]
-    [InlineData("Land", "SA", "90.1", null)]
-    [InlineData("Land", "SA", null, "-180.1")]
-    [InlineData("Land", "SA", null, "180.1")]
+    [InlineData(null, null, null)]
+    [InlineData("", null, null)]
+    [InlineData("House", null, null)]
+    [InlineData("land", null, null)]
+    [InlineData("1", null, null)]
+    [InlineData("Land", "-90.1", null)]
+    [InlineData("Land", "90.1", null)]
+    [InlineData("Land", null, "-180.1")]
+    [InlineData("Land", null, "180.1")]
     public async Task InvalidInputReturnsValidationWithoutLoadingSavingOrReadingTheClock(
         string? type,
-        string? countryCode,
         string? latitude,
         string? longitude)
     {
@@ -184,7 +235,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             type,
-            countryCode,
+            _olaya.Id,
             Latitude: Parse(latitude),
             Longitude: Parse(longitude)));
 
@@ -201,7 +252,7 @@ public sealed class UpdatePropertyCommandHandlerTests
     [Fact]
     public async Task UnknownIdReturnsNotFoundWithoutSavingOrReadingTheClock()
     {
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(Guid.NewGuid(), "Land", "SA"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(Guid.NewGuid(), "Land", _olaya.Id));
 
         Assert.True(result.IsFailure);
         Assert.Equal("properties.not_found", result.Error!.Code);
@@ -214,7 +265,7 @@ public sealed class UpdatePropertyCommandHandlerTests
     [Fact]
     public async Task EmptyIdReturnsNotFoundWithoutTouchingTheRepository()
     {
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(Guid.Empty, "Land", "SA"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(Guid.Empty, "Land", _olaya.Id));
 
         Assert.True(result.IsFailure);
         Assert.Equal("properties.not_found", result.Error!.Code);
@@ -230,7 +281,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var archivedAt = CreatedAt.AddDays(1);
         property.Archive(archivedAt);
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "AE", "Dubai"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", _downtown.Id));
 
         Assert.True(result.IsFailure);
         Assert.Equal("properties.archived", result.Error!.Code);
@@ -247,14 +298,13 @@ public sealed class UpdatePropertyCommandHandlerTests
     [Fact]
     public async Task NoOpUpdateSucceedsWithoutSavingAndKeepsUpdatedAt()
     {
-        var property = SeedProperty(new PropertyAddress("SA", city: "Riyadh", latitude: 24.7m));
+        var property = SeedProperty(new PropertyAddress("SA", "Riyadh", region: null, district: "Al Olaya", latitude: 24.7m), _olaya);
         var addressBefore = property.Address;
 
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             "Land",
-            " sa ",
-            City: " Riyadh ",
+            _olaya.Id,
             PostalCode: "  ",
             Latitude: 24.70m));
 
@@ -270,10 +320,10 @@ public sealed class UpdatePropertyCommandHandlerTests
     [Fact]
     public async Task NoOpUpdateWithTheClockBehindSucceedsWithoutSaving()
     {
-        var property = SeedProperty(new PropertyAddress("SA", city: "Riyadh"));
+        var property = SeedProperty(new PropertyAddress("SA", "Riyadh", region: null, district: "Al Olaya"), _olaya);
         _clock.UtcNow = CreatedAt.AddHours(-1);
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Land", " sa ", " Riyadh "));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Land", _olaya.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(CreatedAt, property.UpdatedAt);
@@ -287,7 +337,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var property = SeedProperty();
         _clock.UtcNow = CreatedAt.AddHours(-1);
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "AE"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", _downtown.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PropertyType.Apartment, property.Type);
@@ -304,7 +354,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var property = SeedProperty();
         _clock.UtcNow = UpdatedAt.AddTicks(15);
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "SA"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", _olaya.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(UpdatedAt.AddTicks(10), property.UpdatedAt);
@@ -316,7 +366,7 @@ public sealed class UpdatePropertyCommandHandlerTests
     public async Task RepeatingAnIdenticalUpdateIsStable()
     {
         var property = SeedProperty();
-        var command = new UpdatePropertyCommand(property.Id, "Apartment", "AE", "Dubai");
+        var command = new UpdatePropertyCommand(property.Id, "Apartment", _downtown.Id);
         var handler = CreateHandler();
 
         var first = await handler.Handle(command);
@@ -342,7 +392,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var property = SeedProperty();
         _unitOfWork.ExceptionToThrow = FakeUnitOfWork.PropertyConcurrencyConflict();
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "AE"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", _downtown.Id));
 
         Assert.True(result.IsFailure);
         Assert.Equal("properties.archived", result.Error!.Code);
@@ -358,7 +408,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         _unitOfWork.ExceptionToThrow = conflict;
 
         var thrown = await Assert.ThrowsAsync<ConcurrencyConflictException>(
-            () => CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "AE")));
+            () => CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", _downtown.Id)));
 
         Assert.Same(conflict, thrown);
         Assert.Equal(PersistenceResource.RefreshToken, thrown.Resource);
@@ -373,7 +423,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             "Apartment",
-            "SA",
+            _olaya.Id,
             Bedrooms: 3,
             Bathrooms: 2,
             BuiltDate: new DateOnly(2019, 7, 15),
@@ -394,9 +444,9 @@ public sealed class UpdatePropertyCommandHandlerTests
     {
         var property = SeedProperty();
         await CreateHandler().Handle(new UpdatePropertyCommand(
-            property.Id, "Apartment", "SA", Bedrooms: 3, FinishingStatus: "LuxuryFinished"));
+            property.Id, "Apartment", _olaya.Id, Bedrooms: 3, FinishingStatus: "LuxuryFinished"));
 
-        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "SA"));
+        var result = await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", _olaya.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Null(property.Bedrooms);
@@ -407,11 +457,11 @@ public sealed class UpdatePropertyCommandHandlerTests
     public async Task UnchangedSpecificationsCommitNothing()
     {
         var property = SeedProperty();
-        await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", "SA", Bedrooms: 3));
+        await CreateHandler().Handle(new UpdatePropertyCommand(property.Id, "Apartment", _olaya.Id, Bedrooms: 3));
         var savesBefore = _unitOfWork.SaveChangesCallCount;
 
         var result = await CreateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Apartment", "SA", Bedrooms: 3));
+            new UpdatePropertyCommand(property.Id, "Apartment", _olaya.Id, Bedrooms: 3));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(savesBefore, _unitOfWork.SaveChangesCallCount);
@@ -434,7 +484,7 @@ public sealed class UpdatePropertyCommandHandlerTests
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             "Apartment",
-            "SA",
+            _olaya.Id,
             Bedrooms: bedrooms,
             Bathrooms: bathrooms,
             FinishingStatus: finishingStatus));
@@ -451,17 +501,24 @@ public sealed class UpdatePropertyCommandHandlerTests
         var property = SeedProperty();
 
         var result = await CreateHandler().Handle(new UpdatePropertyCommand(
-            property.Id, "Apartment", "SA", BuiltDate: new DateOnly(1799, 12, 31)));
+            property.Id, "Apartment", _olaya.Id, BuiltDate: new DateOnly(1799, 12, 31)));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
     }
 
-    private Property SeedProperty(PropertyAddress? address = null)
+    private Property SeedProperty(PropertyAddress? address = null, Area? area = null)
     {
-        var property = new Property(Guid.NewGuid(), PropertyType.Land, address ?? new PropertyAddress("SA"), CreatedAt);
+        var property = new Property(
+            Guid.NewGuid(), PropertyType.Land, address ?? new PropertyAddress("SA"), CreatedAt, area: area);
         _properties.Tracked.Add(property.Id, property);
         return property;
+    }
+
+    private Area SeedPlace(string country, string city, string area)
+    {
+        return _locations.SeedArea(
+            _locations.SeedCity(_locations.SeedCountry(1, country, country), 1, city, city), 1, area, area);
     }
 
     private UpdatePropertyCommandHandler CreateHandler()
