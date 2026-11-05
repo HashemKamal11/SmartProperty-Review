@@ -6,6 +6,7 @@ using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.Domain.Workspaces;
 using SmartProperty.Persistence.Configurations.Favorites;
 using SmartProperty.Persistence.Configurations.OwnerVerification;
+using SmartProperty.Persistence.Configurations.PropertyComparison;
 using SmartProperty.Persistence.Configurations.Identity;
 using SmartProperty.Persistence.Configurations.Locations;
 
@@ -95,6 +96,8 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
             FavoritePropertyConfiguration.PrimaryKeyName => PersistenceConstraint.FavoriteProperty,
             OwnerProfileConfiguration.UserUniqueIndexName => PersistenceConstraint.OwnerProfileUser,
             OwnerProfileConfiguration.NationalIdUniqueIndexName => PersistenceConstraint.OwnerProfileNationalId,
+            PropertyComparisonItemConfiguration.PrimaryKeyName => PersistenceConstraint.PropertyComparisonItem,
+            PropertyComparisonItemConfiguration.PositionUniqueIndexName => PersistenceConstraint.PropertyComparisonPosition,
             RolePermissionConfiguration.PrimaryKeyName => PersistenceConstraint.RolePermissionKey,
             WorkspaceMembershipRoleConfiguration.PrimaryKeyName =>
                 PersistenceConstraint.WorkspaceMembershipRoleKey,

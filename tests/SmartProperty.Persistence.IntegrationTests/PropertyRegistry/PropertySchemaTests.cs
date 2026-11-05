@@ -22,7 +22,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             ORDER BY 1;
             """);
 
-        Assert.Equal(["amenities", "favorite_properties", "properties", "property_amenities", "property_images", "property_views", "views"], actual);
+        Assert.Equal(["amenities", "favorite_properties", "properties", "property_amenities", "property_comparison_items", "property_images", "property_views", "views"], actual);
     }
 
     [Fact]

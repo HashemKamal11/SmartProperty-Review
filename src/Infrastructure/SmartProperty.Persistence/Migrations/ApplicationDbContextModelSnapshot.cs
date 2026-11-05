@@ -1052,6 +1052,39 @@ namespace SmartProperty.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.PropertyComparison.PropertyComparisonItem", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.HasKey("UserId", "PropertyId")
+                        .HasName("PK_property_comparison_items");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("UserId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ux_registry_property_comparison_items_user_position");
+
+                    b.ToTable("property_comparison_items", "registry", t =>
+                        {
+                            t.HasCheckConstraint("ck_registry_property_comparison_items_position", "position BETWEEN 1 AND 3");
+                        });
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.PropertyMatching.PropertyMatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1895,6 +1928,21 @@ namespace SmartProperty.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyComparison.PropertyComparisonItem", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("SmartProperty.Domain.Identity.User", null)
                         .WithMany()

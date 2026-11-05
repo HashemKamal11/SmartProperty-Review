@@ -145,6 +145,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ck_registry_properties_status",
             "ck_registry_properties_transaction_type",
             "ck_registry_properties_type",
+            "ck_registry_property_comparison_items_position",
             "ck_registry_property_images_content_type",
             "ck_registry_property_images_size",
             "ck_registry_property_images_sort_order"
