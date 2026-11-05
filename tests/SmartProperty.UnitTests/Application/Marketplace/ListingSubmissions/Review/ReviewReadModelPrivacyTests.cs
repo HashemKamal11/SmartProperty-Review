@@ -190,7 +190,7 @@ public sealed class ReviewReadModelPrivacyTests
     }
 
     [Fact]
-    public void TheRepositoryContractHasExactlyTheTwoReadsAndTakesTheReviewerFirst()
+    public void TheRepositoryContractHasExactlyTheTwoReadsAndTakesNoUserIdentity()
     {
         var methods = typeof(IReviewerListingSubmissionReadRepository).GetMethods();
 
@@ -198,15 +198,15 @@ public sealed class ReviewReadModelPrivacyTests
             new[] { "GetForReviewAsync", "ListForReviewAsync" },
             methods.Select(method => method.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
 
-        foreach (var method in methods)
-        {
-            var first = method.GetParameters().First();
-
-            Assert.Equal("reviewerUserId", first.Name);
-            Assert.Equal(typeof(Guid), first.ParameterType);
-        }
+        // Reading does not depend on who is reading, so no read receives a user: the only identifier a read
+        // accepts is the submission being asked for.
+        Assert.Equal(
+            new[] { "submissionId" },
+            methods.SelectMany(method => method.GetParameters())
+                .Where(parameter => parameter.ParameterType == typeof(Guid))
+                .Select(parameter => parameter.Name!)
+                .ToArray());
     }
-
     [Fact]
     public void TheRepositoryReturnsOnlyReadModels()
     {
@@ -219,13 +219,25 @@ public sealed class ReviewReadModelPrivacyTests
     }
 
     [Fact]
-    public void TheDetailOutcomeVocabularyIsExactlyFoundNotFoundNotIndependentAndUnverifiable()
+    public void TheDetailOutcomeVocabularyIsExactlyFoundAndNotFound()
     {
-        Assert.Equal(
-            new[] { "Found", "NotFound", "NotIndependent", "IndependenceUnverifiable" },
-            Enum.GetNames<ReviewDetailOutcome>());
+        // Independence is a decision concern. A read can be found or not found, and nothing in between.
+        Assert.Equal(new[] { "Found", "NotFound" }, Enum.GetNames<ReviewDetailOutcome>());
     }
 
+    [Fact]
+    public void TheReadModelsHaveNoMemberThatCouldCarryAnIndependenceVerdictOrADecisionAbility()
+    {
+        foreach (var type in ReadModels)
+        {
+            foreach (var property in PropertiesOf(type))
+            {
+                Assert.DoesNotContain("independen", property.Name, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("canDecide", property.Name, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("conflict", property.Name, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
     [Fact]
     public void BothHandlersCannotBeBuiltWithoutTheAuthorizationSeam()
     {

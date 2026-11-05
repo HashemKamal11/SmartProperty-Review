@@ -29,7 +29,11 @@ using SmartProperty.Application.Authentication.PhoneVerifications;
 using SmartProperty.Application.Authentication.Register;
 using SmartProperty.Application.Abstractions.Notifications;
 using SmartProperty.Api.Infrastructure.Notifications;
+using SmartProperty.Application.Abstractions.Authorization;
 using SmartProperty.Application.Identity.Bootstrap;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Review;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Review.Detail;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Review.Queue;
 using SmartProperty.Application.PropertyMatching.Record;
 using SmartProperty.Application.Marketplace.PublicListings;
 using SmartProperty.Application.Marketplace.PublicListings.GetById;
@@ -361,6 +365,19 @@ internal static class ServiceCollectionExtensions
         services
             .AddScoped<IQueryHandler<GetPublicListingByIdQuery, PublicListingDetail>,
                 GetPublicListingByIdQueryHandler>();
+
+        // The Platform Admin review reads, and only the reads. Both handlers authorize through IReviewReadAuthorizer,
+        // which asks the persisted Platform-scoped marketplace.submissions.review.read permission and nothing else; they
+        // need IReviewerListingSubmissionReadRepository, which Persistence registers. Deliberately absent from this
+        // build: any decision authorizer, Approve/Reject handler and every legal-authority, grant, publication or write
+        // service. Those stay absent until their own activation is approved.
+        services.AddScoped<IReviewReadAuthorizer, PlatformReviewReadAuthorizer>();
+        services
+            .AddScoped<IQueryHandler<GetReviewQueueQuery, PagedList<ReviewQueueItem>>,
+                GetReviewQueueQueryHandler>();
+        services
+            .AddScoped<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>,
+                GetReviewSubmissionQueryHandler>();
 
         services
             .AddScoped<ICommandHandler<BootstrapPlatformAdminCommand, BootstrapPlatformAdminResult>,

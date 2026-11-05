@@ -76,14 +76,14 @@ public sealed class GetReviewQueueQueryHandlerTests
     }
 
     [Fact]
-    public async Task TheAuthorizerAndTheRepositoryAreBothAskedAboutTheAuthenticatedReviewerOnly()
+    public async Task TheAuthorizerIsAskedAboutTheAuthenticatedReviewerAndTheRepositoryIsToldNoUser()
     {
         var authorizer = new FakeReviewReadAuthorizer(true);
 
         await CreateHandler(Reviewer, authorizer).Handle(Query());
 
         Assert.Equal(Reviewer, authorizer.LastUserId);
-        Assert.Equal(Reviewer, _submissions.LastListCall!.ReviewerUserId);
+        Assert.NotNull(_submissions.LastListCall);
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public sealed class GetReviewQueueQueryHandlerTests
     }
 
     [Fact]
-    public async Task SubmissionsTheReviewerActedOnOrOwnsAreNeverListed()
+    public async Task SubmissionsTheReviewerActedOnOrOwnsAreStillListedBecauseReadingIsIndependenceFree()
     {
         _submissions.Add(Item("Mine", ListingPurpose.Sale, Submitted), Reviewer);
         _submissions.Add(Item("Mine as owner", ListingPurpose.Sale, Submitted.AddMinutes(1)), Submitter, linkedOwner: Reviewer);
@@ -157,11 +157,9 @@ public sealed class GetReviewQueueQueryHandlerTests
 
         var result = await CreateHandler(Reviewer).Handle(Query());
 
-        var item = Assert.Single(result.Value.Items);
-        Assert.Equal("Someone else's", item.Title);
-        Assert.Equal(1, result.Value.TotalCount);
+        Assert.Equal(new[] { "Mine", "Mine as owner", "Someone else's" }, result.Value.Items.Select(item => item.Title).ToArray());
+        Assert.Equal(3, result.Value.TotalCount);
     }
-
     [Fact]
     public async Task ThePendingQueueIsOldestFirstAndItsPagesPartitionWithoutRepeatsOrGaps()
     {

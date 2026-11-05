@@ -36,7 +36,8 @@ public sealed class GetReviewSubmissionQueryHandler(
             return Result<ReviewSubmissionDetail>.Failure(ListingSubmissionErrors.NotFound);
         }
 
-        var lookup = await submissions.GetForReviewAsync(reviewerUserId, query.SubmissionId, cancellationToken);
+        // Reading does not depend on reviewer independence; that governs decisions only.
+        var lookup = await submissions.GetForReviewAsync(query.SubmissionId, cancellationToken);
 
         ArgumentNullException.ThrowIfNull(lookup);
 
@@ -44,12 +45,6 @@ public sealed class GetReviewSubmissionQueryHandler(
         {
             case ReviewDetailOutcome.NotFound:
                 return Result<ReviewSubmissionDetail>.Failure(ListingSubmissionErrors.NotFound);
-
-            case ReviewDetailOutcome.NotIndependent:
-                return Result<ReviewSubmissionDetail>.Failure(ReviewErrors.NotIndependent);
-
-            case ReviewDetailOutcome.IndependenceUnverifiable:
-                return Result<ReviewSubmissionDetail>.Failure(ReviewErrors.IndependenceUnverifiable);
 
             case ReviewDetailOutcome.Found:
                 // A repository that reports "found" without the detail, or with a different submission than the
@@ -67,10 +62,11 @@ public sealed class GetReviewSubmissionQueryHandler(
         }
     }
 
-    // The reason belongs to a rejection only. An approval never carries one, whatever is stored.
+    // The rejection reason is free text written for the submitter and cannot be guaranteed free of confidential
+    // detail, so no administrative read ever returns it, for approvals or rejections, whatever is stored.
     private static ReviewSubmissionDetail ForReviewer(ReviewSubmissionDetail detail)
     {
-        return detail.Decision is { Approved: true, Reason: not null } decision
+        return detail.Decision is { Reason: not null } decision
             ? detail with { Decision = decision with { Reason = null } }
             : detail;
     }

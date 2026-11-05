@@ -151,7 +151,7 @@ internal static class AdminReviewMapper
     }
 
     // A pending submission has no decision. Approved and Superseded submissions carry an approval (a superseded one
-    // was approved before its successor replaced it). A rejected one carries a rejection with its reason. The
+    // was approved before its successor replaced it). A rejected one carries a rejection without its reason. The
     // decision falls between submission and the last update.
     private static ReviewDecisionResponse? ToDecision(ReviewSubmissionDetail detail)
     {
@@ -179,10 +179,10 @@ internal static class AdminReviewMapper
                 throw Invalid("an approval on a rejected submission");
             }
 
-            return new ReviewDecisionResponse(
-                Approved: false,
-                RequireText(decision.Reason, "rejection reason"),
-                decision.DecidedAt);
+            // The reason is free text written for the submitter and may hold confidential detail, so an
+            // administrative read never shows it. The mandatory reason is enforced when the rejection is recorded,
+            // not here: whatever is stored, or not stored, is never shown and never a reason to fail the read.
+            return new ReviewDecisionResponse(Approved: false, Reason: null, decision.DecidedAt);
         }
 
         if (!decision.Approved)
@@ -190,7 +190,7 @@ internal static class AdminReviewMapper
             throw Invalid("a rejection on an approved submission");
         }
 
-        // An approval carries no reason; whatever may be stored is never shown.
+        // Neither decision carries a reason on an administrative read; whatever may be stored is never shown.
         return new ReviewDecisionResponse(Approved: true, Reason: null, decision.DecidedAt);
     }
 

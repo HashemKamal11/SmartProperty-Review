@@ -13,13 +13,19 @@ internal static class ReviewErrors
         "You do not have permission to access this resource.",
         ErrorType.Forbidden);
 
-    /// <summary>The reviewer is the submitter, the declared owner, or affiliated with the submitting Workspace.</summary>
+    /// <summary>
+    /// The reviewer is the submitter, the declared owner, or affiliated with the submitting Workspace. Used by
+    /// decisions only; reading a submission for review does not depend on independence.
+    /// </summary>
     public static readonly Error NotIndependent = new(
         "listing_submissions.reviewer_not_independent",
         "The reviewer is not independent of this submission.",
         ErrorType.Forbidden);
 
-    /// <summary>The facts needed to establish the reviewer's independence are missing. Treated as a refusal.</summary>
+    /// <summary>
+    /// The facts needed to establish the reviewer's independence are missing. Treated as a refusal. Used by
+    /// decisions only.
+    /// </summary>
     public static readonly Error IndependenceUnverifiable = new(
         "listing_submissions.independence_unverifiable",
         "The reviewer's independence could not be established.",

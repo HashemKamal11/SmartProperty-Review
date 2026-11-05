@@ -162,7 +162,7 @@ public sealed class PlatformReviewReadAuthorizerTests
     }
 
     [Fact]
-    public void TheProductionContainerRegistersNeitherTheAuthorizerNorTheReviewHandlers()
+    public void TheProductionContainerRegistersTheReadAuthorizerAndReadHandlersAndNoDecisionAuthorizer()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -174,12 +174,26 @@ public sealed class PlatformReviewReadAuthorizerTests
         using var scope = host.Services.CreateScope();
         var provider = scope.ServiceProvider;
 
-        Assert.Null(provider.GetService<IReviewReadAuthorizer>());
-        Assert.Null(provider.GetService<PlatformReviewReadAuthorizer>());
-        Assert.Null(provider.GetService<IQueryHandler<GetReviewQueueQuery, PagedList<ReviewQueueItem>>>());
-        Assert.Null(provider.GetService<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>>());
-        Assert.Null(provider.GetService<GetReviewQueueQueryHandler>());
-        Assert.Null(provider.GetService<GetReviewSubmissionQueryHandler>());
+        Assert.IsType<PlatformReviewReadAuthorizer>(provider.GetRequiredService<IReviewReadAuthorizer>());
+        Assert.IsType<GetReviewQueueQueryHandler>(provider.GetRequiredService<IQueryHandler<GetReviewQueueQuery, PagedList<ReviewQueueItem>>>());
+        Assert.IsType<GetReviewSubmissionQueryHandler>(provider.GetRequiredService<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>>());
+
+        // Only the read authority is registered; no decision authority is resolvable.
+        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer");
+    }
+
+    // The decision stack is excluded from this build, so its types are named, not referenced. A named type that exists
+    // must not be resolvable; one that does not exist cannot be registered. The anchor proves the lookup searches the
+    // assembly that would define it, so an absence is real and not a lookup mistake.
+    private static void AssertNotResolvable(IServiceProvider provider, string fullName)
+    {
+        var assembly = typeof(IReviewReadAuthorizer).Assembly;
+        Assert.NotNull(assembly.GetType("SmartProperty.Application.Abstractions.Authorization.IReviewReadAuthorizer", throwOnError: false));
+        if (assembly.GetType(fullName, throwOnError: false) is { } type)
+        {
+            Assert.Null(provider.GetService(type));
+            Assert.Empty(provider.GetServices(type));
+        }
     }
 
     private PlatformReviewReadAuthorizer CreateAuthorizer()

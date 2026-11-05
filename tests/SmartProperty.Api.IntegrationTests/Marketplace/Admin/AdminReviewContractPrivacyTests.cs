@@ -218,12 +218,12 @@ public sealed class AdminReviewContractPrivacyTests
     }
 
     [Fact]
-    public void ADecisionSerializesItsReasonOnlyForARejection()
+    public void AnAdministrativeDecisionNeverSerializesItsReason()
     {
         using var rejected = JsonDocument.Parse(Serialize(PopulatedDetail()));
         var rejectedDecision = rejected.RootElement.GetProperty("decision");
         Assert.Equal(
-            new[] { "approved", "decidedAt", "reason" },
+            new[] { "approved", "decidedAt" },
             rejectedDecision.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToArray());
 
         var approved = AdminReviewMapper.ToDetailResponse(ApprovedReadModel());
@@ -306,7 +306,7 @@ public sealed class AdminReviewContractPrivacyTests
     }
 
     [Fact]
-    public void NoRouteExistsUnderTheAdminMarketplacePath()
+    public void OnlyTheTwoReviewReadRoutesExistUnderTheAdminMarketplacePath()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -324,12 +324,16 @@ public sealed class AdminReviewContractPrivacyTests
         Assert.Contains(routes, route => route.StartsWith("api/admin/workspace-access-requests", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(routes, route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
 
-        Assert.DoesNotContain(routes, route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase));
+        var adminMarketplace = routes.Where(route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            new[] { "api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}" },
+            adminMarketplace);
+        Assert.DoesNotContain(routes, route => route.Contains("marketplace", StringComparison.OrdinalIgnoreCase) && (route.Contains("approve", StringComparison.OrdinalIgnoreCase) || route.Contains("reject", StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase) && !adminMarketplace.Contains(route));
     }
 
     [Fact]
-    public void TheProductionContainerRegistersNeitherTheReviewHandlersNorTheAuthorizer()
+    public void TheProductionContainerRegistersTheReadHandlersAndAuthorizerButNoDecisionService()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -339,9 +343,42 @@ public sealed class AdminReviewContractPrivacyTests
         using var scope = host.Services.CreateScope();
         var provider = scope.ServiceProvider;
 
-        Assert.Null(provider.GetService<IReviewReadAuthorizer>());
-        Assert.Null(provider.GetService<IQueryHandler<GetReviewQueueQuery, PagedList<ReviewQueueItem>>>());
-        Assert.Null(provider.GetService<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>>());
+        Assert.NotNull(provider.GetService<IReviewReadAuthorizer>());
+        Assert.NotNull(provider.GetService<IQueryHandler<GetReviewQueueQuery, PagedList<ReviewQueueItem>>>());
+        Assert.NotNull(provider.GetService<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>>());
+
+        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer");
+        AssertNoCommandHandler(provider, "ApproveListingSubmissionCommand", "ApproveListingSubmissionResult");
+        AssertNoCommandHandler(provider, "RejectListingSubmissionCommand", "RejectListingSubmissionResult");
+    }
+
+    // The decision stack is excluded from this build, so its types are named, not referenced. A named type that exists
+    // must not be resolvable; one that does not exist cannot be registered. The anchor proves the lookup searches the
+    // assembly that would define them, so an absence is real and not a lookup mistake.
+    private const string DecisionTypes = "SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decision.";
+
+    private static Type? ApplicationType(string fullName)
+    {
+        var assembly = typeof(IReviewReadAuthorizer).Assembly;
+        Assert.NotNull(assembly.GetType("SmartProperty.Application.Abstractions.Authorization.IReviewReadAuthorizer", throwOnError: false));
+        return assembly.GetType(fullName, throwOnError: false);
+    }
+
+    private static void AssertNotResolvable(IServiceProvider provider, string fullName)
+    {
+        if (ApplicationType(fullName) is { } type)
+        {
+            Assert.Null(provider.GetService(type));
+            Assert.Empty(provider.GetServices(type));
+        }
+    }
+
+    private static void AssertNoCommandHandler(IServiceProvider provider, string command, string result)
+    {
+        if (ApplicationType(DecisionTypes + command) is { } commandType && ApplicationType(DecisionTypes + result) is { } resultType)
+        {
+            Assert.Null(provider.GetService(typeof(ICommandHandler<,>).MakeGenericType(commandType, resultType)));
+        }
     }
 
     // ----- sample data

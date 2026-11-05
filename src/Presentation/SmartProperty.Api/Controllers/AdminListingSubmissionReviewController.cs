@@ -19,14 +19,11 @@ namespace SmartProperty.Api.Controllers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This controller is deliberately not active.</b> It is <c>internal</c>, and MVC discovers only public
-/// controllers, so the production host exposes no route for it. The handlers it needs are not registered, the
-/// <c>IReviewReadAuthorizer</c> adapter is not registered, and the read repository behind them,
-/// <c>IReviewerListingSubmissionReadRepository</c>, has no production implementation yet; a discoverable route would
-/// answer every request with a server error. Tests mount it explicitly, with a test-only repository stub. To activate
-/// it once the repository exists: make this class <c>public</c>, register the two handlers and
-/// <c>PlatformReviewReadAuthorizer</c> beside the other marketplace services, register the repository in the
-/// persistence composition, and turn the "no route exists" gate tests into "the route exists" tests.
+/// <b>Read-only, and active.</b> This controller exposes the two Platform Admin review reads and nothing else. It
+/// has no write action. No Approve/Reject controller, decision handler or decision authorizer exists in this build,
+/// so no decision route exists. The
+/// handlers are registered with <c>PlatformReviewReadAuthorizer</c> beside the other marketplace services, and the
+/// read repository is the PostgreSQL one registered by Persistence.
 /// </para>
 /// <para>
 /// <b>Who may read.</b> Authentication and the Platform-scoped <see cref="PermissionCodes.MarketplaceSubmissionsReviewRead"/>
@@ -38,12 +35,13 @@ namespace SmartProperty.Api.Controllers;
 /// <para>
 /// <b>Who is reviewing.</b> Never a request value. The routes and queries have no reviewer, user, owner or Workspace
 /// parameter, and a client-supplied one is ignored like any unknown query key. The handlers read the reviewer from
-/// <c>ICurrentUser</c> alone and hand that id to the repository, which uses it only to establish independence.
+/// <c>ICurrentUser</c> alone, for authorization; the repository receives no identity.
 /// </para>
 /// <para>
-/// <b>Independence.</b> A reviewer who is the submitter, the declared owner or affiliated with the submitting
-/// Workspace, or whose independence cannot be established, is refused the detail with a <c>403</c>. The repository
-/// decides; this controller adds no rule of its own. A missing submission is a <c>404</c>.
+/// <b>Independence.</b> Reading does not depend on it. An authorized reader sees the queue and the redacted detail
+/// whoever submitted or owns the submission; independence remains mandatory for any future decision operation. The
+/// detail never carries the rejection reason. A missing submission is a <c>404</c>; a <c>403</c> means the caller
+/// lacks the read permission.
 /// </para>
 /// <para>
 /// The response contracts are the reviewer allowlists. An unparseable enum, number or page value is a
@@ -54,7 +52,7 @@ namespace SmartProperty.Api.Controllers;
 [ApiController]
 [RequirePermission(PermissionCodes.MarketplaceSubmissionsReviewRead)]
 [Route("api/admin/marketplace/listing-submissions")]
-internal sealed class AdminListingSubmissionReviewController : ControllerBase
+public sealed class AdminListingSubmissionReviewController : ControllerBase
 {
     /// <summary>
     /// One page of the review queue, optionally narrowed by status and purpose.
@@ -95,8 +93,7 @@ internal sealed class AdminListingSubmissionReviewController : ControllerBase
     /// One submission for review, by its identifier.
     /// </summary>
     /// <remarks>
-    /// A reviewer who is not independent of the submission, or whose independence cannot be established, is a
-    /// <c>403</c>. A submission that does not exist is a <c>404 listing_submissions.not_found</c>. A value that is not
+    /// A caller without the read permission is a <c>403</c>. A submission that does not exist is a <c>404 listing_submissions.not_found</c>. A value that is not
     /// a GUID matches no route at all.
     /// </remarks>
     [HttpGet("{submissionId:guid}")]

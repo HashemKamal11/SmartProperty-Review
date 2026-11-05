@@ -6,7 +6,7 @@ namespace SmartProperty.Api.IntegrationTests.Marketplace.Admin;
 
 /// <summary>
 /// What the generated OpenAPI document says about the Platform Admin review reads when the controller is mounted, and
-/// that the production composition documents nothing of them.
+/// that the production composition documents exactly those two paths and no decision path.
 /// </summary>
 /// <remarks>
 /// Reads the document the host actually generates, with a test-only stub in place of the read repository. No database
@@ -147,25 +147,31 @@ public sealed class AdminListingSubmissionReviewOpenApiTests
     }
 
     [Fact]
-    public async Task TheProductionCompositionDocumentsNoReviewPathOrSchema()
+    public async Task TheProductionCompositionDocumentsExactlyTheTwoReadPathsAndNoDecisionPath()
     {
         using var document = await LoadDocumentAsync(mount: false);
         var root = document.RootElement;
-        var paths = root.GetProperty("paths").EnumerateObject().Select(property => property.Name).ToArray();
+        var pathProperties = root.GetProperty("paths").EnumerateObject().ToArray();
+        var paths = pathProperties.Select(property => property.Name).ToArray();
         var schemas = root.GetProperty("components").GetProperty("schemas").EnumerateObject().Select(property => property.Name).ToArray();
 
         // The document is real: the public marketplace is in it.
         Assert.Contains(paths, path => path.StartsWith("/api/public/marketplace/listings", StringComparison.Ordinal));
-        Assert.DoesNotContain(paths, path => path.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(
+            new[] { ListPath, DetailPath },
+            paths.Where(path => path.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain(paths, path => path.Contains("marketplace", StringComparison.OrdinalIgnoreCase) && (path.EndsWith("/approve", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/reject", StringComparison.OrdinalIgnoreCase)));
+
+        foreach (var path in pathProperties.Where(property => property.Name is ListPath or DetailPath))
+        {
+            Assert.Equal(new[] { "get" }, OperationNames(path.Value));
+        }
 
         foreach (var schema in ReviewSchemas)
         {
-            Assert.DoesNotContain(schema, schemas);
+            Assert.Contains(schema, schemas);
         }
-
-        Assert.DoesNotContain(schemas, name => name.Contains("ReviewQueueItemResponse", StringComparison.Ordinal));
     }
-
     private static async Task<JsonDocument> LoadDocumentAsync(bool mount)
     {
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository(), mount);

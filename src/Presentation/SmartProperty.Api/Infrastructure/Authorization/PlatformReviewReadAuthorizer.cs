@@ -22,8 +22,8 @@ namespace SmartProperty.Api.Infrastructure.Authorization;
 /// answer and propagates untouched, so an outage can never be mistaken for access. A blank reviewer id is rejected
 /// by <see cref="AuthorizationRequest.For"/> rather than papered over.
 ///
-/// This type is not registered. Making the review read handlers resolvable, and exposing them, are separate steps
-/// that need their own approval.
+/// This type is the registered production <see cref="IReviewReadAuthorizer"/> for the two Platform Admin review
+/// reads. It authorizes reading only; it is never used to authorize a decision.
 /// </remarks>
 internal sealed class PlatformReviewReadAuthorizer(IPermissionChecker permissionChecker) : IReviewReadAuthorizer
 {

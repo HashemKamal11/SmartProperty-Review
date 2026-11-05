@@ -30,9 +30,11 @@ public sealed class PermissionCodesAuthorityTests
         PermissionCodes.MarketplaceAuthorityGrantsReadDescription,
     ];
 
-    // Every code that existed before the authority codes, spelled out so a rename cannot hide.
+    // Every code other than the authority codes, spelled out so a rename cannot hide.
     private static readonly string[] ExistingCodes =
     [
+        "workspace.admin.read",
+        "workspace.admin.create",
         "property.create",
         "property.read",
         "property.update",
@@ -41,8 +43,6 @@ public sealed class PermissionCodesAuthorityTests
         "marketplace.submissions.review.read",
         "marketplace.submissions.review.decide",
         "workspace.read",
-        "workspace.admin.read",
-        "workspace.admin.create",
         "workspace.members.create",
     ];
 
@@ -124,6 +124,27 @@ public sealed class PermissionCodesAuthorityTests
         Assert.Equal("Read the workspace itself.", PermissionCodes.WorkspaceReadDescription);
     }
 
+    // The complete catalog: every code with its exact stored description, spelled out so an addition, a removal, a
+    // rename or a reworded description cannot hide.
+    private static readonly (string Code, string Description)[] Catalog =
+    [
+        ("workspace.admin.read", "Read the administrative workspace directory and details."),
+        ("workspace.admin.create", "Create workspaces."),
+        ("property.create", "Create canonical properties."),
+        ("property.read", "Read canonical properties."),
+        ("property.update", "Update canonical properties."),
+        ("property.archive", "Archive canonical properties."),
+        ("workspace.access_requests.review", "Approve or reject workspace access requests."),
+        ("marketplace.submissions.review.read", "Read the marketplace listing submission review queue and details."),
+        ("marketplace.submissions.review.decide", "Approve or reject marketplace listing submissions."),
+        ("marketplace.authority.legal_reviews.record", "Record legal reviews for property authority grants."),
+        ("marketplace.authority.grants.issue", "Issue property authority grants."),
+        ("marketplace.authority.grants.revoke", "Revoke property authority grants."),
+        ("marketplace.authority.grants.read", "Read property authority grants and legal reviews."),
+        ("workspace.read", "Read the workspace itself."),
+        ("workspace.members.create", "Create member accounts in the workspace."),
+    ];
+
     [Fact]
     public void TheCatalogIsExactlyTheFifteenCodesWithTheirDescriptionsAndEachCodeIsUnique()
     {
@@ -131,15 +152,38 @@ public sealed class PermissionCodesAuthorityTests
             .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
             .Where(field => field.IsLiteral)
             .ToArray();
-        var codes = constants.Where(field => !field.Name.EndsWith("Description", StringComparison.Ordinal)).Select(field => (string)field.GetRawConstantValue()!).ToArray();
-        var descriptions = constants.Where(field => field.Name.EndsWith("Description", StringComparison.Ordinal)).Select(field => (string)field.GetRawConstantValue()!).ToArray();
+        var values = constants.ToDictionary(field => field.Name, field => (string)field.GetRawConstantValue()!, StringComparer.Ordinal);
+        var codeFields = constants.Where(field => !field.Name.EndsWith("Description", StringComparison.Ordinal)).ToArray();
+        var descriptionFields = constants.Where(field => field.Name.EndsWith("Description", StringComparison.Ordinal)).ToArray();
 
-        Assert.Equal(15, codes.Length);
-        Assert.Equal(15, descriptions.Length);
-        Assert.Equal(15, codes.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(15, codeFields.Length);
+        Assert.Equal(15, descriptionFields.Length);
+
+        // Each code has exactly its own description constant, and no description stands alone.
+        Assert.Equal(
+            codeFields.Select(field => field.Name + "Description").Order(StringComparer.Ordinal),
+            descriptionFields.Select(field => field.Name).Order(StringComparer.Ordinal));
+
+        var actual = codeFields
+            .Select(field => (Code: values[field.Name], Description: values[field.Name + "Description"]))
+            .OrderBy(entry => entry.Code, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(Catalog.OrderBy(entry => entry.Code, StringComparer.Ordinal).ToArray(), actual);
+        Assert.Equal(15, actual.Select(entry => entry.Code).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(15, actual.Select(entry => entry.Description).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(actual, entry =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(entry.Code));
+            Assert.False(string.IsNullOrWhiteSpace(entry.Description));
+            Assert.Equal(entry.Code.Trim(), entry.Code);
+            Assert.Equal(entry.Description.Trim(), entry.Description);
+        });
+
+        // The partial lists the other tests rely on cover the whole catalog between them.
         Assert.Equal(
             ExistingCodes.Concat(AuthorityCodes).Order(StringComparer.Ordinal),
-            codes.Order(StringComparer.Ordinal));
+            Catalog.Select(entry => entry.Code).Order(StringComparer.Ordinal));
     }
 
     [Fact]

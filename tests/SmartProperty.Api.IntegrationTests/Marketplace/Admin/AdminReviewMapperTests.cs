@@ -179,7 +179,7 @@ public sealed class AdminReviewMapperTests
     }
 
     [Fact]
-    public void ARejectedDetailCarriesTheRejectionAndItsReason()
+    public void ARejectedDetailCarriesTheRejectionButNeverItsReason()
     {
         var detail = PendingDetail() with
         {
@@ -192,9 +192,12 @@ public sealed class AdminReviewMapperTests
 
         Assert.Equal("Rejected", response.Status);
         Assert.False(response.Decision!.Approved);
-        Assert.Equal("The deed does not cover this parcel.", response.Decision.Reason);
+        Assert.Null(response.Decision.Reason);
+        Assert.Equal(Decided, response.Decision.DecidedAt);
+        var json = JsonSerializer.Serialize(response, WebOptions);
+        Assert.DoesNotContain("deed", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("reason", json, StringComparison.OrdinalIgnoreCase);
     }
-
     [Fact]
     public void ASupersededDetailKeepsItsEarlierApproval()
     {
@@ -424,17 +427,20 @@ public sealed class AdminReviewMapperTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("  ")]
-    public void ARejectionWithoutAReasonIsRefused(string? reason)
+    public void ARejectionWithAnyStoredReasonOrNoneIsReadWithoutOne(string? reason)
     {
-        AssertInvalid(() => AdminReviewMapper.ToDetailResponse(
+        // The reason is never shown, so what is stored, or missing, can neither leak nor fail the read.
+        var response = AdminReviewMapper.ToDetailResponse(
             PendingDetail() with
             {
                 Status = ListingSubmissionStatus.Rejected,
                 UpdatedAt = Decided,
                 Decision = new ReviewDecisionSummary(Approved: false, reason, Decided),
-            }));
-    }
+            });
 
+        Assert.False(response.Decision!.Approved);
+        Assert.Null(response.Decision.Reason);
+    }
     [Fact]
     public void ADecisionOutsideTheSubmissionLifetimeIsRefused()
     {
