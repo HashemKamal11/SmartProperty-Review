@@ -300,7 +300,8 @@ public sealed class SubmitterReadEndToEndTests : IDisposable
     }
 
     // Seeds through the Domain, as the Admin review end-to-end tests do: the actor recorded in the legal-authority
-    // declaration is the given user, and the declared owner's linked user is the actor unless another is given.
+    // declaration is the given user, and the declared owner's linked user is the actor unless another is given. The
+    // Domain lets only the linked owner act as Owner, so a different actor is declared as an individual representative.
     private async Task<ListingSubmission> SeedAsync(
         Guid actingUserId,
         State state,
@@ -316,9 +317,13 @@ public sealed class SubmitterReadEndToEndTests : IDisposable
         await context.SaveChangesAsync();
 
         var at = T0.AddMinutes(minute);
+        var linkedOwner = linkedUserId ?? actingUserId;
+        var representation = linkedOwner == actingUserId
+            ? ListingRepresentationKind.Owner
+            : ListingRepresentationKind.IndividualRepresentative;
         var authority = new ListingLegalAuthority(listing.PropertyId, listing.Purpose,
-            new ListingOwnerIdentity(ListingOwnerKind.Individual, Guid.NewGuid(), linkedUserId ?? actingUserId), actingUserId,
-            ListingRepresentationKind.Owner, null, listing.CreatedAt, null);
+            new ListingOwnerIdentity(ListingOwnerKind.Individual, Guid.NewGuid(), linkedOwner), actingUserId,
+            representation, null, listing.CreatedAt, null);
         var evidence = new ListingEvidenceReference(Guid.NewGuid(), Guid.NewGuid(), listing.PropertyId, listing.Purpose, new string('A', 64));
         var content = new ListingSubmissionContent("Country", "Region", "City", "District", "Title", "Description",
             PropertyType.Apartment, listing.Purpose, 100m, "USD", listing.Purpose == ListingPurpose.Rent ? RentPeriod.Monthly : null);
