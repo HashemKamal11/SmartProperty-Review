@@ -14,8 +14,8 @@ using Xunit;
 namespace SmartProperty.Api.IntegrationTests.Marketplace.Submitter;
 
 /// <summary>
-/// The submitter read routes through the real host, with the controller mounted explicitly and a test-only stub in
-/// place of the read repository that has no production implementation yet.
+/// The submitter read routes through the real host and its production controller and handlers, with a test-only stub
+/// in place of the PostgreSQL read repository.
 /// </summary>
 /// <remarks>
 /// These tests prove how the API presents what a repository returns: authentication, whose submissions are read,
@@ -302,6 +302,33 @@ public sealed class SubmitterListingSubmissionsEndpointTests
         Assert.Equal(
             new[] { false, false, true, false, false },
             items.Select(item => item.GetProperty("isCurrentlyPublished").GetBoolean()).ToArray());
+    }
+
+    // Two submissions updated at the same instant are ordered by their id ascending. PostgreSQL orders a uuid byte by
+    // byte, which is the ordinal order of the canonical text; these ids differ in the first byte's sign bit, the case a
+    // signed comparison would get wrong. Guid.CompareTo agrees with the database here, and the stub uses it.
+    [Fact]
+    public async Task ATiedUpdatedAtIsOrderedBySubmissionIdAscending()
+    {
+        var first = Guid.Parse("7fffffff-0000-0000-0000-000000000000");
+        var second = Guid.Parse("80000000-0000-0000-0000-000000000000");
+        Assert.True(string.CompareOrdinal(first.ToString("D"), second.ToString("D")) < 0);
+        Assert.True(first.CompareTo(second) < 0);
+        using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
+        host.Stub.Add(Me, Pending(second, updatedAt: Submitted.AddMinutes(5)));
+        host.Stub.Add(Me, Pending(Guid.NewGuid(), updatedAt: Submitted));
+        host.Stub.Add(Me, Pending(first, updatedAt: Submitted.AddMinutes(5)));
+        using var client = host.CreateClientFor(Me);
+
+        using var response = await client.GetAsync(ListRoute);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var ids = document.RootElement.GetProperty("items").EnumerateArray()
+            .Select(item => item.GetProperty("submissionId").GetGuid())
+            .ToArray();
+        Assert.Equal(3, ids.Length);
+        Assert.Equal(new[] { first, second }, ids.Take(2).ToArray());
     }
 
     // ----- paging and filters
@@ -629,24 +656,35 @@ public sealed class SubmitterListingSubmissionsEndpointTests
                 endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.ToArray()));
     }
 
+    // The production composition is used untouched, with a connection string that points nowhere, so only an anonymous
+    // request is sent: it is answered by authentication before any handler, repository or database is reached.
     [Fact]
-    public async Task TheProductionCompositionHasNoSubmitterRouteAtAll()
+    public async Task TheProductionCompositionExposesExactlyTheTwoSubmitterGetRoutes()
     {
         using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository(), mount: false);
-        using var client = host.CreateClientFor(Me);
+        using var client = host.CreateClient();
 
-        var routes = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
+        var endpoints = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
-            .Select(endpoint => endpoint.RoutePattern.RawText ?? string.Empty)
+            .ToArray();
+        var submitter = endpoints
+            .Where(endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).StartsWith("api/marketplace/me", StringComparison.OrdinalIgnoreCase))
             .ToArray();
         using var list = await client.GetAsync(ListRoute);
         using var detail = await client.GetAsync($"{ListRoute}/{Guid.NewGuid()}");
 
         // The inventory is real: existing routes are visible to it.
-        Assert.Contains(routes, route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(routes, route => route.Contains("marketplace/me", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(HttpStatusCode.NotFound, list.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, detail.StatusCode);
+        Assert.Contains(endpoints, endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(
+            new[] { "api/marketplace/me/listing-submissions", "api/marketplace/me/listing-submissions/{submissionId:guid}" },
+            submitter.Select(endpoint => endpoint.RoutePattern.RawText!).Order(StringComparer.Ordinal).ToArray());
+        Assert.All(
+            submitter,
+            endpoint => Assert.Equal(
+                new[] { "GET" },
+                endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.ToArray()));
+        await AssertUnauthorizedAsync(list);
+        await AssertUnauthorizedAsync(detail);
         Assert.Equal(0, host.Stub.ListCallCount);
         Assert.Equal(0, host.Stub.GetCallCount);
     }

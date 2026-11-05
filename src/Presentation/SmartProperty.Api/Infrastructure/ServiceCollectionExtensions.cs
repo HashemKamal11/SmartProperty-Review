@@ -31,6 +31,9 @@ using SmartProperty.Application.Abstractions.Notifications;
 using SmartProperty.Api.Infrastructure.Notifications;
 using SmartProperty.Application.Abstractions.Authorization;
 using SmartProperty.Application.Identity.Bootstrap;
+using SmartProperty.Application.Marketplace.ListingSubmissions;
+using SmartProperty.Application.Marketplace.ListingSubmissions.GetById;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Mine;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Review;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Review.Detail;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Review.Queue;
@@ -365,6 +368,18 @@ internal static class ServiceCollectionExtensions
         services
             .AddScoped<IQueryHandler<GetPublicListingByIdQuery, PublicListingDetail>,
                 GetPublicListingByIdQueryHandler>();
+
+        // The authenticated submitter's own listing-submission reads, and only the reads. The acting user comes from
+        // ICurrentUser alone and must be an Active account; ownership is enforced in the database by
+        // ISubmitterListingSubmissionReadRepository, which Persistence registers. No permission code: the reads are
+        // self-scoped. Deliberately absent: every Create/Update/Submit/Discard draft handler and every decision,
+        // legal-authority, grant or publication service.
+        services
+            .AddScoped<IQueryHandler<GetMyListingSubmissionsQuery, PagedList<SubmitterSubmissionSummary>>,
+                GetMyListingSubmissionsQueryHandler>();
+        services
+            .AddScoped<IQueryHandler<GetMyListingSubmissionByIdQuery, SubmitterSubmissionDetail>,
+                GetMyListingSubmissionByIdQueryHandler>();
 
         // The Platform Admin review reads, and only the reads. Both handlers authorize through IReviewReadAuthorizer,
         // which asks the persisted Platform-scoped marketplace.submissions.review.read permission and nothing else; they

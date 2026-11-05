@@ -18,13 +18,17 @@ namespace SmartProperty.Api.Controllers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This controller is deliberately not active.</b> It is <c>internal</c>, and MVC discovers only public
-/// controllers, so the production host exposes no route for it. The handlers it needs are not registered and the
-/// read repository behind them, <c>ISubmitterListingSubmissionReadRepository</c>, has no production implementation
-/// yet; a discoverable route would answer every request with a server error. Tests mount it explicitly, with a
-/// test-only repository stub. To activate it once the repository exists: make this class <c>public</c>, register the
-/// two handlers beside the other marketplace handlers, register the repository in the persistence composition, and
-/// turn the "no route exists" gate tests into "the route exists" tests.
+/// <b>Read-only, and active.</b> This controller exposes the two submitter reads and nothing else. It has no write
+/// action: no Create, Update, Submit or Discard draft route or handler, and no decision, legal-authority, grant or
+/// publication service, is part of this build. The two handlers are registered beside the other marketplace reads,
+/// and the read repository behind them, <c>ISubmitterListingSubmissionReadRepository</c>, is the PostgreSQL one
+/// registered by Persistence.
+/// </para>
+/// <para>
+/// <b>Who may read.</b> Any authenticated caller whose persisted account is Active, and only their own submissions.
+/// The reads are self-scoped, so no permission code is required. The account is read on every request: a token for
+/// an account that no longer exists is a <c>401</c>, and any non-Active account is the same
+/// <c>403 authentication.account_unavailable</c>, before any submission is read.
 /// </para>
 /// <para>
 /// <b>Whose submissions.</b> Never a request value. The route and the query have no user or submitter parameter, and
@@ -44,7 +48,7 @@ namespace SmartProperty.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/marketplace/me/listing-submissions")]
-internal sealed class SubmitterListingSubmissionsController : ControllerBase
+public sealed class SubmitterListingSubmissionsController : ControllerBase
 {
     /// <summary>
     /// One page of the authenticated user's own submissions, newest first, optionally narrowed by purpose and status.
@@ -53,6 +57,7 @@ internal sealed class SubmitterListingSubmissionsController : ControllerBase
     [ProducesResponseType<PagedResponse<SubmitterSubmissionSummaryResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> List(
         [FromServices] IQueryHandler<GetMyListingSubmissionsQuery, PagedList<SubmitterSubmissionSummary>> handler,
@@ -86,6 +91,7 @@ internal sealed class SubmitterListingSubmissionsController : ControllerBase
     [HttpGet("{submissionId:guid}")]
     [ProducesResponseType<SubmitterSubmissionDetailResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(
         Guid submissionId,

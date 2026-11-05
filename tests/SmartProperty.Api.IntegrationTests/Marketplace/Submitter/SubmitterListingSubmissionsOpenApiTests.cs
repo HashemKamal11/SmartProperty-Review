@@ -5,12 +5,11 @@ using Xunit;
 namespace SmartProperty.Api.IntegrationTests.Marketplace.Submitter;
 
 /// <summary>
-/// What the generated OpenAPI document says about the submitter reads when the controller is mounted, and that the
-/// production composition documents nothing of them.
+/// What the generated OpenAPI document says about the submitter reads, in the stubbed host and in the untouched
+/// production composition.
 /// </summary>
 /// <remarks>
-/// Reads the document the host actually generates, with a test-only stub in place of the read repository. No database
-/// is involved.
+/// Reads the document the host actually generates. Generating it reaches no handler, so no database is involved.
 /// </remarks>
 public sealed class SubmitterListingSubmissionsOpenApiTests
 {
@@ -54,7 +53,8 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
             new[] { "page", "pageSize", "purpose", "status" },
             parameters.Select(parameter => parameter.GetProperty("name").GetString()!).Order(StringComparer.Ordinal).ToArray());
         Assert.All(parameters, parameter => Assert.Equal("query", parameter.GetProperty("in").GetString()));
-        AssertResponses(list, present: ["200", "400", "401", "422"], absent: ["403", "404"]);
+        // 403 is a non-Active account (authentication.account_unavailable), not a missing permission.
+        AssertResponses(list, present: ["200", "400", "401", "403", "422"], absent: ["404"]);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
         Assert.True(parameter.GetProperty("required").GetBoolean());
         Assert.Equal("string", parameter.GetProperty("schema").GetProperty("type").GetString());
         Assert.Equal("uuid", parameter.GetProperty("schema").GetProperty("format").GetString());
-        AssertResponses(detail, present: ["200", "401", "404"], absent: ["400", "403", "422"]);
+        AssertResponses(detail, present: ["200", "401", "403", "404"], absent: ["400", "422"]);
     }
 
     [Fact]
@@ -135,17 +135,28 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
     }
 
     [Fact]
-    public async Task TheProductionCompositionDocumentsNoSubmitterPathOrSchema()
+    public async Task TheProductionCompositionDocumentsExactlyTheTwoSubmitterReads()
     {
         using var document = await LoadDocumentAsync(mount: false);
         var root = document.RootElement;
-        var paths = root.GetProperty("paths").EnumerateObject().Select(property => property.Name).ToArray();
+        var paths = root.GetProperty("paths");
+        var pathNames = paths.EnumerateObject().Select(property => property.Name).ToArray();
         var schemas = root.GetProperty("components").GetProperty("schemas").EnumerateObject().Select(property => property.Name).ToArray();
 
         // The document is real: the public marketplace is in it.
-        Assert.Contains(paths, path => path.StartsWith("/api/public/marketplace/listings", StringComparison.Ordinal));
-        Assert.DoesNotContain(paths, path => path.Contains("marketplace/me", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(schemas, name => name.Contains("SubmitterSubmission", StringComparison.Ordinal));
+        Assert.Contains(pathNames, path => path.StartsWith("/api/public/marketplace/listings", StringComparison.Ordinal));
+        Assert.Equal(
+            new[] { ListPath, DetailPath },
+            pathNames.Where(path => path.Contains("marketplace/me", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(new[] { "get" }, OperationNames(paths.GetProperty(ListPath)));
+        Assert.Equal(new[] { "get" }, OperationNames(paths.GetProperty(DetailPath)));
+        AssertBearerSecurity(paths.GetProperty(ListPath).GetProperty("get"));
+        AssertBearerSecurity(paths.GetProperty(DetailPath).GetProperty("get"));
+        AssertResponses(paths.GetProperty(ListPath).GetProperty("get"), present: ["200", "400", "401", "403", "422"], absent: ["404"]);
+        AssertResponses(paths.GetProperty(DetailPath).GetProperty("get"), present: ["200", "401", "403", "404"], absent: ["400", "422"]);
+        Assert.Contains("SubmitterSubmissionSummaryResponse", schemas);
+        Assert.Contains("SubmitterSubmissionDetailResponse", schemas);
+        Assert.Contains("SubmitterSubmissionDecisionResponse", schemas);
     }
 
     private static async Task<JsonDocument> LoadDocumentAsync(bool mount)
