@@ -353,7 +353,8 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         using var scope = host.Services.CreateScope();
         var provider = scope.ServiceProvider;
 
-        Assert.Null(provider.GetService<ISubmitterListingSubmissionReadRepository>());
+        Assert.Equal("SubmitterListingSubmissionReadRepository",
+            provider.GetRequiredService<ISubmitterListingSubmissionReadRepository>().GetType().Name);
         Assert.Null(provider.GetService<IQueryHandler<GetMyListingSubmissionsQuery, PagedList<SubmitterSubmissionSummary>>>());
         Assert.Null(provider.GetService<IQueryHandler<GetMyListingSubmissionByIdQuery, SubmitterSubmissionDetail>>());
     }
