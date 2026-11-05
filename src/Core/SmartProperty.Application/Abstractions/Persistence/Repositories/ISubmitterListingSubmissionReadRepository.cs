@@ -17,7 +17,9 @@ namespace SmartProperty.Application.Abstractions.Persistence.Repositories;
 /// indistinguishable from one that does not exist: the detail read returns <see langword="null"/> for both, and the
 /// list never contains it. Results are projected into the read models only, so no property id, legal-party
 /// reference, Workspace id, evidence, digest, verification fact or reviewer identity is ever selected. Filtering,
-/// counting, ordering (newest first, ending in the submission id) and paging all happen in the database.
+/// counting, ordering (UpdatedAt descending, then SubmissionId ascending) and paging all happen in the database.
+/// Count and page are separate statements: concurrent commits may change the page relative to its count.
+/// Ordering is deterministic for unchanged data; offset pages across requests do not share a snapshot.
 /// </remarks>
 public interface ISubmitterListingSubmissionReadRepository
 {
