@@ -29,7 +29,7 @@ namespace SmartProperty.Api.IntegrationTests.Marketplace.Submitter;
 
 /// <summary>
 /// What the submitter contract can and cannot say, asserted on the types and on their serialized form, and proof
-/// that nothing here is reachable from production: no route, no controller and no registration.
+/// that production exposes exactly the two submitter reads and nothing that writes.
 /// </summary>
 /// <remarks>
 /// The response types are a closed vocabulary: every member is a plain value or another response type, so a
@@ -292,7 +292,7 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         }
     }
 
-    // ----- reachability: nothing here is exposed
+    // ----- reachability: only the two reads are exposed
 
     [Fact]
     public void NoControllerActionTakesOrReturnsASubmitterContract()
@@ -317,7 +317,7 @@ public sealed class SubmitterSubmissionContractPrivacyTests
     }
 
     [Fact]
-    public void NoSubmitterRouteExists()
+    public void OnlyTheTwoSubmitterReadRoutesExistBesideTheReviewReads()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -326,8 +326,10 @@ public sealed class SubmitterSubmissionContractPrivacyTests
             // setting. Nothing opens a connection with it.
             builder.UseSetting("ConnectionStrings:Database", UnusedConnectionString);
         });
-        var routes = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
+        var endpoints = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
+            .ToArray();
+        var routes = endpoints
             .Select(endpoint => endpoint.RoutePattern.RawText ?? string.Empty)
             .ToArray();
 
@@ -335,15 +337,20 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         Assert.Contains(routes, route => route.StartsWith("api/admin/workspace-access-requests", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(routes, route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
 
-        // The only listing-submissions routes are the two Platform Admin review reads; nothing is a submitter route.
+        // The only listing-submissions routes are the two Platform Admin review reads and the two submitter reads,
+        // and every one of them accepts GET alone.
         string[] reviewReads = ["api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}"];
-        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase) && !reviewReads.Contains(route));
-        Assert.DoesNotContain(routes, route => route.Contains("marketplace/me", StringComparison.OrdinalIgnoreCase));
+        string[] submitterReads = ["api/marketplace/me/listing-submissions", "api/marketplace/me/listing-submissions/{submissionId:guid}"];
+        Assert.Equal(submitterReads, routes.Where(route => route.Contains("marketplace/me", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase) && !reviewReads.Contains(route) && !submitterReads.Contains(route));
         Assert.DoesNotContain(routes, route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase) && !reviewReads.Contains(route));
+        Assert.All(
+            endpoints.Where(endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).Contains("listing-submissions", StringComparison.OrdinalIgnoreCase)),
+            endpoint => Assert.Equal(new[] { "GET" }, endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.ToArray()));
     }
 
     [Fact]
-    public void TheProductionContainerRegistersNeitherTheSubmitterHandlersNorTheirRepository()
+    public void TheProductionContainerRegistersTheSubmitterReadHandlersAndTheirRepository()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -353,10 +360,13 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         using var scope = host.Services.CreateScope();
         var provider = scope.ServiceProvider;
 
-        Assert.Equal("SubmitterListingSubmissionReadRepository",
-            provider.GetRequiredService<ISubmitterListingSubmissionReadRepository>().GetType().Name);
-        Assert.Null(provider.GetService<IQueryHandler<GetMyListingSubmissionsQuery, PagedList<SubmitterSubmissionSummary>>>());
-        Assert.Null(provider.GetService<IQueryHandler<GetMyListingSubmissionByIdQuery, SubmitterSubmissionDetail>>());
+        var repository = provider.GetRequiredService<ISubmitterListingSubmissionReadRepository>();
+        Assert.Equal("SubmitterListingSubmissionReadRepository", repository.GetType().Name);
+        Assert.Same(typeof(SmartProperty.Persistence.AssemblyMarker).Assembly, repository.GetType().Assembly);
+        Assert.IsType<GetMyListingSubmissionsQueryHandler>(
+            provider.GetRequiredService<IQueryHandler<GetMyListingSubmissionsQuery, PagedList<SubmitterSubmissionSummary>>>());
+        Assert.IsType<GetMyListingSubmissionByIdQueryHandler>(
+            provider.GetRequiredService<IQueryHandler<GetMyListingSubmissionByIdQuery, SubmitterSubmissionDetail>>());
     }
 
     [Fact]
