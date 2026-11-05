@@ -270,6 +270,7 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         var propertyUpdatePermission = SeedPermission(PermissionCodes.PropertyUpdate);
         var propertyArchivePermission = SeedPermission(PermissionCodes.PropertyArchive);
         var role = SeedPlatformAdminRole();
+        SeedOwnerVerificationReviewPermission(role);
         _roles.Seed(new RolePermission(role.Id, reviewPermission.Id));
         _roles.Seed(new RolePermission(role.Id, propertyCreatePermission.Id));
         _roles.Seed(new RolePermission(role.Id, propertyReadPermission.Id));
@@ -323,6 +324,7 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         var readPermission = SeedPermission(PermissionCodes.MarketplaceSubmissionsReviewRead);
         var decidePermission = SeedPermission(PermissionCodes.MarketplaceSubmissionsReviewDecide);
         var role = SeedPlatformAdminRole();
+        SeedOwnerVerificationReviewPermission(role);
         _roles.Seed(new RolePermission(role.Id, reviewPermission.Id));
         _roles.Seed(new RolePermission(role.Id, propertyCreatePermission.Id));
         _roles.Seed(new RolePermission(role.Id, propertyReadPermission.Id));
@@ -339,6 +341,27 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         Assert.Empty(_permissions.Added);
         var attachment = Assert.Single(_roles.AddedRolePermissions);
         Assert.Equal(decidePermission.Id, attachment.PermissionId);
+    }
+
+    [Fact]
+    public async Task AFirstRun_CreatesAndAttachesTheOwnerVerificationReviewPermission()
+    {
+        SeedUser(UserStatus.Pending);
+        var handler = CreateHandler();
+
+        var result = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
+
+        var permission = Assert.Single(
+            _permissions.Added,
+            candidate => candidate.Code == PermissionCodes.OwnerVerificationReview);
+        Assert.Equal(PermissionCodes.OwnerVerificationReviewDescription, permission.Description);
+        Assert.True(result.Value.OwnerVerificationReviewPermissionCreated);
+        Assert.Equal(permission.Id, result.Value.OwnerVerificationReviewPermissionId);
+        Assert.True(result.Value.OwnerVerificationReviewRolePermissionCreated);
+        var attachment = Assert.Single(
+            _roles.AddedRolePermissions,
+            candidate => candidate.PermissionId == permission.Id);
+        Assert.Equal(result.Value.RoleId, attachment.RoleId);
     }
 
     [Fact]
@@ -371,6 +394,7 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         {
             PermissionCodes.MarketplaceSubmissionsReviewDecide,
             PermissionCodes.MarketplaceSubmissionsReviewRead,
+            PermissionCodes.OwnerVerificationReview,
             PermissionCodes.PropertyArchive,
             PermissionCodes.PropertyCreate,
             PermissionCodes.PropertyRead,
@@ -383,7 +407,7 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
             .ToArray();
 
         Assert.Equal(expectedCodes, actualCodes);
-        Assert.Equal(7, _roles.AddedRolePermissions.Count);
+        Assert.Equal(8, _roles.AddedRolePermissions.Count);
         Assert.All(
             _roles.AddedRolePermissions,
             rolePermission => Assert.Equal(result.Value.RoleId, rolePermission.RoleId));
@@ -469,6 +493,7 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         Assert.False(second.Value.PropertyArchivePermissionCreated);
         Assert.False(second.Value.MarketplaceSubmissionsReviewReadPermissionCreated);
         Assert.False(second.Value.MarketplaceSubmissionsReviewDecidePermissionCreated);
+        Assert.False(second.Value.OwnerVerificationReviewPermissionCreated);
         Assert.False(second.Value.RoleCreated);
         Assert.False(second.Value.RolePermissionCreated);
         Assert.False(second.Value.PropertyCreateRolePermissionCreated);
@@ -477,6 +502,7 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         Assert.False(second.Value.PropertyArchiveRolePermissionCreated);
         Assert.False(second.Value.MarketplaceSubmissionsReviewReadRolePermissionCreated);
         Assert.False(second.Value.MarketplaceSubmissionsReviewDecideRolePermissionCreated);
+        Assert.False(second.Value.OwnerVerificationReviewRolePermissionCreated);
         Assert.False(second.Value.PlatformRoleAssigned);
     }
 
@@ -489,11 +515,11 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         var first = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
         var second = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
 
-        Assert.Equal(7, _permissions.Added.Count);
+        Assert.Equal(8, _permissions.Added.Count);
         Assert.Single(_roles.AddedRoles);
-        Assert.Equal(7, _roles.AddedRolePermissions.Count);
+        Assert.Equal(8, _roles.AddedRolePermissions.Count);
         Assert.Single(_roles.AddedUserAssignments);
-        Assert.Equal(7, _roles.RolePermissions.Count);
+        Assert.Equal(8, _roles.RolePermissions.Count);
         Assert.Single(_roles.UserAssignments);
 
         // And it resolves to the same rows, rather than quietly provisioning a parallel set.
@@ -819,8 +845,15 @@ public sealed class BootstrapPlatformAdminCommandHandlerTests
         return permission;
     }
 
+    private void SeedOwnerVerificationReviewPermission(Role role)
+    {
+        var review = SeedPermission(PermissionCodes.OwnerVerificationReview);
+        _roles.Seed(new RolePermission(role.Id, review.Id));
+    }
+
     private void SeedMarketplaceReviewPermissions(Role role)
     {
+        SeedOwnerVerificationReviewPermission(role);
         var read = SeedPermission(PermissionCodes.MarketplaceSubmissionsReviewRead);
         var decide = SeedPermission(PermissionCodes.MarketplaceSubmissionsReviewDecide);
         _roles.Seed(new RolePermission(role.Id, read.Id));

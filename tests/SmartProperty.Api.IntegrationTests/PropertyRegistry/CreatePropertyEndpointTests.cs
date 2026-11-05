@@ -213,7 +213,7 @@ public sealed class CreatePropertyEndpointTests : IDisposable
     private HttpClient AuthorizedClient()
     {
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyCreate);
-        return _factory.CreateAuthenticatedClient(Guid.NewGuid());
+        return _factory.CreateAuthenticatedClient(TestUsers.Seed(_fixture));
     }
 
     private static CreatePropertyRequest MinimumRequest() => new("Land", "SA");

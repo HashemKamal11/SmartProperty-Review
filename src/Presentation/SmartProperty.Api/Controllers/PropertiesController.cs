@@ -4,6 +4,7 @@ using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.PropertyRegistry;
 using SmartProperty.Api.Infrastructure.Authorization;
 using SmartProperty.Api.Infrastructure.Errors;
+using SmartProperty.Application.Abstractions.Identity;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Authorization;
 using SmartProperty.Application.Locations;
@@ -41,6 +42,7 @@ public sealed class PropertiesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Create(
         CreatePropertyRequest request,
+        [FromServices] ICurrentUser currentUser,
         [FromServices] ICommandHandler<CreatePropertyCommand, CreatePropertyResult> handler,
         CancellationToken cancellationToken)
     {
@@ -71,7 +73,8 @@ public sealed class PropertiesController : ControllerBase
             request.DescriptionAr,
             request.DescriptionEn,
             request.AreaId,
-            request.CompoundId);
+            request.CompoundId,
+            currentUser.UserId);
 
         var result = await handler.Handle(command, cancellationToken);
 

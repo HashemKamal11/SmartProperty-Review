@@ -119,6 +119,25 @@ internal sealed class RoleRepository(ApplicationDbContext dbContext) : IRoleRepo
         await dbContext.UserPlatformRoles.AddAsync(userPlatformRole, cancellationToken);
     }
 
+    public async Task<bool> RemoveUserAssignmentAsync(
+        Guid userId,
+        Guid roleId,
+        CancellationToken cancellationToken = default)
+    {
+        var assignment = await dbContext.UserPlatformRoles.FirstOrDefaultAsync(
+            candidate => candidate.UserId == userId && candidate.RoleId == roleId,
+            cancellationToken);
+
+        if (assignment is null)
+        {
+            return false;
+        }
+
+        dbContext.UserPlatformRoles.Remove(assignment);
+
+        return true;
+    }
+
     public Task<bool> IsAssignedToMembershipAsync(
         Guid workspaceMembershipId,
         Guid roleId,

@@ -95,7 +95,14 @@ internal sealed class LocalDiskImageStorage : IImageStorage
 
     public Task DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
-        File.Delete(Resolve(key));
+        try
+        {
+            File.Delete(Resolve(key));
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // File.Delete ignores a missing file but throws when the folder is missing too: nothing to delete either way.
+        }
 
         return Task.CompletedTask;
     }

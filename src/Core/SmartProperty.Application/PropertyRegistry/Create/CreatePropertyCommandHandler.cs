@@ -98,7 +98,8 @@ public sealed class CreatePropertyCommandHandler(
             views.Value,
             listing,
             place.Value.Area,
-            place.Value.Compound);
+            place.Value.Compound,
+            command.OwnerUserId);
 
         await propertyRepository.AddAsync(property, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);

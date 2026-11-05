@@ -93,6 +93,7 @@ public sealed class AuthContextEndpointTests
             [
                 PermissionCodes.MarketplaceSubmissionsReviewDecide,
                 PermissionCodes.MarketplaceSubmissionsReviewRead,
+                PermissionCodes.OwnerVerificationReview,
                 PermissionCodes.PropertyArchive,
                 PermissionCodes.PropertyCreate,
                 PermissionCodes.PropertyRead,

@@ -212,6 +212,22 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             await permissionRepository.AddAsync(reviewDecidePermission, cancellationToken);
         }
 
+        var ownerReviewPermission = await permissionRepository.GetByCodeAsync(
+            PermissionCodes.OwnerVerificationReview,
+            cancellationToken);
+
+        var ownerReviewPermissionCreated = ownerReviewPermission is null;
+
+        if (ownerReviewPermission is null)
+        {
+            ownerReviewPermission = new Permission(
+                Guid.NewGuid(),
+                PermissionCodes.OwnerVerificationReview,
+                PermissionCodes.OwnerVerificationReviewDescription);
+
+            await permissionRepository.AddAsync(ownerReviewPermission, cancellationToken);
+        }
+
         var role =await roleRepository.GetPlatformRoleByNameAsync(PlatformAdminRoleName, cancellationToken);
 
         var roleCreated = role is null;
@@ -313,6 +329,18 @@ public sealed class BootstrapPlatformAdminCommandHandler(
                 cancellationToken);
         }
 
+        var ownerReviewRolePermissionCreated = !await roleRepository.HasPermissionAsync(
+            role.Id,
+            ownerReviewPermission.Id,
+            cancellationToken);
+
+        if (ownerReviewRolePermissionCreated)
+        {
+            await roleRepository.AddPermissionAsync(
+                new RolePermission(role.Id, ownerReviewPermission.Id),
+                cancellationToken);
+        }
+
         var platformRoleAssigned = !await roleRepository.IsAssignedToUserAsync(
             user.Id,
             role.Id,
@@ -345,6 +373,8 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             reviewReadPermissionCreated,
             reviewDecidePermission.Id,
             reviewDecidePermissionCreated,
+            ownerReviewPermission.Id,
+            ownerReviewPermissionCreated,
             role.Id,
             roleCreated,
             rolePermissionCreated,
@@ -354,6 +384,7 @@ public sealed class BootstrapPlatformAdminCommandHandler(
             propertyArchiveRolePermissionCreated,
             reviewReadRolePermissionCreated,
             reviewDecideRolePermissionCreated,
+            ownerReviewRolePermissionCreated,
             platformRoleAssigned));
     }
 }

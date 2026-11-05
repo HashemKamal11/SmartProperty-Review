@@ -112,7 +112,7 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task RepeatedRunsAttachExactlyTheSevenDeclaredPlatformAdminPermissionsWithoutDuplicates()
+    public async Task RepeatedRunsAttachExactlyTheEightDeclaredPlatformAdminPermissionsWithoutDuplicates()
     {
         var candidate = await RegisterCandidateAsync();
 
@@ -141,6 +141,7 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
             [
                 PermissionCodes.MarketplaceSubmissionsReviewDecide,
                 PermissionCodes.MarketplaceSubmissionsReviewRead,
+                PermissionCodes.OwnerVerificationReview,
                 PermissionCodes.PropertyArchive,
                 PermissionCodes.PropertyCreate,
                 PermissionCodes.PropertyRead,

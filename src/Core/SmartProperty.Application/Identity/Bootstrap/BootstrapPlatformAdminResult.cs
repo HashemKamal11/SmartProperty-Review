@@ -24,6 +24,8 @@ public sealed record BootstrapPlatformAdminResult(
     bool MarketplaceSubmissionsReviewReadPermissionCreated,
     Guid MarketplaceSubmissionsReviewDecidePermissionId,
     bool MarketplaceSubmissionsReviewDecidePermissionCreated,
+    Guid OwnerVerificationReviewPermissionId,
+    bool OwnerVerificationReviewPermissionCreated,
     Guid RoleId,
     bool RoleCreated,
     bool RolePermissionCreated,
@@ -33,6 +35,7 @@ public sealed record BootstrapPlatformAdminResult(
     bool PropertyArchiveRolePermissionCreated,
     bool MarketplaceSubmissionsReviewReadRolePermissionCreated,
     bool MarketplaceSubmissionsReviewDecideRolePermissionCreated,
+    bool OwnerVerificationReviewRolePermissionCreated,
     bool PlatformRoleAssigned)
 {
     /// <summary>True when the run left the database exactly as it found it.</summary>
@@ -45,6 +48,7 @@ public sealed record BootstrapPlatformAdminResult(
         && !PropertyArchivePermissionCreated
         && !MarketplaceSubmissionsReviewReadPermissionCreated
         && !MarketplaceSubmissionsReviewDecidePermissionCreated
+        && !OwnerVerificationReviewPermissionCreated
         && !RoleCreated
         && !RolePermissionCreated
         && !PropertyCreateRolePermissionCreated
@@ -53,5 +57,6 @@ public sealed record BootstrapPlatformAdminResult(
         && !PropertyArchiveRolePermissionCreated
         && !MarketplaceSubmissionsReviewReadRolePermissionCreated
         && !MarketplaceSubmissionsReviewDecideRolePermissionCreated
+        && !OwnerVerificationReviewRolePermissionCreated
         && !PlatformRoleAssigned;
 }

@@ -56,6 +56,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             "latitude|numeric|YES",
             "listing_status|character varying(32)|NO",
             "longitude|numeric|YES",
+            "owner_user_id|uuid|YES",
             "price|numeric(18,2)|YES",
             "status|character varying(32)|NO",
             "title_ar|character varying(300)|YES",
@@ -142,7 +143,7 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
     }
 
     [Fact]
-    public async Task ThePropertiesTableHasOnlyTheTwoPlaceForeignKeysAndTheirIndexes()
+    public async Task ThePropertiesTableHasOnlyThePlaceAndOwnerForeignKeysAndTheirIndexes()
     {
         var foreignKeys = await QueryStringsAsync(
             """
@@ -161,8 +162,8 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             ORDER BY c.relname COLLATE "C";
             """);
 
-        Assert.Equal(["FK_properties_areas_area_id", "FK_properties_compounds_compound_id"], foreignKeys);
-        Assert.Equal(["IX_properties_area_id", "IX_properties_compound_id"], indexes);
+        Assert.Equal(["FK_properties_areas_area_id", "FK_properties_compounds_compound_id", "FK_properties_users_owner_user_id"], foreignKeys);
+        Assert.Equal(["IX_properties_area_id", "IX_properties_compound_id", "IX_properties_owner_user_id"], indexes);
     }
 
     [Fact]

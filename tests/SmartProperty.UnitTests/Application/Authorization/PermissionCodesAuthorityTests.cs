@@ -44,6 +44,7 @@ public sealed class PermissionCodesAuthorityTests
         "marketplace.submissions.review.decide",
         "workspace.read",
         "workspace.members.create",
+        "owner.verification.review",
     ];
 
     [Fact]
@@ -143,10 +144,11 @@ public sealed class PermissionCodesAuthorityTests
         ("marketplace.authority.grants.read", "Read property authority grants and legal reviews."),
         ("workspace.read", "Read the workspace itself."),
         ("workspace.members.create", "Create member accounts in the workspace."),
+        ("owner.verification.review", "Review, approve or reject owner verification profiles."),
     ];
 
     [Fact]
-    public void TheCatalogIsExactlyTheFifteenCodesWithTheirDescriptionsAndEachCodeIsUnique()
+    public void TheCatalogIsExactlyTheSixteenCodesWithTheirDescriptionsAndEachCodeIsUnique()
     {
         var constants = typeof(PermissionCodes)
             .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
@@ -156,8 +158,8 @@ public sealed class PermissionCodesAuthorityTests
         var codeFields = constants.Where(field => !field.Name.EndsWith("Description", StringComparison.Ordinal)).ToArray();
         var descriptionFields = constants.Where(field => field.Name.EndsWith("Description", StringComparison.Ordinal)).ToArray();
 
-        Assert.Equal(15, codeFields.Length);
-        Assert.Equal(15, descriptionFields.Length);
+        Assert.Equal(16, codeFields.Length);
+        Assert.Equal(16, descriptionFields.Length);
 
         // Each code has exactly its own description constant, and no description stands alone.
         Assert.Equal(
@@ -170,8 +172,8 @@ public sealed class PermissionCodesAuthorityTests
             .ToArray();
 
         Assert.Equal(Catalog.OrderBy(entry => entry.Code, StringComparer.Ordinal).ToArray(), actual);
-        Assert.Equal(15, actual.Select(entry => entry.Code).Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal(15, actual.Select(entry => entry.Description).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(16, actual.Select(entry => entry.Code).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(16, actual.Select(entry => entry.Description).Distinct(StringComparer.Ordinal).Count());
         Assert.All(actual, entry =>
         {
             Assert.False(string.IsNullOrWhiteSpace(entry.Code));

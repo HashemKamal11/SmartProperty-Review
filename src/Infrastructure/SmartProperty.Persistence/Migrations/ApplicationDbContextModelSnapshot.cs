@@ -238,7 +238,8 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("permission_id");
 
-                    b.HasKey("RoleId", "PermissionId");
+                    b.HasKey("RoleId", "PermissionId")
+                        .HasName("PK_role_permissions");
 
                     b.HasIndex("PermissionId");
 
@@ -911,6 +912,146 @@ namespace SmartProperty.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.OwnerVerification.OwnerProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AdditionalNumber")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("additional_number");
+
+                    b.Property<DateTimeOffset?>("AddressConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("address_confirmed_at");
+
+                    b.Property<string>("AddressProofContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("address_proof_content_type");
+
+                    b.Property<string>("AddressProofFileName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("address_proof_file_name");
+
+                    b.Property<string>("AddressProofKey")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("address_proof_key");
+
+                    b.Property<DateOnly?>("BirthDate")
+                        .HasColumnType("date")
+                        .HasColumnName("birth_date");
+
+                    b.Property<string>("BuildingNumber")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("building_number");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("city");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("District")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("district");
+
+                    b.Property<DateOnly?>("IdExpiryDate")
+                        .HasColumnType("date")
+                        .HasColumnName("id_expiry_date");
+
+                    b.Property<DateTimeOffset?>("IdentityConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("identity_confirmed_at");
+
+                    b.Property<string>("NationalId")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("national_id");
+
+                    b.Property<string>("Nationality")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nationality");
+
+                    b.Property<string>("PostalCode")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
+                        .HasColumnName("postal_code");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("rejection_reason");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by_user_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StreetName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("street_name");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NationalId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_identity_owner_profiles_national_id")
+                        .HasFilter("national_id IS NOT NULL");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_identity_owner_profiles_user_id");
+
+                    b.HasIndex("Status", "SubmittedAt");
+
+                    b.ToTable("owner_profiles", "identity", t =>
+                        {
+                            t.HasCheckConstraint("ck_identity_owner_profiles_address_numbers", "(building_number IS NULL OR building_number ~ '^[0-9]{4}$') AND (postal_code IS NULL OR postal_code ~ '^[0-9]{5}$') AND (additional_number IS NULL OR additional_number ~ '^[0-9]{4}$')");
+
+                            t.HasCheckConstraint("ck_identity_owner_profiles_national_id", "national_id IS NULL OR national_id ~ '^[0-9]{10}$'");
+
+                            t.HasCheckConstraint("ck_identity_owner_profiles_review", "(status IN ('Approved', 'Rejected')) = (reviewed_at IS NOT NULL AND reviewed_by_user_id IS NOT NULL) AND ((status = 'Rejected') = (rejection_reason IS NOT NULL))");
+
+                            t.HasCheckConstraint("ck_identity_owner_profiles_status", "status IN ('Draft', 'UnderReview', 'Approved', 'Rejected')");
+                        });
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.PropertyMatching.PropertyMatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1055,6 +1196,10 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("finishing_status");
 
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -1173,23 +1318,15 @@ namespace SmartProperty.Persistence.Migrations
 
                     b.HasIndex("CompoundId");
 
+                    b.HasIndex("OwnerUserId");
+
                     b.ToTable("properties", "registry", t =>
                         {
-                                                        t.HasCheckConstraint("ck_registry_properties_ai_sync_status", "ai_sync_status IN ('NotSynced', 'Synced', 'Failed')");
+                            t.HasCheckConstraint("ck_registry_properties_address_country_code", "address_country_code ~ '^[A-Z]{2}$'");
+
+                            t.HasCheckConstraint("ck_registry_properties_ai_sync_status", "ai_sync_status IN ('NotSynced', 'Synced', 'Failed')");
 
                             t.HasCheckConstraint("ck_registry_properties_area_sqm_range", "area_sqm IS NULL OR (area_sqm > 0 AND area_sqm <= 100000)");
-
-                            t.HasCheckConstraint("ck_registry_properties_floor_range", "floor IS NULL OR floor BETWEEN -5 AND 300");
-
-                            t.HasCheckConstraint("ck_registry_properties_listing_status", "listing_status IN ('Available', 'Reserved', 'Sold', 'Rented')");
-
-                            t.HasCheckConstraint("ck_registry_properties_place", "compound_id IS NULL OR area_id IS NOT NULL");
-
-                            t.HasCheckConstraint("ck_registry_properties_price_positive", "price IS NULL OR price > 0");
-
-                            t.HasCheckConstraint("ck_registry_properties_transaction_type", "transaction_type IS NULL OR transaction_type IN ('Sale', 'Rent')");
-
-                            t.HasCheckConstraint("ck_registry_properties_address_country_code", "address_country_code ~ '^[A-Z]{2}$'");
 
                             t.HasCheckConstraint("ck_registry_properties_bathrooms_range", "bathrooms IS NULL OR bathrooms BETWEEN 0 AND 100");
 
@@ -1197,11 +1334,21 @@ namespace SmartProperty.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_registry_properties_finishing_status", "finishing_status IS NULL OR finishing_status IN ('Finished', 'LuxuryFinished', 'SemiFinished', 'CoreAndShell')");
 
+                            t.HasCheckConstraint("ck_registry_properties_floor_range", "floor IS NULL OR floor BETWEEN -5 AND 300");
+
                             t.HasCheckConstraint("ck_registry_properties_latitude_range", "latitude IS NULL OR latitude BETWEEN -90 AND 90");
+
+                            t.HasCheckConstraint("ck_registry_properties_listing_status", "listing_status IN ('Available', 'Reserved', 'Sold', 'Rented')");
 
                             t.HasCheckConstraint("ck_registry_properties_longitude_range", "longitude IS NULL OR longitude BETWEEN -180 AND 180");
 
+                            t.HasCheckConstraint("ck_registry_properties_place", "compound_id IS NULL OR area_id IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_registry_properties_price_positive", "price IS NULL OR price > 0");
+
                             t.HasCheckConstraint("ck_registry_properties_status", "status IN ('Active', 'Archived')");
+
+                            t.HasCheckConstraint("ck_registry_properties_transaction_type", "transaction_type IS NULL OR transaction_type IN ('Sale', 'Rent')");
 
                             t.HasCheckConstraint("ck_registry_properties_type", "type IN ('Land', 'Building', 'Apartment', 'Villa', 'Duplex', 'Studio', 'Chalet', 'Townhouse', 'TwinHouse', 'Penthouse', 'StandaloneVilla', 'HotelApartment', 'Office', 'Shop', 'Warehouse', 'Farm')");
                         });
@@ -1416,7 +1563,8 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("role_id");
 
-                    b.HasKey("WorkspaceMembershipId", "RoleId");
+                    b.HasKey("WorkspaceMembershipId", "RoleId")
+                        .HasName("PK_workspace_membership_roles");
 
                     b.HasIndex("RoleId");
 
@@ -1515,6 +1663,21 @@ namespace SmartProperty.Persistence.Migrations
                     b.ToTable("property_views", "registry");
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.Favorites.FavoriteProperty", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Identity.OneTimeCode", b =>
                 {
                     b.HasOne("SmartProperty.Domain.Identity.User", null)
@@ -1578,6 +1741,39 @@ namespace SmartProperty.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Locations.Area", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Locations.City", "City")
+                        .WithMany()
+                        .HasForeignKey("CityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("City");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Locations.City", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Locations.Country", "Country")
+                        .WithMany()
+                        .HasForeignKey("CountryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Country");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Locations.Compound", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Locations.Area", "Area")
+                        .WithMany()
+                        .HasForeignKey("AreaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Area");
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.ListingReviewDecision", b =>
@@ -1693,6 +1889,20 @@ namespace SmartProperty.Persistence.Migrations
                         .HasConstraintName("fk_marketplace_rental_requests_listing");
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.OwnerVerification.OwnerProfile", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.PropertyMatching.PropertyMatch", b =>
                 {
                     b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
@@ -1704,6 +1914,37 @@ namespace SmartProperty.Persistence.Migrations
                     b.HasOne("SmartProperty.Domain.Identity.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.Property", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Locations.Area", "Area")
+                        .WithMany()
+                        .HasForeignKey("AreaId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Locations.Compound", "Compound")
+                        .WithMany()
+                        .HasForeignKey("CompoundId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Area");
+
+                    b.Navigation("Compound");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.PropertyImage", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany("Images")
+                        .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -1792,85 +2033,11 @@ namespace SmartProperty.Persistence.Migrations
                 {
                     b.Navigation("ReviewDecision");
                 });
-            modelBuilder.Entity("SmartProperty.Domain.Locations.Area", b =>
-                {
-                    b.HasOne("SmartProperty.Domain.Locations.City", "City")
-                        .WithMany()
-                        .HasForeignKey("CityId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("City");
-                });
-
-            modelBuilder.Entity("SmartProperty.Domain.Locations.City", b =>
-                {
-                    b.HasOne("SmartProperty.Domain.Locations.Country", "Country")
-                        .WithMany()
-                        .HasForeignKey("CountryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Country");
-                });
-
-            modelBuilder.Entity("SmartProperty.Domain.Locations.Compound", b =>
-                {
-                    b.HasOne("SmartProperty.Domain.Locations.Area", "Area")
-                        .WithMany()
-                        .HasForeignKey("AreaId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Area");
-                });
-
-            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.Property", b =>
-                {
-                    b.HasOne("SmartProperty.Domain.Locations.Area", "Area")
-                        .WithMany()
-                        .HasForeignKey("AreaId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("SmartProperty.Domain.Locations.Compound", "Compound")
-                        .WithMany()
-                        .HasForeignKey("CompoundId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Area");
-
-                    b.Navigation("Compound");
-                });
-
-            modelBuilder.Entity("SmartProperty.Domain.Favorites.FavoriteProperty", b =>
-                {
-                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
-                        .WithMany()
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("SmartProperty.Domain.Identity.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.PropertyImage", b =>
-                {
-                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
-                        .WithMany("Images")
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
 
             modelBuilder.Entity("SmartProperty.Domain.PropertyRegistry.Property", b =>
                 {
                     b.Navigation("Images");
                 });
-
 #pragma warning restore 612, 618
         }
     }
