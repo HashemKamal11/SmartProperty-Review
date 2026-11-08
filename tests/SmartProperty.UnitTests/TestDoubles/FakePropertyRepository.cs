@@ -107,6 +107,18 @@ internal sealed class FakePropertyRepository : IPropertyRepository
         return Task.FromResult(Page);
     }
 
+    public PropertyListFilter? LastSearchFilter { get; private set; }
+
+    public Task<PropertyPage> SearchAsync(
+        PropertyListFilter filter,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        LastSearchFilter = filter;
+        return ListAsync(filter.Types is { Count: 1 } types ? types[0] : null, filter.Status, filter.CountryCode, skip, take, cancellationToken);
+    }
+
     internal sealed record ListCall(
         PropertyType? Type,
         PropertyStatus? Status,

@@ -79,13 +79,7 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
             .ToListAsync(cancellationToken);
     }
 
-    /// <remarks>
-    /// Two commands: one count over the filter, one page of projected rows. No entity is materialized or tracked.
-    ///
-    /// The ordering is newest property first, tie-broken by id descending. The tie-break is what makes paging
-    /// stable — <c>created_at</c> alone is not unique, and without it a row could appear on two pages or on none.
-    /// </remarks>
-    public async Task<PropertyPage> ListAsync(
+    public Task<PropertyPage> ListAsync(
         PropertyType? type,
         PropertyStatus? status,
         string? countryCode,
@@ -93,6 +87,28 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
         int take,
         CancellationToken cancellationToken = default)
     {
+        return SearchAsync(
+            new PropertyListFilter(type is { } single ? [single] : null, status, countryCode),
+            skip,
+            take,
+            cancellationToken);
+    }
+
+    /// <remarks>
+    /// Two commands, plus one more for the page's match percentages when a match user is named. No entity is
+    /// materialized or tracked. Every non-null filter must hold; the types are an "any of" set.
+    ///
+    /// The ordering is newest property first, tie-broken by id descending. The tie-break is what makes paging
+    /// stable — <c>created_at</c> alone is not unique, and without it a row could appear on two pages or on none.
+    /// </remarks>
+    public async Task<PropertyPage> SearchAsync(
+        PropertyListFilter filter,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+
         if (skip < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(skip), skip, "Skip must not be negative.");
@@ -116,19 +132,62 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
 
         var filtered = dbContext.Properties.AsNoTracking();
 
-        if (type is { } targetType)
+        if (filter.Types is { Count: > 0 } types)
         {
-            filtered = filtered.Where(property => property.Type == targetType);
+            var wantedTypes = types.ToArray();
+            filtered = filtered.Where(property => wantedTypes.Contains(property.Type));
         }
 
-        if (status is { } targetStatus)
+        if (filter.Status is { } targetStatus)
         {
             filtered = filtered.Where(property => property.Status == targetStatus);
         }
 
-        if (countryCode is not null)
+        if (filter.CountryCode is { } countryCode)
         {
             filtered = filtered.Where(property => property.Address.CountryCode == countryCode);
+        }
+
+        if (filter.District is { } district)
+        {
+            var lowered = district.ToLowerInvariant();
+            filtered = filtered.Where(property => property.Address.District != null
+                && property.Address.District.ToLower() == lowered);
+        }
+
+        if (filter.AreaId is { } areaId)
+        {
+            filtered = filtered.Where(property => property.AreaId == areaId);
+        }
+
+        if (filter.MinPrice is { } minPrice)
+        {
+            filtered = filtered.Where(property => property.Listing.Price >= minPrice);
+        }
+
+        if (filter.MaxPrice is { } maxPrice)
+        {
+            filtered = filtered.Where(property => property.Listing.Price <= maxPrice);
+        }
+
+        if (filter.MinBedrooms is { } minBedrooms)
+        {
+            filtered = filtered.Where(property => property.Bedrooms >= minBedrooms);
+        }
+
+        if (filter.MaxBedrooms is { } maxBedrooms)
+        {
+            filtered = filtered.Where(property => property.Bedrooms <= maxBedrooms);
+        }
+
+        if (filter is { MinMatchPercentage: { } minMatch, MatchUserId: { } matchUserId })
+        {
+            // The user's latest stored match for the property decides; an older, higher score does not count.
+            filtered = filtered.Where(property => dbContext.PropertyMatches
+                .Where(match => match.UserId == matchUserId && match.PropertyId == property.Id)
+                .OrderByDescending(match => match.CreatedAt)
+                .Select(match => (decimal?)match.MatchPercentage)
+                .FirstOrDefault() >= minMatch);
         }
 
         var totalCount = await filtered.LongCountAsync(cancellationToken);
@@ -140,6 +199,28 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
             .Take(take)
             .Select(PropertyDetailsProjection.Expression)
             .ToListAsync(cancellationToken);
+
+        if (filter.MatchUserId is { } userId && items.Count > 0)
+        {
+            var ids = items.Select(item => item.Id).ToArray();
+            var matches = await dbContext.PropertyMatches
+                .AsNoTracking()
+                .Where(match => match.UserId == userId && ids.Contains(match.PropertyId))
+                .Select(match => new { match.PropertyId, match.MatchPercentage, match.CreatedAt })
+                .ToListAsync(cancellationToken);
+
+            var latest = matches
+                .GroupBy(match => match.PropertyId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderByDescending(match => match.CreatedAt).First().MatchPercentage);
+
+            items = items
+                .Select(item => latest.TryGetValue(item.Id, out var percentage)
+                    ? item with { MatchPercentage = percentage }
+                    : item)
+                .ToList();
+        }
 
         return new PropertyPage(items, totalCount);
     }

@@ -22,7 +22,7 @@ public sealed class GetPropertiesQueryHandler(IPropertyRepository propertyReposi
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        if (GetPropertiesQueryValidator.Validate(query, out var countryCode) is { } validationError)
+        if (GetPropertiesQueryValidator.Validate(query, out var filter) is { } validationError)
         {
             return Result<PagedList<PropertyDetails>>.Failure(validationError);
         }
@@ -41,10 +41,8 @@ public sealed class GetPropertiesQueryHandler(IPropertyRepository propertyReposi
             pageParameters.PageSize = pageSize;
         }
 
-        var result = await propertyRepository.ListAsync(
-            query.Type,
-            query.Status,
-            countryCode,
+        var result = await propertyRepository.SearchAsync(
+            filter,
             pageParameters.Offset,
             pageParameters.PageSize,
             cancellationToken);
