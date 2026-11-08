@@ -7,7 +7,7 @@ namespace SmartProperty.Application.Marketplace.ListingSubmissions.Write;
 /// Validates draft content against what the Domain already requires, and nothing more.
 /// </summary>
 /// <remarks>
-/// The title, description and currency are required, a rental needs a Monthly or Yearly period, and a sale has none,
+/// The title, description and currency are required, a rental needs a Daily, Weekly, Monthly or Yearly period, and a sale has none,
 /// as <c>ListingSubmissionContent</c> enforces. Evidence ids must not be empty values or repeated, as the submission
 /// enforces. The Domain sets no limit on length, amount or currency, so none is invented here; those are product
 /// decisions that belong with the Domain.

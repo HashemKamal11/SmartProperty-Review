@@ -91,7 +91,7 @@ public sealed class GetPropertiesQueryHandlerTests
     [InlineData(PropertyType.Apartment)]
     public async Task TheTypeFilterIsForwarded(PropertyType type)
     {
-        await Handle(new GetPropertiesQuery(type, null, null, null, null));
+        await Handle(new GetPropertiesQuery([type], null, null, null, null));
 
         Assert.Equal(type, _properties.LastListCall!.Type);
     }
@@ -107,12 +107,12 @@ public sealed class GetPropertiesQueryHandlerTests
     }
 
     [Fact]
-    public async Task ANullStatusIsNotTurnedIntoAnActiveFilter()
+    public async Task ANullStatusListsActivePropertiesOnly()
     {
         await Handle(new GetPropertiesQuery(null, null, null, null, null));
 
-        // No implicit default: Archived properties are part of the canonical registry and stay listed.
-        Assert.Null(_properties.LastListCall!.Status);
+        // Archived properties stay in the registry but are listed only when explicitly asked for.
+        Assert.Equal(PropertyStatus.Active, _properties.LastListCall!.Status);
         Assert.Null(_properties.LastListCall.Type);
         Assert.Null(_properties.LastListCall.CountryCode);
     }
@@ -181,7 +181,7 @@ public sealed class GetPropertiesQueryHandlerTests
         using var cancellation = new CancellationTokenSource();
 
         await CreateHandler().Handle(
-            new GetPropertiesQuery(PropertyType.Apartment, PropertyStatus.Archived, " eg ", 2, 5),
+            new GetPropertiesQuery([PropertyType.Apartment], PropertyStatus.Archived, " eg ", 2, 5),
             cancellation.Token);
 
         Assert.Equal(1, _properties.ListCallCount);
@@ -189,6 +189,146 @@ public sealed class GetPropertiesQueryHandlerTests
             new FakePropertyRepository.ListCall(PropertyType.Apartment, PropertyStatus.Archived, "EG", 5, 5),
             _properties.LastListCall);
         Assert.Equal(cancellation.Token, _properties.CancellationToken);
+    }
+
+    [Fact]
+    public async Task MultipleTypesDistrictAreaPriceAndBedroomsAreForwardedNormalized()
+    {
+        var areaId = Guid.NewGuid();
+
+        var result = await Handle(new GetPropertiesQuery(
+            [PropertyType.Villa, PropertyType.Apartment, PropertyType.Villa], null, null, null, null,
+            District: "  Hittin ", AreaId: areaId, MinPrice: 1000m, MaxPrice: 3200000m, MinBedrooms: 4, MaxBedrooms: 4));
+
+        Assert.True(result.IsSuccess);
+        var filter = _properties.LastSearchFilter!;
+        Assert.Equal([PropertyType.Villa, PropertyType.Apartment], filter.Types);
+        Assert.Equal("Hittin", filter.District);
+        Assert.Equal(areaId, filter.AreaId);
+        Assert.Equal(1000m, filter.MinPrice);
+        Assert.Equal(3200000m, filter.MaxPrice);
+        Assert.Equal(4, filter.MinBedrooms);
+        Assert.Equal(4, filter.MaxBedrooms);
+        Assert.Null(filter.MatchUserId);
+    }
+
+    [Fact]
+    public async Task SearchTextIsSplitIntoDistinctTermsAndSortDefaultsToRelevance()
+    {
+        await Handle(new GetPropertiesQuery(null, null, null, null, null, Search: "  villa   Hittin VILLA "));
+
+        var filter = _properties.LastSearchFilter!;
+        Assert.Equal(["villa", "Hittin"], filter.SearchTerms);
+        Assert.Equal(PropertyListSortOrder.Relevance, filter.Sort);
+        Assert.Null(filter.ListingStatus);
+    }
+
+    [Theory]
+    [InlineData(PropertyListSortOrder.Newest)]
+    [InlineData(PropertyListSortOrder.PriceAsc)]
+    [InlineData(PropertyListSortOrder.PriceDesc)]
+    public async Task TheSortOrderAndListingStatusAreForwarded(PropertyListSortOrder sort)
+    {
+        await Handle(new GetPropertiesQuery(null, null, null, null, null, ListingStatus: ListingStatus.Sold, Sort: sort));
+
+        Assert.Equal(sort, _properties.LastSearchFilter!.Sort);
+        Assert.Equal(ListingStatus.Sold, _properties.LastSearchFilter.ListingStatus);
+    }
+
+    [Fact]
+    public async Task ExplicitlyAskingForArchivedIsHonoured()
+    {
+        await Handle(new GetPropertiesQuery(null, PropertyStatus.Archived, null, null, null));
+
+        Assert.Equal(PropertyStatus.Archived, _properties.LastSearchFilter!.Status);
+    }
+
+    [Fact]
+    public async Task SearchTextOverTheLengthOrWordLimitIsAValidationFailure()
+    {
+        var tooLong = await Handle(new GetPropertiesQuery(null, null, null, null, null, Search: new string('a', 101)));
+        var tooManyWords = await Handle(new GetPropertiesQuery(null, null, null, null, null, Search: "a b c d e f"));
+
+        Assert.True(tooLong.IsFailure);
+        Assert.True(tooManyWords.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
+    }
+
+    [Fact]
+    public async Task AnUnsupportedSortOrAListingStatusIsAValidationFailure()
+    {
+        var sort = await Handle(new GetPropertiesQuery(null, null, null, null, null, Sort: (PropertyListSortOrder)99));
+        var listing = await Handle(new GetPropertiesQuery(null, null, null, null, null, ListingStatus: (ListingStatus)99));
+
+        Assert.True(sort.IsFailure);
+        Assert.True(listing.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
+    }
+
+    [Fact]
+    public async Task TheMatchFilterIsForwardedWithTheSignedInUser()
+    {
+        var userId = Guid.NewGuid();
+
+        var result = await Handle(new GetPropertiesQuery(null, null, null, null, null, MinMatchPercentage: 85m, MatchUserId: userId));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(85m, _properties.LastSearchFilter!.MinMatchPercentage);
+        Assert.Equal(userId, _properties.LastSearchFilter.MatchUserId);
+    }
+
+    [Fact]
+    public async Task TheMatchFilterWithoutASignedInUserIsAValidationFailure()
+    {
+        var result = await Handle(new GetPropertiesQuery(null, null, null, null, null, MinMatchPercentage: 85m));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
+    }
+
+    [Theory]
+    [InlineData(-1, null)]
+    [InlineData(null, -1)]
+    [InlineData(2000, 1000)]
+    public async Task ANegativeOrInvertedPriceRangeIsAValidationFailure(int? min, int? max)
+    {
+        var result = await Handle(new GetPropertiesQuery(null, null, null, null, null, MinPrice: min, MaxPrice: max));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
+    }
+
+    [Theory]
+    [InlineData(-1, null)]
+    [InlineData(null, 101)]
+    [InlineData(5, 4)]
+    public async Task AnOutOfRangeOrInvertedBedroomRangeIsAValidationFailure(int? min, int? max)
+    {
+        var result = await Handle(new GetPropertiesQuery(null, null, null, null, null, MinBedrooms: min, MaxBedrooms: max));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
+    }
+
+    [Theory]
+    [InlineData(-0.1)]
+    [InlineData(100.1)]
+    public async Task AnOutOfRangeMatchPercentageIsAValidationFailure(double percentage)
+    {
+        var result = await Handle(new GetPropertiesQuery(
+            null, null, null, null, null, MinMatchPercentage: (decimal)percentage, MatchUserId: Guid.NewGuid()));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
+    }
+
+    [Fact]
+    public async Task AnEmptyAreaIdIsAValidationFailure()
+    {
+        var result = await Handle(new GetPropertiesQuery(null, null, null, null, null, AreaId: Guid.Empty));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
     }
 
     [Fact]

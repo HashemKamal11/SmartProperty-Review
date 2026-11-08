@@ -9,8 +9,7 @@ namespace SmartProperty.Application.PropertyRegistry.List;
 /// Returns one page of the canonical property registry, newest first. Read-only: it saves nothing.
 /// </summary>
 /// <remarks>
-/// There is no implicit status filter: Archived properties are listed alongside Active ones unless the caller asks
-/// for one status. Defaulting and clamping happen here rather than at the API boundary, so every caller of the use
+/// Only Active properties are listed unless the caller explicitly asks for Archived ones. Defaulting and clamping happen here rather than at the API boundary, so every caller of the use
 /// case gets the same bounded page regardless of what it passed.
 /// </remarks>
 public sealed class GetPropertiesQueryHandler(IPropertyRepository propertyRepository)
@@ -22,7 +21,7 @@ public sealed class GetPropertiesQueryHandler(IPropertyRepository propertyReposi
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        if (GetPropertiesQueryValidator.Validate(query, out var countryCode) is { } validationError)
+        if (GetPropertiesQueryValidator.Validate(query, out var filter) is { } validationError)
         {
             return Result<PagedList<PropertyDetails>>.Failure(validationError);
         }
@@ -41,10 +40,8 @@ public sealed class GetPropertiesQueryHandler(IPropertyRepository propertyReposi
             pageParameters.PageSize = pageSize;
         }
 
-        var result = await propertyRepository.ListAsync(
-            query.Type,
-            query.Status,
-            countryCode,
+        var result = await propertyRepository.SearchAsync(
+            filter,
             pageParameters.Offset,
             pageParameters.PageSize,
             cancellationToken);

@@ -7,9 +7,12 @@ namespace SmartProperty.UnitTests.Domain.Marketplace;
 public sealed class RentPeriodTests
 {
     [Fact]
-    public void ExactlyTwoSupportedValues() => Assert.Equal(new[] { RentPeriod.Monthly, RentPeriod.Yearly }, Enum.GetValues<RentPeriod>());
+    public void ExactlyFourSupportedValues() => Assert.Equal(
+        new[] { RentPeriod.Monthly, RentPeriod.Yearly, RentPeriod.Daily, RentPeriod.Weekly }, Enum.GetValues<RentPeriod>());
 
     [Theory]
+    [InlineData(RentPeriod.Daily)]
+    [InlineData(RentPeriod.Weekly)]
     [InlineData(RentPeriod.Monthly)]
     [InlineData(RentPeriod.Yearly)]
     public void RentPreservesExplicitPeriod(RentPeriod period) => Assert.Equal(period, Content(ListingPurpose.Rent, period).RentPeriod);
@@ -17,11 +20,13 @@ public sealed class RentPeriodTests
     [Theory]
     [InlineData(null)]
     [InlineData(0)]
-    [InlineData(3)]
+    [InlineData(5)]
     [InlineData(-1)]
     public void MissingOrUnknownRentPeriodFails(int? period) => Assert.Throws<ArgumentException>(() => Content(ListingPurpose.Rent, (RentPeriod?)period));
 
     [Theory]
+    [InlineData(RentPeriod.Daily)]
+    [InlineData(RentPeriod.Weekly)]
     [InlineData(RentPeriod.Monthly)]
     [InlineData(RentPeriod.Yearly)]
     [InlineData((RentPeriod)0)]

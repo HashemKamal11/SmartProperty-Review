@@ -73,6 +73,8 @@ services:
       Smtp__TimeoutSeconds: ${SMTP_TIMEOUT_SECONDS:-60}
       Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN_0:-}
       Cors__AllowedOrigins__1: ${CORS_ALLOWED_ORIGIN_1:-}
+      Share__PublicBaseUrl: ${SHARE_PUBLIC_BASE_URL:-}
+      Share__PropertyPath: ${SHARE_PROPERTY_PATH:-/properties/{id}}
     volumes:
       - ${IMAGE_STORAGE_HOST_PATH:-./Storage}:/data/images
     ports:

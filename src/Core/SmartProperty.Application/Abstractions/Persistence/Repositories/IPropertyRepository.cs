@@ -42,4 +42,15 @@ public interface IPropertyRepository
         int skip,
         int take,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One page of properties matching every filter in <paramref name="filter"/>, newest first and tie-broken by id,
+    /// together with the total the filters match. When the filter names a match user, each item carries that user's
+    /// latest stored match percentage.
+    /// </summary>
+    Task<PropertyPage> SearchAsync(
+        PropertyListFilter filter,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default);
 }

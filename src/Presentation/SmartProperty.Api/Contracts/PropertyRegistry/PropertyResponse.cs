@@ -23,4 +23,6 @@ public sealed record PropertyResponse(
     PropertyListingResponse? Listing = null,
     AiSyncResponse? AiSync = null,
     PropertyPlaceResponse? Place = null,
-    IReadOnlyList<PropertyImageResponse>? Images = null);
+    IReadOnlyList<PropertyImageResponse>? Images = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    decimal? MatchPercentage = null);

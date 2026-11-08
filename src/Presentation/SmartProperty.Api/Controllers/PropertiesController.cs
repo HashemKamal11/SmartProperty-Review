@@ -15,6 +15,9 @@ using SmartProperty.Application.PropertyRegistry.Ai.Sync;
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Application.PropertyRegistry.GetById;
 using SmartProperty.Application.PropertyRegistry.List;
+using SmartProperty.Application.PropertyRegistry.Share;
+using SmartProperty.Api.Infrastructure.Sharing;
+using Microsoft.Extensions.Options;
 using SmartProperty.Application.PropertyRegistry.Update;
 using SmartProperty.Common.Pagination;
 using SmartProperty.Domain.PropertyRegistry;
@@ -110,12 +113,26 @@ public sealed class PropertiesController : ControllerBase
     }
 
     /// <summary>
-    /// One page of the registry, newest first. Without a <paramref name="status"/>, Active and Archived properties
-    /// are both listed.
+    /// One page of the registry. Without a <paramref name="status"/> only Active properties are listed; send
+    /// <c>status=Archived</c> to list archived ones. The default order is <c>Relevance</c>.
     /// </summary>
     /// <remarks>
-    /// An unparseable enum or page value is a request-shape failure answered by the standard
-    /// <c>400 request.malformed</c>; an invalid country code is a <c>422 validation.failed</c> from the use case.
+    /// <c>q</c> is free text (at most 100 characters and 5 words): every word must appear in the title, description,
+    /// city, region, district, address line or area name. <c>listingStatus</c> restricts to Available, Reserved,
+    /// Sold or Rented. <c>sort</c> is <c>Relevance</c> (default: the signed-in user's latest stored match percentage
+    /// first, then the better text match, otherwise newest), <c>Newest</c>, <c>PriceAsc</c> or <c>PriceDesc</c>
+    /// (properties without a price come last).
+    /// Filters (all optional, all combined with AND):
+    /// <c>type</c> may be repeated (<c>?type=Villa&amp;type=Apartment</c>) and matches any of them;
+    /// <c>district</c> (case-insensitive) and <c>areaId</c> restrict the location;
+    /// <c>minPrice</c>/<c>maxPrice</c> bound the listing price; <c>minBedrooms</c>/<c>maxBedrooms</c> bound the
+    /// bedroom count (send only <c>minBedrooms=5</c> for "5+"); <c>minMatchPercentage</c> (0–100) keeps properties
+    /// whose latest stored match for the signed-in user is at least that value, and requires a signed-in user.
+    /// When the caller is signed in, each item also carries <c>matchPercentage</c> (their latest match, omitted when
+    /// there is none).
+    /// An unparseable enum, number, id or page value is a request-shape failure answered by the standard
+    /// <c>400 request.malformed</c>; an invalid combination (a bad country code, an inverted price or bedroom range,
+    /// a match filter without a signed-in user) is a <c>422 validation.failed</c> from the use case.
     /// </remarks>
     [HttpGet]
     [AllowAnonymous]
@@ -124,14 +141,41 @@ public sealed class PropertiesController : ControllerBase
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> List(
         [FromServices] IQueryHandler<GetPropertiesQuery, PagedList<PropertyDetails>> handler,
+        [FromServices] ICurrentUser currentUser,
         CancellationToken cancellationToken,
-        [FromQuery] PropertyType? type = null,
+        [FromQuery(Name = "type")] PropertyType[]? types = null,
         [FromQuery] PropertyStatus? status = null,
         [FromQuery] string? countryCode = null,
         [FromQuery] int? page = null,
-        [FromQuery] int? pageSize = null)
+        [FromQuery] int? pageSize = null,
+        [FromQuery] string? district = null,
+        [FromQuery] Guid? areaId = null,
+        [FromQuery] decimal? minPrice = null,
+        [FromQuery] decimal? maxPrice = null,
+        [FromQuery] int? minBedrooms = null,
+        [FromQuery] int? maxBedrooms = null,
+        [FromQuery] decimal? minMatchPercentage = null,
+        [FromQuery] ListingStatus? listingStatus = null,
+        [FromQuery(Name = "q")] string? search = null,
+        [FromQuery] PropertyListSortOrder? sort = null)
     {
-        var query = new GetPropertiesQuery(type, status, countryCode, page, pageSize);
+        var query = new GetPropertiesQuery(
+            types,
+            status,
+            countryCode,
+            page,
+            pageSize,
+            district,
+            areaId,
+            minPrice,
+            maxPrice,
+            minBedrooms,
+            maxBedrooms,
+            minMatchPercentage,
+            currentUser.UserId,
+            listingStatus,
+            search,
+            sort);
 
         var result = await handler.Handle(query, cancellationToken);
 
@@ -173,6 +217,49 @@ public sealed class PropertiesController : ControllerBase
         }
 
         return Ok(ToResponse(result.Value));
+    }
+
+    /// <summary>
+    /// What the share button needs for one property: the link that opens it and a short preview (titles,
+    /// descriptions and the cover image). Anonymous. Only an Active property can be shared.
+    /// </summary>
+    /// <remarks>
+    /// <c>url</c> is always absolute: <c>Share:PublicBaseUrl</c> when configured, otherwise the request origin; <c>path</c> is
+    /// always present. An unknown or archived property is <c>404 properties.not_found</c>.
+    /// </remarks>
+    [HttpGet("{id:guid}/share")]
+    [AllowAnonymous]
+    [ProducesResponseType<PropertyShareResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Share(
+        Guid id,
+        [FromServices] IQueryHandler<GetPropertyShareQuery, PropertyDetails> handler,
+        [FromServices] IOptions<ShareOptions> shareOptions,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(new GetPropertyShareQuery(id), cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        var property = result.Value;
+        var images = (property.Images ?? [])
+            .Select(image => PropertyImagesController.ToResponse(property.Id, image))
+            .ToArray();
+        var cover = images.FirstOrDefault(image => image.IsCover) ?? images.FirstOrDefault();
+
+        return Ok(new PropertyShareResponse(
+            property.Id,
+            shareOptions.Value.BuildPath(property.Id),
+            shareOptions.Value.BuildUrl(property.Id, $"{Request.Scheme}://{Request.Host}"),
+            property.Listing?.TitleAr,
+            property.Listing?.TitleEn,
+            property.Listing?.DescriptionAr,
+            property.Listing?.DescriptionEn,
+            cover?.Url));
     }
 
     /// <summary>
@@ -378,6 +465,7 @@ public sealed class PropertiesController : ControllerBase
             ToListingResponse(property.Listing),
             ToAiSyncResponse(property.AiSync),
             ToPlaceResponse(property.Place),
-            (property.Images ?? []).Select(image => PropertyImagesController.ToResponse(property.Id, image)).ToArray());
+            (property.Images ?? []).Select(image => PropertyImagesController.ToResponse(property.Id, image)).ToArray(),
+            property.MatchPercentage);
     }
 }

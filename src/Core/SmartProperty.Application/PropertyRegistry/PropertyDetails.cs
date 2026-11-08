@@ -27,7 +27,8 @@ public sealed record PropertyDetails(
     PropertyListingDetails? Listing = null,
     AiSyncDetails? AiSync = null,
     PropertyPlaceDetails? Place = null,
-    IReadOnlyList<PropertyImageDetails>? Images = null);
+    IReadOnlyList<PropertyImageDetails>? Images = null,
+    decimal? MatchPercentage = null);
 
 public sealed record PropertyAddressDetails(
     string CountryCode,
