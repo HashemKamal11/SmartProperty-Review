@@ -329,7 +329,13 @@ public sealed class AdminReviewContractPrivacyTests
             new[] { "api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}" },
             adminMarketplace);
         Assert.DoesNotContain(routes, route => route.Contains("marketplace", StringComparison.OrdinalIgnoreCase) && (route.Contains("approve", StringComparison.OrdinalIgnoreCase) || route.Contains("reject", StringComparison.OrdinalIgnoreCase)));
-        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase) && !adminMarketplace.Contains(route));
+
+        // The submitter's own reads are the only other listing-submission routes, and exactly these two.
+        var submitter = new[] { "api/marketplace/me/listing-submissions", "api/marketplace/me/listing-submissions/{submissionId:guid}" };
+        Assert.Equal(
+            submitter,
+            routes.Where(route => route.StartsWith("api/marketplace/me", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
+        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase) && !adminMarketplace.Contains(route) && !submitter.Contains(route));
     }
 
     [Fact]

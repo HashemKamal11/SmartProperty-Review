@@ -59,7 +59,7 @@ internal sealed class FakeSubmitterListingSubmissionReadRepository : ISubmitterL
             .Select(row => row.Detail)
             .Where(detail => purpose is null || detail.Purpose == purpose)
             .Where(detail => status is null || detail.Status == status)
-            .OrderByDescending(detail => detail.CreatedAt)
+            .OrderByDescending(detail => detail.UpdatedAt)
             .ThenBy(detail => detail.SubmissionId)
             .ToArray();
 
