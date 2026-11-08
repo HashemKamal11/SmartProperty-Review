@@ -2,10 +2,10 @@
 namespace SmartProperty.Api.Infrastructure.Sharing;
 
 /// <summary>
-/// Where a shared property opens. The API does not know the front end's address, so it is configured:
-/// <c>Share:PublicBaseUrl</c> (an absolute http(s) origin, e.g. <c>https://app.example.com</c>) and
-/// <c>Share:PropertyPath</c> (default <c>/properties/{id}</c>). Without a valid base URL the share response carries
-/// only the relative path and no absolute URL.
+/// Where a shared property opens: <c>Share:PublicBaseUrl</c> (an absolute http(s) origin, e.g.
+/// <c>https://app.example.com</c>) and <c>Share:PropertyPath</c> (default <c>/properties/{id}</c>). When no valid
+/// base URL is configured, the share link falls back to the origin the request arrived on, so a full URL is always
+/// returned. In Docker set it with <c>Share__PublicBaseUrl</c>.
 /// </summary>
 public sealed class ShareOptions
 {
@@ -27,7 +27,13 @@ public sealed class ShareOptions
         return template.Replace("{id}", id.ToString("D"), StringComparison.OrdinalIgnoreCase);
     }
 
-    public string? BuildUrl(Guid id)
+    /// <summary>The absolute URL: the configured base when valid, otherwise <paramref name="fallbackOrigin"/>.</summary>
+    public string BuildUrl(Guid id, string fallbackOrigin)
+    {
+        return (ConfiguredOrigin() ?? fallbackOrigin.TrimEnd('/')) + BuildPath(id);
+    }
+
+    private string? ConfiguredOrigin()
     {
         if (string.IsNullOrWhiteSpace(PublicBaseUrl)
             || !Uri.TryCreate(PublicBaseUrl.Trim(), UriKind.Absolute, out var baseUri)
@@ -37,6 +43,6 @@ public sealed class ShareOptions
             return null;
         }
 
-        return baseUri.GetLeftPart(UriPartial.Authority) + BuildPath(id);
+        return baseUri.GetLeftPart(UriPartial.Authority);
     }
 }

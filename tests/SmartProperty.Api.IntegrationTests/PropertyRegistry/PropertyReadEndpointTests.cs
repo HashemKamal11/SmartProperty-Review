@@ -134,11 +134,12 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task ShareReturnsThePathAndPreviewOfAnActivePropertyAnonymously()
+    public async Task ShareReturnsThePathAndRequestOriginUrlOfAnActivePropertyAnonymously()
     {
         var property = NewProperty(PropertyType.Villa, "XT", BaseTime);
         await SeedAsync(property);
-        using var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
+        KeyValuePair<string, string?>[] noBaseUrl = [.. BootstrapDisabled, new("Share:PublicBaseUrl", "")];
+        using var factory = new SmartPropertyApiFactory(fixture, configuration: noBaseUrl);
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync($"{Route}/{property.Id}/share");
@@ -147,7 +148,7 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
         var body = (await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>());
         Assert.Equal(property.Id, body.GetProperty("propertyId").GetGuid());
         Assert.Equal($"/properties/{property.Id}", body.GetProperty("path").GetString());
-        Assert.False(body.TryGetProperty("url", out _));
+        Assert.Equal($"http://localhost/properties/{property.Id}", body.GetProperty("url").GetString());
     }
 
     [Fact]

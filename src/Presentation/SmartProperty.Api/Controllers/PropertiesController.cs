@@ -224,7 +224,7 @@ public sealed class PropertiesController : ControllerBase
     /// descriptions and the cover image). Anonymous. Only an Active property can be shared.
     /// </summary>
     /// <remarks>
-    /// <c>url</c> is absolute when <c>Share:PublicBaseUrl</c> is configured and is omitted otherwise; <c>path</c> is
+    /// <c>url</c> is always absolute: <c>Share:PublicBaseUrl</c> when configured, otherwise the request origin; <c>path</c> is
     /// always present. An unknown or archived property is <c>404 properties.not_found</c>.
     /// </remarks>
     [HttpGet("{id:guid}/share")]
@@ -254,7 +254,7 @@ public sealed class PropertiesController : ControllerBase
         return Ok(new PropertyShareResponse(
             property.Id,
             shareOptions.Value.BuildPath(property.Id),
-            shareOptions.Value.BuildUrl(property.Id),
+            shareOptions.Value.BuildUrl(property.Id, $"{Request.Scheme}://{Request.Host}"),
             property.Listing?.TitleAr,
             property.Listing?.TitleEn,
             property.Listing?.DescriptionAr,
