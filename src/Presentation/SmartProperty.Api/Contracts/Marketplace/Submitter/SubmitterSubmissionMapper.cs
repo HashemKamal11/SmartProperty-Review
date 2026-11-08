@@ -260,6 +260,8 @@ internal static class SubmitterSubmissionMapper
         {
             RentPeriod.Monthly => "Monthly",
             RentPeriod.Yearly => "Yearly",
+            RentPeriod.Daily => "Daily",
+            RentPeriod.Weekly => "Weekly",
             _ => throw Invalid("an unsupported rent period")
         };
     }

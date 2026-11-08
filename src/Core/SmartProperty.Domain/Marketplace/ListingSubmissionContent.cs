@@ -19,7 +19,7 @@ public sealed class ListingSubmissionContent
         if (!Enum.IsDefined(propertyType)) throw new ArgumentOutOfRangeException(nameof(propertyType));
         if (!Enum.IsDefined(purpose)) throw new ArgumentOutOfRangeException(nameof(purpose));
         if (purpose == ListingPurpose.Rent && (!rentPeriod.HasValue || !Enum.IsDefined(rentPeriod.Value)))
-            throw new ArgumentException("Rent requires Monthly or Yearly.", nameof(rentPeriod));
+            throw new ArgumentException("Rent requires Daily, Weekly, Monthly or Yearly.", nameof(rentPeriod));
         if (purpose == ListingPurpose.Sale && rentPeriod.HasValue)
             throw new ArgumentException("Sale must not specify a rental period.", nameof(rentPeriod));
 

@@ -17,7 +17,7 @@ namespace SmartProperty.Api.Contracts.Marketplace.Public;
 ///
 /// Public strings are written out explicitly rather than taken from <c>Enum.ToString()</c>, so renaming a Domain
 /// enum member cannot silently change the public contract. A Rent price always carries its rent period, which is
-/// <c>Monthly</c> or <c>Yearly</c>; a Sale price never does, and the member is then left out of the JSON entirely.
+/// <c>Daily</c>, <c>Weekly</c>, <c>Monthly</c> or <c>Yearly</c>; a Sale price never does, and the member is then left out of the JSON entirely.
 /// Nothing is inferred: no rent period, currency, location or price is ever defaulted.
 /// </remarks>
 internal static class PublicListingMapper
@@ -75,6 +75,8 @@ internal static class PublicListingMapper
         {
             RentPeriod.Monthly => "Monthly",
             RentPeriod.Yearly => "Yearly",
+            RentPeriod.Daily => "Daily",
+            RentPeriod.Weekly => "Weekly",
             _ => throw Invalid("an unsupported rent period")
         };
     }
