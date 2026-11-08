@@ -30,7 +30,7 @@ public sealed class ResetPasswordCommandHandler(
     IUnitOfWork unitOfWork)
     : ICommandHandler<ResetPasswordCommand>
 {
-    private const OneTimeCodePurpose Purpose = OneTimeCodePurpose.PasswordReset;
+    private const OneTimeCodePurpose GrantPurpose = OneTimeCodePurpose.PasswordResetGrant;
 
     private static readonly Error TryAgain = new(
         "password_reset.conflict",
@@ -66,6 +66,11 @@ public sealed class ResetPasswordCommandHandler(
                 $"New password must not exceed {RegisterCommandValidator.PasswordMaxLength} characters."));
         }
 
+        if (!string.Equals(command.NewPassword, command.ConfirmPassword, StringComparison.Ordinal))
+        {
+            return Result.Failure(OneTimeCodeErrors.ValidationFailed("The two passwords do not match."));
+        }
+
         var user = await userRepository.GetByEmailAsync(command.Email, cancellationToken);
 
         if (user is null || !CodeRecipient.CanReceiveCodes(user))
@@ -73,29 +78,31 @@ public sealed class ResetPasswordCommandHandler(
             // Pays the same hashing cost as a real reset, so response time does not reveal an unknown email.
             passwordHasher.PerformDummyVerification(command.NewPassword);
 
-            return Result.Failure(OneTimeCodeErrors.InvalidOrExpired(Purpose));
+            return Result.Failure(OneTimeCodeErrors.InvalidResetToken);
         }
 
         var now = dateTimeProvider.UtcNow;
-        var check = await OneTimeCodeFlow.CheckAsync(
-            oneTimeCodeRepository,
-            unitOfWork,
-            user.Id,
-            Purpose,
-            command.Code,
-            now,
-            cancellationToken);
 
-        if (check != CodeCheck.Confirmed)
+        // The token is 256 random bits, so a wrong one is not worth counting attempts against; it is simply refused.
+        var grant = await oneTimeCodeRepository.GetLatestAsync(user.Id, GrantPurpose, cancellationToken);
+
+        if (!OneTimeCodePolicy.IsWellFormedGrantToken(command.ResetToken)
+            || grant is null
+            || !grant.IsActive(now)
+            || !OneTimeCodePolicy.CodeMatches(user.Id, GrantPurpose, command.ResetToken, grant.CodeHash))
         {
-            return Result.Failure(OneTimeCodeErrors.ForCheck(Purpose, check));
+            passwordHasher.PerformDummyVerification(command.NewPassword);
+
+            return Result.Failure(OneTimeCodeErrors.InvalidResetToken);
         }
+
+        grant.Consume(now);
 
         var credential = await userCredentialRepository.GetByUserIdAsync(user.Id, cancellationToken);
 
         if (credential is null)
         {
-            return Result.Failure(OneTimeCodeErrors.InvalidOrExpired(Purpose));
+            return Result.Failure(OneTimeCodeErrors.InvalidResetToken);
         }
 
         credential.ChangePasswordHash(passwordHasher.Hash(command.NewPassword), now);

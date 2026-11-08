@@ -321,6 +321,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<VerifyEmailCommand, EmailVerified>, VerifyEmailCommandHandler>();
         services.AddScoped<ICommandHandler<ResendEmailVerificationCommand>, ResendEmailVerificationCommandHandler>();
         services.AddScoped<ICommandHandler<ForgotPasswordCommand>, ForgotPasswordCommandHandler>();
+        services.AddScoped<ICommandHandler<VerifyResetCodeCommand, VerifyResetCodeResult>, VerifyResetCodeCommandHandler>();
         services.AddScoped<ICommandHandler<ResetPasswordCommand>, ResetPasswordCommandHandler>();
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<RefreshCommand, RefreshResult>, RefreshCommandHandler>();

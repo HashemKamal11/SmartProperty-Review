@@ -31,15 +31,21 @@ Approval of a workspace access request fails with `409 workspace_access_requests
 
 ## Password reset
 
-| Endpoint | Body | Success |
-|---|---|---|
-| `POST /api/auth/forgot-password` | `email` | `200` with the same message for every well-formed email |
-| `POST /api/auth/reset-password` | `email`, `code`, `newPassword` | `200` with a confirmation message |
+Three steps, one per screen: the email, the code on its own, then the new password.
+
+| Step | Endpoint | Body | Success |
+|---|---|---|---|
+| 1 | `POST /api/auth/forgot-password` | `email` | `200` with the same message for every well-formed email |
+| 2 | `POST /api/auth/verify-reset-code` | `email`, `code` | `200` with `resetToken` and `expiresAt` |
+| 3 | `POST /api/auth/reset-password` | `email`, `resetToken`, `newPassword`, `confirmPassword` | `200` with a confirmation message |
+
+Step 2 checks the six-digit code (five minutes, five wrong guesses), spends it, and in the same save issues the `resetToken`: 256 random bits (43 URL-safe characters), stored only as a hash under the purpose `PasswordResetGrant`, valid for ten minutes and usable once. Verifying again issues a new token and retires the earlier one. Step 3 takes no code. `confirmPassword` must equal `newPassword`, and the password needs 8 to 128 characters.
 
 - Forgot-password never reveals whether an email is registered. An unknown email, a Suspended or Deactivated account, and a request inside the cooldown all get the same answer, and only a malformed email is refused.
-- Reset-password returns one error (`422 password_reset.invalid_code`) for an unknown email, a disabled account, a wrong code, an expired code, or a code of another purpose. An unknown email still pays the password hashing cost.
+- Verify-reset-code returns one error (`422 password_reset.invalid_code`) for an unknown email, a disabled account, a wrong code, an expired code, or a code of another purpose; `409 password_reset.too_many_attempts` after five wrong codes.
+- Reset-password returns one error (`422 password_reset.invalid_token`) for an unknown email, a disabled account, a wrong, expired or already used token, or the token of another account. An unknown email still pays the password hashing cost. A mismatched confirmation or a bad password is `422 validation.failed` and leaves the token usable.
 - A successful reset changes the password, spends the code, and revokes every active refresh token of the account in one save. Access tokens already issued stay valid until they expire, as for logout.
-- `newPassword` has no strength rule yet, only the same maximum length as registration.
+- The old single-call shape (`email`, `code`, `newPassword`) is gone: a code sent to reset-password is refused as an invalid token.
 
 ## Providers
 

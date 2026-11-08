@@ -8,8 +8,9 @@ using Xunit;
 namespace SmartProperty.UnitTests.Application.Authentication;
 
 /// <summary>
-/// Exercises the real forgot and reset password handlers: the response must not reveal which emails are
-/// registered, a reset code works once, and a reset signs the account out everywhere.
+/// Exercises the three real password-reset handlers (forgot, verify the code, set the new password): the responses must
+/// not reveal which emails are registered, a reset code works once, the reset token works once, and a reset signs the
+/// account out everywhere.
 /// </summary>
 public sealed class PasswordResetHandlerTests
 {
@@ -105,8 +106,8 @@ public sealed class PasswordResetHandlerTests
         await Forgot(Email);
 
         Assert.Equal(2, _email.Sent.Count);
-        Assert.Equal("password_reset.invalid_code", (await Reset(firstCode)).Error!.Code);
-        Assert.True((await Reset(_email.LatestCode())).IsSuccess);
+        Assert.Equal("password_reset.invalid_code", (await Verify(firstCode)).Error!.Code);
+        Assert.True((await Verify(_email.LatestCode())).IsSuccess);
     }
 
     [Theory]
@@ -119,18 +120,181 @@ public sealed class PasswordResetHandlerTests
         Assert.Equal("validation.failed", result.Error!.Code);
     }
 
+    // ---- step two: verify the code
+
     [Fact]
-    public async Task Reset_WithTheRightCode_ChangesThePasswordAndSpendsTheCode()
+    public async Task Verify_WithTheRightCode_SpendsItAndReturnsAResetToken()
     {
         var code = SeedCode(RightCode);
 
-        var result = await Reset(RightCode);
+        var result = await Verify(RightCode);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(43, result.Value.ResetToken.Length);
+        Assert.Equal(Now.AddMinutes(10), result.Value.ExpiresAt);
+        Assert.Equal(Now, code.ConsumedAt);
+        Assert.Equal(OneTimeCodePurpose.PasswordResetGrant, Assert.Single(_codes.All, c => c.Id != code.Id).Purpose);
+        Assert.Equal("old-hash", _credential.PasswordHash);
+        Assert.Equal(0, _hasher.HashCallCount);
+    }
+
+    [Fact]
+    public async Task Verify_TheSameCodeCannotBeUsedTwice()
+    {
+        SeedCode(RightCode);
+        await Verify(RightCode);
+
+        var again = await Verify(RightCode);
+
+        Assert.Equal("password_reset.invalid_code", again.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Verify_TheTokenIsStoredOnlyAsAHash()
+    {
+        SeedCode(RightCode);
+
+        var result = await Verify(RightCode);
+
+        var grant = Assert.Single(_codes.All, c => c.Purpose == OneTimeCodePurpose.PasswordResetGrant);
+        Assert.DoesNotContain(result.Value.ResetToken, grant.CodeHash);
+        Assert.DoesNotContain(result.Value.ResetToken, result.Value.ToString());
+    }
+
+    [Fact]
+    public async Task Verify_WithAWrongCode_CountsAnAttemptAndIssuesNothing()
+    {
+        var code = SeedCode(RightCode);
+
+        var result = await Verify("000000");
+
+        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
+        Assert.Equal(1, code.FailedAttempts);
+        Assert.Null(code.ConsumedAt);
+        Assert.Single(_codes.All);
+    }
+
+    [Fact]
+    public async Task Verify_AfterFiveWrongCodes_LocksTheCode()
+    {
+        SeedCode(RightCode);
+
+        for (var attempt = 0; attempt < OneTimeCode.MaxFailedAttempts; attempt++)
+        {
+            await Verify("000000");
+        }
+
+        var result = await Verify(RightCode);
+
+        Assert.Equal("password_reset.too_many_attempts", result.Error!.Code);
+        Assert.Single(_codes.All);
+    }
+
+    [Fact]
+    public async Task Verify_WithAnExpiredCode_IsRefused()
+    {
+        SeedCode(RightCode);
+        _clock.UtcNow = Now.AddMinutes(5);
+
+        var result = await Verify(RightCode);
+
+        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
+        Assert.Single(_codes.All);
+    }
+
+    [Fact]
+    public async Task Verify_WithAnEmailVerificationCode_IsRefused()
+    {
+        _codes.Seed(OneTimeCodePolicy.Issue(_user.Id, OneTimeCodePurpose.EmailVerification, RightCode, Now));
+
+        var result = await Verify(RightCode);
+
+        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
+    }
+
+    [Theory]
+    [InlineData("nobody@example.test")]
+    public async Task Verify_ForAnUnknownEmail_GivesTheSameErrorAsAWrongCode(string email)
+    {
+        var result = await CreateVerifyHandler().Handle(new VerifyResetCodeCommand(email, RightCode));
+
+        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
+    }
+
+    [Theory]
+    [InlineData(UserStatus.Suspended)]
+    [InlineData(UserStatus.Deactivated)]
+    public async Task Verify_ForADisabledAccount_GivesTheSameError(UserStatus status)
+    {
+        SeedCode(RightCode);
+
+        if (status == UserStatus.Suspended)
+        {
+            _user.Suspend(Now);
+        }
+        else
+        {
+            _user.Deactivate(Now);
+        }
+
+        var result = await Verify(RightCode);
+
+        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-an-email")]
+    public async Task Verify_ForAMalformedEmail_IsAValidationError(string email)
+    {
+        var result = await CreateVerifyHandler().Handle(new VerifyResetCodeCommand(email, RightCode));
+
+        Assert.Equal("validation.failed", result.Error!.Code);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("12345")]
+    [InlineData("12345a")]
+    public async Task Verify_WithAMalformedCode_IsRefusedWithoutSpendingAnAttempt(string code)
+    {
+        var stored = SeedCode(RightCode);
+
+        var result = await Verify(code);
+
+        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
+        Assert.Equal(0, stored.FailedAttempts);
+    }
+
+    [Fact]
+    public async Task Verify_AgainGivesANewTokenAndTheEarlierOneStopsWorking()
+    {
+        SeedCode(RightCode);
+        var first = (await Verify(RightCode)).Value.ResetToken;
+        _clock.UtcNow = Now.AddSeconds(61);
+        await Forgot(Email);
+        var secondCode = _email.LatestCode();
+        var second = (await Verify(secondCode)).Value.ResetToken;
+
+        Assert.NotEqual(first, second);
+        Assert.Equal("password_reset.invalid_token", (await Reset(first)).Error!.Code);
+        Assert.True((await Reset(second)).IsSuccess);
+    }
+
+    // ---- step three: the new password
+
+    [Fact]
+    public async Task Reset_WithTheToken_ChangesThePasswordAndSpendsTheToken()
+    {
+        var token = await VerifiedTokenAsync();
+
+        var result = await Reset(token);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(FakePasswordHasher.RehashedPasswordHash, _credential.PasswordHash);
-        Assert.Equal(Now, code.ConsumedAt);
         Assert.Equal(1, _hasher.HashCallCount);
-        Assert.Equal("password_reset.invalid_code", (await Reset(RightCode)).Error!.Code);
+        Assert.NotNull(Assert.Single(_codes.All, c => c.Purpose == OneTimeCodePurpose.PasswordResetGrant).ConsumedAt);
+        Assert.Equal("password_reset.invalid_token", (await Reset(token)).Error!.Code);
     }
 
     [Fact]
@@ -142,9 +306,9 @@ public sealed class PasswordResetHandlerTests
         _refreshTokens.Seed(active);
         _refreshTokens.Seed(other);
         _refreshTokens.Seed(expired);
-        SeedCode(RightCode);
+        var token = await VerifiedTokenAsync();
 
-        var result = await Reset(RightCode);
+        var result = await Reset(token);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(Now, active.RevokedAt);
@@ -153,79 +317,111 @@ public sealed class PasswordResetHandlerTests
     }
 
     [Fact]
-    public async Task Reset_WithAWrongCode_ChangesNothingAndCountsAnAttempt()
+    public async Task Reset_WithoutVerifyingFirst_IsRefused()
     {
-        var code = SeedCode(RightCode);
+        var result = await Reset("A".PadRight(43, 'A'));
 
-        var result = await Reset("000000");
-
-        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
-        Assert.Equal("old-hash", _credential.PasswordHash);
-        Assert.Equal(1, code.FailedAttempts);
-        Assert.Equal(0, _hasher.HashCallCount);
-    }
-
-    [Fact]
-    public async Task Reset_AfterFiveWrongCodes_LocksTheCode()
-    {
-        SeedCode(RightCode);
-
-        for (var attempt = 0; attempt < OneTimeCode.MaxFailedAttempts; attempt++)
-        {
-            await Reset("000000");
-        }
-
-        var result = await Reset(RightCode);
-
-        Assert.Equal("password_reset.too_many_attempts", result.Error!.Code);
+        Assert.Equal("password_reset.invalid_token", result.Error!.Code);
         Assert.Equal("old-hash", _credential.PasswordHash);
     }
 
     [Fact]
-    public async Task Reset_WithAnExpiredCode_IsRefused()
+    public async Task Reset_WithAWrongToken_ChangesNothingAndTheRightOneStillWorks()
     {
-        SeedCode(RightCode);
-        _clock.UtcNow = Now.AddMinutes(5);
+        var token = await VerifiedTokenAsync();
 
-        var result = await Reset(RightCode);
+        var wrong = await Reset("B".PadRight(43, 'B'));
+        var malformed = await Reset("short");
+        var right = await Reset(token);
 
-        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
+        Assert.Equal("password_reset.invalid_token", wrong.Error!.Code);
+        Assert.Equal("password_reset.invalid_token", malformed.Error!.Code);
+        Assert.True(right.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Reset_WithAnExpiredToken_IsRefused()
+    {
+        var token = await VerifiedTokenAsync();
+        _clock.UtcNow = Now.AddMinutes(10);
+
+        var result = await Reset(token);
+
+        Assert.Equal("password_reset.invalid_token", result.Error!.Code);
         Assert.Equal("old-hash", _credential.PasswordHash);
     }
 
     [Fact]
-    public async Task Reset_WithAnEmailVerificationCode_IsRefused()
+    public async Task Reset_TheTokenOfAnotherAccountIsRefused()
     {
-        _codes.Seed(OneTimeCodePolicy.Issue(_user.Id, OneTimeCodePurpose.EmailVerification, RightCode, Now));
+        var other = new User(Guid.NewGuid(), "other@example.test", "Other", "User", Now);
+        other.Activate(Now);
+        _users.Seed(other);
+        var otherCredential = new UserCredential(other.Id, "other-hash", Now);
+        _credentials.Seed(otherCredential);
+        var otherToken = OneTimeCodePolicy.GenerateGrantToken();
+        _codes.Seed(OneTimeCodePolicy.IssueGrant(other.Id, otherToken, Now));
 
-        var result = await Reset(RightCode);
+        var result = await Reset(otherToken);
 
-        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
+        Assert.Equal("password_reset.invalid_token", result.Error!.Code);
         Assert.Equal("old-hash", _credential.PasswordHash);
+        Assert.Equal("other-hash", otherCredential.PasswordHash);
     }
 
     [Fact]
-    public async Task Reset_ForAnUnknownEmail_GivesTheSameErrorAsAWrongCode_AndStillHashes()
+    public async Task Reset_ADifferentConfirmation_IsAValidationErrorAndSpendsNothing()
     {
+        var token = await VerifiedTokenAsync();
+        var saves = _unitOfWork.SaveChangesCallCount;
+
         var result = await CreateResetHandler().Handle(
-            new ResetPasswordCommand("nobody@example.test", RightCode, NewPassword));
+            new ResetPasswordCommand(Email, token, NewPassword, NewPassword + "x"));
 
-        Assert.Equal("password_reset.invalid_code", result.Error!.Code);
-        Assert.Equal(1, _hasher.DummyVerificationCallCount);
+        Assert.Equal("validation.failed", result.Error!.Code);
+        Assert.Equal(saves, _unitOfWork.SaveChangesCallCount);
+        Assert.Null(Assert.Single(_codes.All, c => c.Purpose == OneTimeCodePurpose.PasswordResetGrant).ConsumedAt);
+        Assert.True((await Reset(token)).IsSuccess);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task Reset_WithoutANewPassword_IsAValidationError(string password)
+    [InlineData("short")]
+    public async Task Reset_WithoutAUsablePassword_IsAValidationError(string password)
     {
-        SeedCode(RightCode);
+        var token = await VerifiedTokenAsync();
+        var saves = _unitOfWork.SaveChangesCallCount;
 
-        var result = await CreateResetHandler().Handle(new ResetPasswordCommand(Email, RightCode, password));
+        var result = await CreateResetHandler().Handle(new ResetPasswordCommand(Email, token, password, password));
 
         Assert.Equal("validation.failed", result.Error!.Code);
-        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+        Assert.Equal(saves, _unitOfWork.SaveChangesCallCount);
     }
+
+    [Fact]
+    public async Task Reset_ForAnUnknownEmail_GivesTheSameErrorAsABadToken_AndStillHashes()
+    {
+        var result = await CreateResetHandler().Handle(
+            new ResetPasswordCommand("nobody@example.test", "C".PadRight(43, 'C'), NewPassword, NewPassword));
+
+        Assert.Equal("password_reset.invalid_token", result.Error!.Code);
+        Assert.Equal(1, _hasher.DummyVerificationCallCount);
+    }
+
+    [Fact]
+    public async Task Reset_TheOldCodeNoLongerSetsAPassword()
+    {
+        // The reset code is only ever accepted by the verify step: presented as a token it is not even well formed.
+        SeedCode(RightCode);
+
+        var result = await Reset(RightCode);
+
+        Assert.Equal("password_reset.invalid_token", result.Error!.Code);
+        Assert.Equal("old-hash", _credential.PasswordHash);
+    }
+
+    // ---- helpers
 
     private OneTimeCode SeedCode(string code)
     {
@@ -235,15 +431,32 @@ public sealed class PasswordResetHandlerTests
         return oneTimeCode;
     }
 
+    private async Task<string> VerifiedTokenAsync()
+    {
+        SeedCode(RightCode);
+
+        return (await Verify(RightCode)).Value.ResetToken;
+    }
+
     private Task<Result> Forgot(string email)
     {
         return new ForgotPasswordCommandHandler(_users, _codes, _email, _clock, _unitOfWork)
             .Handle(new ForgotPasswordCommand(email));
     }
 
-    private Task<Result> Reset(string code)
+    private Task<Result<VerifyResetCodeResult>> Verify(string code)
     {
-        return CreateResetHandler().Handle(new ResetPasswordCommand(Email, code, NewPassword));
+        return CreateVerifyHandler().Handle(new VerifyResetCodeCommand(Email, code));
+    }
+
+    private Task<Result> Reset(string token)
+    {
+        return CreateResetHandler().Handle(new ResetPasswordCommand(Email, token, NewPassword, NewPassword));
+    }
+
+    private VerifyResetCodeCommandHandler CreateVerifyHandler()
+    {
+        return new VerifyResetCodeCommandHandler(_users, _codes, _clock, _unitOfWork);
     }
 
     private ResetPasswordCommandHandler CreateResetHandler()
