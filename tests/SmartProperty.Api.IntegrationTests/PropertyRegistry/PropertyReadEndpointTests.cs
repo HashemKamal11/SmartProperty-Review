@@ -94,20 +94,96 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task ListWithoutStatusIncludesArchivedProperties()
+    public async Task ListWithoutStatusReturnsOnlyActivePropertiesAndStatusArchivedReturnsArchivedOnes()
     {
-        var archived = NewProperty(PropertyType.Building, "XW", BaseTime);
+        var active = NewProperty(PropertyType.Building, "XW", BaseTime);
+        var archived = NewProperty(PropertyType.Building, "XW", BaseTime.AddHours(1));
         archived.Archive(BaseTime.AddDays(1));
-        await SeedAsync(archived);
+        await SeedAsync(active, archived);
         using var factory = ReadAuthorizedFactory();
         using var client = factory.CreateAuthenticatedClient(Guid.NewGuid());
 
-        var body = await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>(
-            $"{Route}?countryCode=XW");
+        var byDefault = await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>($"{Route}?countryCode=XW");
+        var archivedOnly = await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>(
+            $"{Route}?countryCode=XW&status=Archived");
 
-        var property = Assert.Single(body!.Items);
-        Assert.Equal(archived.Id, property.Id);
-        Assert.Equal("Archived", property.Status);
+        var listed = Assert.Single(byDefault!.Items);
+        Assert.Equal(active.Id, listed.Id);
+        Assert.Equal("Active", listed.Status);
+        var archivedItem = Assert.Single(archivedOnly!.Items);
+        Assert.Equal(archived.Id, archivedItem.Id);
+        Assert.Equal("Archived", archivedItem.Status);
+    }
+
+    [Fact]
+    public async Task SearchSortAndListingStatusParametersAreAcceptedAndBadValuesAre400()
+    {
+        using var factory = ReadAuthorizedFactory();
+        using var client = factory.CreateAuthenticatedClient(Guid.NewGuid());
+
+        using var ok = await client.GetAsync(
+            $"{Route}?countryCode=XU&q=villa%20hittin&sort=PriceDesc&listingStatus=Available");
+        using var badSort = await client.GetAsync($"{Route}?sort=Cheapest");
+        using var badListing = await client.GetAsync($"{Route}?listingStatus=Gone");
+        using var tooManyWords = await client.GetAsync($"{Route}?q=a%20b%20c%20d%20e%20f");
+
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, badSort.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, badListing.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, tooManyWords.StatusCode);
+    }
+
+    [Fact]
+    public async Task ShareReturnsThePathAndPreviewOfAnActivePropertyAnonymously()
+    {
+        var property = NewProperty(PropertyType.Villa, "XT", BaseTime);
+        await SeedAsync(property);
+        using var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync($"{Route}/{property.Id}/share");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = (await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>());
+        Assert.Equal(property.Id, body.GetProperty("propertyId").GetGuid());
+        Assert.Equal($"/properties/{property.Id}", body.GetProperty("path").GetString());
+        Assert.False(body.TryGetProperty("url", out _));
+    }
+
+    [Fact]
+    public async Task ShareBuildsAnAbsoluteUrlWhenThePublicBaseUrlIsConfigured()
+    {
+        var property = NewProperty(PropertyType.Villa, "XS", BaseTime);
+        await SeedAsync(property);
+        KeyValuePair<string, string?>[] configuration =
+        [
+            .. BootstrapDisabled,
+            new("Share:PublicBaseUrl", "https://app.example.com/"),
+            new("Share:PropertyPath", "/listing/{id}")
+        ];
+        using var factory = new SmartPropertyApiFactory(fixture, configuration: configuration);
+        using var client = factory.CreateClient();
+
+        var body = await client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{Route}/{property.Id}/share");
+
+        Assert.Equal($"https://app.example.com/listing/{property.Id}", body.GetProperty("url").GetString());
+        Assert.Equal($"/listing/{property.Id}", body.GetProperty("path").GetString());
+    }
+
+    [Fact]
+    public async Task ShareOfAnArchivedOrUnknownPropertyIs404()
+    {
+        var archived = NewProperty(PropertyType.Villa, "XR", BaseTime);
+        archived.Archive(BaseTime.AddDays(1));
+        await SeedAsync(archived);
+        using var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
+        using var client = factory.CreateClient();
+
+        using var archivedResponse = await client.GetAsync($"{Route}/{archived.Id}/share");
+        using var unknownResponse = await client.GetAsync($"{Route}/{Guid.NewGuid()}/share");
+
+        Assert.Equal(HttpStatusCode.NotFound, archivedResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, unknownResponse.StatusCode);
     }
 
     [Fact]

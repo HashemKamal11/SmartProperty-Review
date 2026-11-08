@@ -148,6 +148,28 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
             filtered = filtered.Where(property => property.Address.CountryCode == countryCode);
         }
 
+        if (filter.ListingStatus is { } listingStatus)
+        {
+            filtered = filtered.Where(property => property.Listing.ListingStatus == listingStatus);
+        }
+
+        foreach (var term in filter.SearchTerms ?? [])
+        {
+            var pattern = LikePattern(term);
+            filtered = filtered.Where(property =>
+                EF.Functions.ILike(property.Listing.TitleAr ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(property.Listing.TitleEn ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(property.Listing.DescriptionAr ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(property.Listing.DescriptionEn ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(property.Address.City ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(property.Address.Region ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(property.Address.District ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(property.Address.AddressLine ?? "", pattern, LikeEscape)
+                || (property.Area != null
+                    && (EF.Functions.ILike(property.Area.NameEn, pattern, LikeEscape)
+                        || EF.Functions.ILike(property.Area.NameAr, pattern, LikeEscape))));
+        }
+
         if (filter.District is { } district)
         {
             var lowered = district.ToLowerInvariant();
@@ -192,9 +214,7 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
 
         var totalCount = await filtered.LongCountAsync(cancellationToken);
 
-        var items = await filtered
-            .OrderByDescending(property => property.CreatedAt)
-            .ThenByDescending(property => property.Id)
+        var items = await Order(filtered, filter)
             .Skip(skip)
             .Take(take)
             .Select(PropertyDetailsProjection.Expression)
@@ -223,5 +243,87 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
         }
 
         return new PropertyPage(items, totalCount);
+    }
+
+    /// <summary>
+    /// Every order ends newest first and then id descending, so paging is stable. Relevance ranks by the match
+    /// user's latest stored percentage (no match last), then by where the whole search phrase appears — title,
+    /// then location, then description — and degrades to newest first when neither signal exists.
+    /// </summary>
+    private IOrderedQueryable<Property> Order(IQueryable<Property> filtered, PropertyListFilter filter)
+    {
+        IOrderedQueryable<Property> ordered;
+        var createdAtOrdered = false;
+
+        switch (filter.Sort)
+        {
+            case PropertyListSortOrder.PriceAsc:
+                ordered = filtered
+                    .OrderBy(property => property.Listing.Price == null)
+                    .ThenBy(property => property.Listing.Price);
+                break;
+
+            case PropertyListSortOrder.PriceDesc:
+                ordered = filtered
+                    .OrderBy(property => property.Listing.Price == null)
+                    .ThenByDescending(property => property.Listing.Price);
+                break;
+
+            case PropertyListSortOrder.Relevance when filter.MatchUserId is { } userId:
+                ordered = filtered.OrderByDescending(property => dbContext.PropertyMatches
+                    .Where(match => match.UserId == userId && match.PropertyId == property.Id)
+                    .OrderByDescending(match => match.CreatedAt)
+                    .Select(match => (decimal?)match.MatchPercentage)
+                    .FirstOrDefault() ?? -1m);
+                if (filter.SearchTerms is { Count: > 0 } matchTerms)
+                {
+                    ordered = ordered.ThenByDescending(TextRank(LikePattern(string.Join(' ', matchTerms))));
+                }
+
+                break;
+
+            case PropertyListSortOrder.Relevance when filter.SearchTerms is { Count: > 0 } terms:
+                ordered = filtered.OrderByDescending(TextRank(LikePattern(string.Join(' ', terms))));
+                break;
+
+            default:
+                ordered = filtered.OrderByDescending(property => property.CreatedAt);
+                createdAtOrdered = true;
+                break;
+        }
+
+        if (!createdAtOrdered)
+        {
+            ordered = ordered.ThenByDescending(property => property.CreatedAt);
+        }
+
+        return ordered.ThenByDescending(property => property.Id);
+    }
+
+    private static System.Linq.Expressions.Expression<Func<Property, int>> TextRank(string phrase)
+    {
+        return property =>
+            EF.Functions.ILike(property.Listing.TitleAr ?? "", phrase, LikeEscape)
+            || EF.Functions.ILike(property.Listing.TitleEn ?? "", phrase, LikeEscape)
+                ? 3
+                : EF.Functions.ILike(property.Address.District ?? "", phrase, LikeEscape)
+                  || EF.Functions.ILike(property.Address.City ?? "", phrase, LikeEscape)
+                  || EF.Functions.ILike(property.Address.Region ?? "", phrase, LikeEscape)
+                  || EF.Functions.ILike(property.Address.AddressLine ?? "", phrase, LikeEscape)
+                    ? 2
+                    : EF.Functions.ILike(property.Listing.DescriptionAr ?? "", phrase, LikeEscape)
+                      || EF.Functions.ILike(property.Listing.DescriptionEn ?? "", phrase, LikeEscape)
+                        ? 1
+                        : 0;
+    }
+
+    private const string LikeEscape = "\\";
+
+    /// <summary>A contains-pattern for PostgreSQL <c>ILIKE</c> with the user's wildcards neutralized.</summary>
+    private static string LikePattern(string text)
+    {
+        var escaped = text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+
+        return $"%{escaped}%";
     }
 }

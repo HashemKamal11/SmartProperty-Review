@@ -127,7 +127,7 @@ public sealed class ArchivePropertyEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task ArchivedPropertyIsStillListedAndReadableById()
+    public async Task ArchivedPropertyIsListedOnlyOnRequestAndReadableById()
     {
         var property = await SeedPropertyAsync(new PropertyAddress("QZ"));
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyRead);
@@ -137,8 +137,7 @@ public sealed class ArchivePropertyEndpointTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
 
         var list = (await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>($"{Route}?countryCode=QZ"))!;
-        var listed = Assert.Single(list.Items, item => item.Id == property.Id);
-        Assert.Equal("Archived", listed.Status);
+        Assert.DoesNotContain(list.Items, item => item.Id == property.Id);
 
         var archivedOnly = (await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>(
             $"{Route}?countryCode=QZ&status=Archived"))!;

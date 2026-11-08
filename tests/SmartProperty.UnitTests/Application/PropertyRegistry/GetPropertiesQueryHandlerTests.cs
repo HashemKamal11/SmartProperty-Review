@@ -107,12 +107,12 @@ public sealed class GetPropertiesQueryHandlerTests
     }
 
     [Fact]
-    public async Task ANullStatusIsNotTurnedIntoAnActiveFilter()
+    public async Task ANullStatusListsActivePropertiesOnly()
     {
         await Handle(new GetPropertiesQuery(null, null, null, null, null));
 
-        // No implicit default: Archived properties are part of the canonical registry and stay listed.
-        Assert.Null(_properties.LastListCall!.Status);
+        // Archived properties stay in the registry but are listed only when explicitly asked for.
+        Assert.Equal(PropertyStatus.Active, _properties.LastListCall!.Status);
         Assert.Null(_properties.LastListCall.Type);
         Assert.Null(_properties.LastListCall.CountryCode);
     }
@@ -210,6 +210,59 @@ public sealed class GetPropertiesQueryHandlerTests
         Assert.Equal(4, filter.MinBedrooms);
         Assert.Equal(4, filter.MaxBedrooms);
         Assert.Null(filter.MatchUserId);
+    }
+
+    [Fact]
+    public async Task SearchTextIsSplitIntoDistinctTermsAndSortDefaultsToRelevance()
+    {
+        await Handle(new GetPropertiesQuery(null, null, null, null, null, Search: "  villa   Hittin VILLA "));
+
+        var filter = _properties.LastSearchFilter!;
+        Assert.Equal(["villa", "Hittin"], filter.SearchTerms);
+        Assert.Equal(PropertyListSortOrder.Relevance, filter.Sort);
+        Assert.Null(filter.ListingStatus);
+    }
+
+    [Theory]
+    [InlineData(PropertyListSortOrder.Newest)]
+    [InlineData(PropertyListSortOrder.PriceAsc)]
+    [InlineData(PropertyListSortOrder.PriceDesc)]
+    public async Task TheSortOrderAndListingStatusAreForwarded(PropertyListSortOrder sort)
+    {
+        await Handle(new GetPropertiesQuery(null, null, null, null, null, ListingStatus: ListingStatus.Sold, Sort: sort));
+
+        Assert.Equal(sort, _properties.LastSearchFilter!.Sort);
+        Assert.Equal(ListingStatus.Sold, _properties.LastSearchFilter.ListingStatus);
+    }
+
+    [Fact]
+    public async Task ExplicitlyAskingForArchivedIsHonoured()
+    {
+        await Handle(new GetPropertiesQuery(null, PropertyStatus.Archived, null, null, null));
+
+        Assert.Equal(PropertyStatus.Archived, _properties.LastSearchFilter!.Status);
+    }
+
+    [Fact]
+    public async Task SearchTextOverTheLengthOrWordLimitIsAValidationFailure()
+    {
+        var tooLong = await Handle(new GetPropertiesQuery(null, null, null, null, null, Search: new string('a', 101)));
+        var tooManyWords = await Handle(new GetPropertiesQuery(null, null, null, null, null, Search: "a b c d e f"));
+
+        Assert.True(tooLong.IsFailure);
+        Assert.True(tooManyWords.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
+    }
+
+    [Fact]
+    public async Task AnUnsupportedSortOrAListingStatusIsAValidationFailure()
+    {
+        var sort = await Handle(new GetPropertiesQuery(null, null, null, null, null, Sort: (PropertyListSortOrder)99));
+        var listing = await Handle(new GetPropertiesQuery(null, null, null, null, null, ListingStatus: (ListingStatus)99));
+
+        Assert.True(sort.IsFailure);
+        Assert.True(listing.IsFailure);
+        Assert.Equal(0, _properties.ListCallCount);
     }
 
     [Fact]

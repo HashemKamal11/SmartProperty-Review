@@ -7,7 +7,7 @@ namespace SmartProperty.Application.PropertyRegistry.List;
 /// restriction"; every non-null member must hold at once.
 /// </summary>
 /// <param name="Types">Any of these property types. Null or empty means every type.</param>
-/// <param name="Status">One status, or null for Active and Archived alike.</param>
+/// <param name="Status">One registry status, or null for Active and Archived alike.</param>
 /// <param name="CountryCode">An upper-case two-letter code, or null.</param>
 /// <param name="District">Trimmed district name, compared case-insensitively, or null.</param>
 /// <param name="AreaId">The registry area (place) id, or null.</param>
@@ -22,6 +22,12 @@ namespace SmartProperty.Application.PropertyRegistry.List;
 /// The signed-in user whose stored matches supply the percentage. When set, each returned property carries that
 /// user's latest match percentage (or null when there is none).
 /// </param>
+/// <param name="ListingStatus">One listing status (available, reserved, sold, rented), or null for any.</param>
+/// <param name="SearchTerms">
+/// Free-text terms. Every term must appear (case-insensitively) in at least one of the title, description, city,
+/// region, district, address line or area name. Null or empty means no text restriction.
+/// </param>
+/// <param name="Sort">How the page is ordered.</param>
 public sealed record PropertyListFilter(
     IReadOnlyList<PropertyType>? Types = null,
     PropertyStatus? Status = null,
@@ -33,4 +39,7 @@ public sealed record PropertyListFilter(
     int? MinBedrooms = null,
     int? MaxBedrooms = null,
     decimal? MinMatchPercentage = null,
-    Guid? MatchUserId = null);
+    Guid? MatchUserId = null,
+    ListingStatus? ListingStatus = null,
+    IReadOnlyList<string>? SearchTerms = null,
+    PropertyListSortOrder Sort = PropertyListSortOrder.Relevance);

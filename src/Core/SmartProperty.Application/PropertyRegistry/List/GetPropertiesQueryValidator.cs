@@ -6,6 +6,8 @@ namespace SmartProperty.Application.PropertyRegistry.List;
 internal static class GetPropertiesQueryValidator
 {
     public const int MaxDistrictLength = 200;
+    public const int MaxSearchLength = 100;
+    public const int MaxSearchTerms = 5;
 
     /// <summary>
     /// Validates every filter and hands back the normalized filter set: country trimmed and upper-cased, district
@@ -42,6 +44,36 @@ internal static class GetPropertiesQueryValidator
             if (district.Length > MaxDistrictLength)
             {
                 return GetPropertiesErrors.ValidationFailed($"District must not exceed {MaxDistrictLength} characters.");
+            }
+        }
+
+        if (query.ListingStatus is { } listingStatus && !Enum.IsDefined(listingStatus))
+        {
+            return GetPropertiesErrors.ValidationFailed("The listing status is not supported.");
+        }
+
+        if (query.Sort is { } sort && !Enum.IsDefined(sort))
+        {
+            return GetPropertiesErrors.ValidationFailed("The sort order is not supported.");
+        }
+
+        string[] searchTerms = [];
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim();
+            if (search.Length > MaxSearchLength)
+            {
+                return GetPropertiesErrors.ValidationFailed($"Search text must not exceed {MaxSearchLength} characters.");
+            }
+
+            searchTerms = search
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (searchTerms.Length > MaxSearchTerms)
+            {
+                return GetPropertiesErrors.ValidationFailed($"Search text must not exceed {MaxSearchTerms} words.");
             }
         }
 
@@ -86,7 +118,7 @@ internal static class GetPropertiesQueryValidator
 
         filter = new PropertyListFilter(
             types,
-            query.Status,
+            query.Status ?? PropertyStatus.Active,
             countryCode,
             district,
             query.AreaId,
@@ -95,7 +127,10 @@ internal static class GetPropertiesQueryValidator
             query.MinBedrooms,
             query.MaxBedrooms,
             query.MinMatchPercentage,
-            query.MatchUserId is { } userId && userId != Guid.Empty ? userId : null);
+            query.MatchUserId is { } userId && userId != Guid.Empty ? userId : null,
+            query.ListingStatus,
+            searchTerms,
+            query.Sort ?? PropertyListSortOrder.Relevance);
 
         return null;
     }

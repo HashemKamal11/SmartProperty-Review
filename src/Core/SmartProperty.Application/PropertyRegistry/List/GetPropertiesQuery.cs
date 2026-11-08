@@ -13,8 +13,8 @@ namespace SmartProperty.Application.PropertyRegistry.List;
 /// </remarks>
 /// <param name="Types">Restrict to any of these property types. Null or empty means every type.</param>
 /// <param name="Status">
-/// Restrict to one status. Null means every status — Active and Archived alike — because Archived properties
-/// remain part of the canonical registry.
+/// Restrict to one status. Null means <see cref="PropertyStatus.Active"/> only: archived properties stay in the
+/// registry but are listed only when asked for with <see cref="PropertyStatus.Archived"/>.
 /// </param>
 /// <param name="CountryCode">
 /// Restrict to one two-letter country code. Null, empty, or whitespace means every country. Any other value is
@@ -40,6 +40,12 @@ namespace SmartProperty.Application.PropertyRegistry.List;
 /// <paramref name="MatchUserId"/>.
 /// </param>
 /// <param name="MatchUserId">The signed-in user, or null for an anonymous caller.</param>
+/// <param name="ListingStatus">Restrict to one listing status (available, reserved, sold, rented). Null means any.</param>
+/// <param name="Search">
+/// Free text, at most 100 characters. Split on whitespace into at most 5 distinct terms; every term must match the
+/// title, description, city, region, district, address line or area name.
+/// </param>
+/// <param name="Sort">Null means <see cref="PropertyListSortOrder.Relevance"/>.</param>
 public sealed record GetPropertiesQuery(
     IReadOnlyList<PropertyType>? Types,
     PropertyStatus? Status,
@@ -53,4 +59,7 @@ public sealed record GetPropertiesQuery(
     int? MinBedrooms = null,
     int? MaxBedrooms = null,
     decimal? MinMatchPercentage = null,
-    Guid? MatchUserId = null) : IQuery<PagedList<PropertyDetails>>;
+    Guid? MatchUserId = null,
+    ListingStatus? ListingStatus = null,
+    string? Search = null,
+    PropertyListSortOrder? Sort = null) : IQuery<PagedList<PropertyDetails>>;
