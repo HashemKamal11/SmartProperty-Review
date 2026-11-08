@@ -17,13 +17,16 @@ internal sealed class CountryConfiguration : IEntityTypeConfiguration<Country>
 {
     public void Configure(EntityTypeBuilder<Country> builder)
     {
-        builder.ToTable("countries", "locations");
+        builder.ToTable("countries", "locations", tableBuilder => tableBuilder.HasCheckConstraint(
+            "ck_locations_countries_code",
+            "code IS NULL OR code ~ '^[A-Z]{2}$'"));
         builder.HasKey(country => country.Id);
 
         builder.Property(country => country.Id).HasColumnName("id");
         builder.Property(country => country.AiId).HasColumnName("ai_id").IsRequired();
         builder.Property(country => country.NameEn).HasColumnName("name_en").HasMaxLength(200).IsRequired();
         builder.Property(country => country.NameAr).HasColumnName("name_ar").HasMaxLength(200).IsRequired();
+        builder.Property(country => country.Code).HasColumnName("code").HasMaxLength(2);
 
         builder.HasIndex(country => country.AiId).IsUnique().HasDatabaseName(LocationIndexNames.Country);
     }

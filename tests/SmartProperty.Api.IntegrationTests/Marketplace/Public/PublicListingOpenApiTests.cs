@@ -136,7 +136,8 @@ public sealed class PublicListingOpenApiTests
     public async Task AProtectedOperationStillDeclaresBearerSoTheAbsenceHereIsMeaningful()
     {
         using var document = await LoadDocumentAsync();
-        var properties = document.RootElement.GetProperty("paths").GetProperty("/api/properties").GetProperty("get");
+        // Creating a property still needs a permission, so it still declares Bearer. Reading properties is public.
+        var properties = document.RootElement.GetProperty("paths").GetProperty("/api/properties").GetProperty("post");
 
         Assert.Contains(
             properties.GetProperty("security").EnumerateArray().SelectMany(value => value.EnumerateObject()),

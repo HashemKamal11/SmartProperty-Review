@@ -19,7 +19,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string AiSearchIntegrationMigration = "20261102120000_AddAiSearchIntegration";
     private const string LocationsMigration = "20261102180000_AddLocations";
     private const string FavoritePropertiesMigration = "20261103090000_AddFavoriteProperties";
-    private const string OwnerVerificationMigration = "20261105113549_AddOwnerVerification";
+    private const string CountryCodeMigration = "20261105160000_AddCountryCode";
     private const string ListingDraftDiscardAuditMigration = "20261028072837_AddListingDraftDiscardAudit";
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheOwnerVerificationMigration()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheCountryCodeMigration()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -63,7 +63,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(OwnerVerificationMigration, applied[^1]);
+        Assert.Equal(CountryCodeMigration, applied[^1]);
         Assert.Contains(FavoritePropertiesMigration, applied);
         Assert.Contains(LocationsMigration, applied);
         Assert.Contains(AiSearchIntegrationMigration, applied);

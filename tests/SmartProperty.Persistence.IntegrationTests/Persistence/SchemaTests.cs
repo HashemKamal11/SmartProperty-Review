@@ -106,6 +106,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ck_identity_refresh_tokens_revoked_after_created",
             "ck_identity_roles_scope_workspace",
             "ck_identity_user_credentials_updated_after_created",
+            "ck_locations_countries_code",
             "ck_marketplace_decisions_identity",
             "ck_marketplace_decisions_reason",
             "ck_marketplace_decisions_snapshots",
@@ -145,6 +146,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ck_registry_properties_status",
             "ck_registry_properties_transaction_type",
             "ck_registry_properties_type",
+            "ck_registry_property_comparison_items_position",
             "ck_registry_property_images_content_type",
             "ck_registry_property_images_size",
             "ck_registry_property_images_sort_order"

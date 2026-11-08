@@ -1,4 +1,5 @@
 using SmartProperty.Application.PropertyRegistry.Create;
+using SmartProperty.Domain.Locations;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.UnitTests.TestDoubles;
 using Xunit;
@@ -18,7 +19,7 @@ public sealed class PropertySpecificationsCommandTests
     {
         var result = await CreateHandler().Handle(new CreatePropertyCommand(
             "Apartment",
-            "EG",
+            SeedPlace().Id,
             Bedrooms: 3,
             Bathrooms: 2,
             BuiltDate: new DateOnly(2020, 5, 1),
@@ -36,7 +37,7 @@ public sealed class PropertySpecificationsCommandTests
     [Fact]
     public async Task CreateWithoutSpecificationsLeavesThemNull()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", "EG"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", SeedPlace().Id));
 
         Assert.True(result.IsSuccess);
         var property = Assert.Single(_properties.Added);
@@ -62,7 +63,7 @@ public sealed class PropertySpecificationsCommandTests
     {
         var result = await CreateHandler().Handle(new CreatePropertyCommand(
             "Apartment",
-            "EG",
+            SeedPlace().Id,
             Bedrooms: bedrooms,
             Bathrooms: bathrooms,
             BuiltDate: builtDate is null ? null : DateOnly.Parse(builtDate),
@@ -71,6 +72,11 @@ public sealed class PropertySpecificationsCommandTests
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
         Assert.Empty(_properties.Added);
+    }
+
+    private Area SeedPlace()
+    {
+        return _locations.SeedArea(_locations.SeedCity(_locations.SeedCountry()));
     }
 
     private CreatePropertyCommandHandler CreateHandler()

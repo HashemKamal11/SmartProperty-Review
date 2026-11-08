@@ -105,15 +105,20 @@ public sealed class UpdatePropertyCommandHandler(
             return Result<PropertyDetails>.Failure(place.Error!);
         }
 
-        var address = new PropertyAddress(
-            command.CountryCode!,
-            command.City,
-            command.Region,
-            command.District,
+        var addressResult = PropertyCommandSupport.BuildAddress(
+            place.Value.Area!,
             command.AddressLine,
             command.PostalCode,
             command.Latitude,
-            command.Longitude);
+            command.Longitude,
+            UpdatePropertyErrors.ValidationFailed);
+
+        if (addressResult.IsFailure)
+        {
+            return Result<PropertyDetails>.Failure(addressResult.Error!);
+        }
+
+        var address = addressResult.Value;
 
         var changed = property.UpdateDetails(
             propertyType,

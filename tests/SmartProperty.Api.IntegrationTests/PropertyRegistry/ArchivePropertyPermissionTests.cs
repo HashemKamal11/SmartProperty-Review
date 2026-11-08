@@ -70,7 +70,7 @@ public sealed class ArchivePropertyPermissionTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task PropertyArchiveAloneDoesNotAuthorizeCreateReadOrUpdate()
+    public async Task PropertyArchiveAloneDoesNotAuthorizeCreateOrUpdate()
     {
         var property = await SeedPropertyAsync();
         using var factory = CreateFactory();
@@ -79,16 +79,17 @@ public sealed class ArchivePropertyPermissionTests(ApiPostgreSqlFixture fixture)
         await scenario.GrantPlatformPermissionAsync(user.UserId, PermissionCodes.PropertyArchive);
         using var client = factory.CreateAuthenticatedClient(user.UserId);
 
-        using var create = await client.PostAsJsonAsync("/api/properties", new CreatePropertyRequest("Land", "SA"));
+        using var create = await client.PostAsJsonAsync("/api/properties", new CreatePropertyRequest("Land", Guid.NewGuid()));
         using var list = await client.GetAsync("/api/properties");
         using var getById = await client.GetAsync($"/api/properties/{property.Id}");
         using var update = await client.PutAsJsonAsync(
             $"/api/properties/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "SA"));
+            new UpdatePropertyRequest("Apartment", Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, getById.StatusCode);
+        // Reading is public, so these two are open to everyone.
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, getById.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
     }
 

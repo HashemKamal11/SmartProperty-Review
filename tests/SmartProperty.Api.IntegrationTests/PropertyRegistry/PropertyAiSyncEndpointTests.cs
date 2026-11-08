@@ -75,12 +75,12 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
 
-        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", "EG"));
+        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<CreatePropertyResponse>())!;
         Assert.Equal("NotSynced", body.AiSync!.Status);
-        Assert.Contains("missing transactionType, price, areaSqm, areaId, bedrooms, bathrooms", body.AiSync.Error);
+        Assert.Contains("missing transactionType, price, areaSqm, bedrooms, bathrooms", body.AiSync.Error);
         Assert.Empty(_factory.AiGateway.Puts);
         Assert.Equal(AiSyncStatus.NotSynced, (await LoadAsync(body.Id)).AiSyncStatus);
     }
@@ -174,7 +174,7 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
 
-        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest(type, "EG"));
+        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest(type, TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Empty(_factory.AiGateway.Puts);
@@ -186,7 +186,7 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
         using var client = AuthorizedClient();
 
         using var response = await client.PostAsJsonAsync(
-            Route, new CreatePropertyRequest("Villa", "EG", ViewCodes: ["Moon"]));
+            Route, new CreatePropertyRequest("Villa", TestPlaces.Seed(_fixture).AreaId, ViewCodes: ["Moon"]));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -203,7 +203,7 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
 
         using var response = await client.PostAsJsonAsync(
             Route,
-            new CreatePropertyRequest("Villa", "EG", TransactionType: transaction, Price: price, AreaSqm: area));
+            new CreatePropertyRequest("Villa", TestPlaces.Seed(_fixture).AreaId, TransactionType: transaction, Price: price, AreaSqm: area));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -278,7 +278,7 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
     {
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyArchive);
         using var client = AuthorizedClient();
-        using var created = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", "EG"));
+        using var created = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", TestPlaces.Seed(_fixture).AreaId));
         var id = (await created.Content.ReadFromJsonAsync<CreatePropertyResponse>())!.Id;
 
         using var response = await client.PostAsync($"{Route}/{id}/archive", content: null);
@@ -340,7 +340,7 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
     {
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyArchive);
         using var client = AuthorizedClient();
-        using var created = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", "EG"));
+        using var created = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", TestPlaces.Seed(_fixture).AreaId));
         var id = (await created.Content.ReadFromJsonAsync<CreatePropertyResponse>())!.Id;
         using var archived = await client.PostAsync($"{Route}/{id}/archive", content: null);
         Assert.Equal(HttpStatusCode.OK, archived.StatusCode);
@@ -403,7 +403,7 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
 
         return new CreatePropertyRequest(
             "TwinHouse",
-            "EG",
+            _area.Id,
             Bedrooms: 3,
             Bathrooms: 2,
             FinishingStatus: "LuxuryFinished",
@@ -419,7 +419,6 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
             TitleEn: "Title",
             DescriptionAr: "وصف",
             DescriptionEn: "Description",
-            AreaId: _area.Id,
             CompoundId: _compound!.Id);
     }
 
@@ -427,10 +426,7 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
     {
         return new UpdatePropertyRequest(
             request.Type,
-            request.CountryCode,
-            request.City,
-            request.Region,
-            request.District,
+            request.AreaId,
             request.AddressLine,
             request.PostalCode,
             request.Latitude,
@@ -451,7 +447,6 @@ public sealed class PropertyAiSyncEndpointTests : IDisposable
             request.TitleEn,
             request.DescriptionAr,
             request.DescriptionEn,
-            request.AreaId,
             request.CompoundId);
     }
 

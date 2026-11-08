@@ -38,7 +38,7 @@ public sealed class PropertyReadPermissionTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task WorkspacePropertyReadDoesNotAuthorizeEitherPlatformReadEndpoint()
+    public async Task ReadingDoesNotDependOnAWorkspaceRole()
     {
         var property = await SeedPropertyAsync();
         using var factory = new SmartPropertyApiFactory(
@@ -56,12 +56,12 @@ public sealed class PropertyReadPermissionTests(ApiPostgreSqlFixture fixture)
         using var list = await client.GetAsync("/api/properties");
         using var getById = await client.GetAsync($"/api/properties/{property.Id}");
 
-        Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, getById.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, getById.StatusCode);
     }
 
     [Fact]
-    public async Task PropertyCreateAloneDoesNotAuthorizeEitherReadEndpoint()
+    public async Task ReadingDoesNotDependOnHoldingAnyPermissionAtAll()
     {
         var property = await SeedPropertyAsync();
         using var factory = new SmartPropertyApiFactory(
@@ -76,8 +76,8 @@ public sealed class PropertyReadPermissionTests(ApiPostgreSqlFixture fixture)
         using var list = await client.GetAsync("/api/properties");
         using var getById = await client.GetAsync($"/api/properties/{property.Id}");
 
-        Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, getById.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, getById.StatusCode);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public sealed class PropertyReadPermissionTests(ApiPostgreSqlFixture fixture)
 
         using var response = await client.PostAsJsonAsync(
             "/api/properties",
-            new CreatePropertyRequest("Land", "SA"));
+            new CreatePropertyRequest("Land", Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

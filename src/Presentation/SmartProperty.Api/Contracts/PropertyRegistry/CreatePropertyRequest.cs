@@ -3,10 +3,7 @@ namespace SmartProperty.Api.Contracts.PropertyRegistry;
 
 public sealed record CreatePropertyRequest(
     string? Type,
-    string? CountryCode,
-    string? City = null,
-    string? Region = null,
-    string? District = null,
+    Guid? AreaId,
     string? AddressLine = null,
     string? PostalCode = null,
     decimal? Latitude = null,
@@ -27,5 +24,4 @@ public sealed record CreatePropertyRequest(
     string? TitleEn = null,
     string? DescriptionAr = null,
     string? DescriptionEn = null,
-    Guid? AreaId = null,
     Guid? CompoundId = null);

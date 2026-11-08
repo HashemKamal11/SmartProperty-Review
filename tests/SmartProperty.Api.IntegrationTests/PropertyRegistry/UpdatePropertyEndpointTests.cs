@@ -37,7 +37,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         var property = await SeedPropertyAsync();
         using var client = _factory.CreateClient();
 
-        using var response = await client.PutAsJsonAsync($"{Route}/{property.Id}", MinimumRequest());
+        using var response = await client.PutAsJsonAsync($"{Route}/{property.Id}", MinimumRequest(Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -52,7 +52,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "AE"));
+            new UpdatePropertyRequest("Apartment", Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -64,20 +64,19 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task FullRequestReturns200NormalizesAndPersistsEveryMutableField()
+    public async Task FullRequestReturns200DerivesTheAddressFromTheAreaAndPersistsEveryMutableField()
     {
         var property = await SeedPropertyAsync();
         using var client = AuthorizedClient();
+        var place = TestPlaces.Seed(_fixture, "Egypt", "Cairo", "Zamalek");
         var request = new UpdatePropertyRequest(
             "Building",
-            " ae ",
-            " Dubai ",
-            " Dubai Emirate ",
-            " Downtown ",
+            place.AreaId,
             " Sheikh Zayed Road ",
             " 00000 ",
             25.1972m,
-            55.2744m);
+            55.2744m,
+            CompoundId: place.CompoundId);
 
         using var response = await client.PutAsJsonAsync($"{Route}/{property.Id}", request);
 
@@ -86,10 +85,10 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         Assert.Equal(property.Id, body.Id);
         Assert.Equal("Building", body.Type);
         Assert.Equal("Active", body.Status);
-        Assert.Equal("AE", body.Address.CountryCode);
-        Assert.Equal("Dubai", body.Address.City);
-        Assert.Equal("Dubai Emirate", body.Address.Region);
-        Assert.Equal("Downtown", body.Address.District);
+        Assert.Equal("EG", body.Address.CountryCode);
+        Assert.Equal("Cairo", body.Address.City);
+        Assert.Null(body.Address.Region);
+        Assert.Equal("Zamalek", body.Address.District);
         Assert.Equal("Sheikh Zayed Road", body.Address.AddressLine);
         Assert.Equal("00000", body.Address.PostalCode);
         Assert.Equal(25.1972m, body.Address.Latitude);
@@ -100,10 +99,10 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         var persisted = await LoadAsync(property.Id);
         Assert.Equal(PropertyType.Building, persisted.Type);
         Assert.Equal(PropertyStatus.Active, persisted.Status);
-        Assert.Equal("AE", persisted.Address.CountryCode);
-        Assert.Equal("Dubai", persisted.Address.City);
-        Assert.Equal("Dubai Emirate", persisted.Address.Region);
-        Assert.Equal("Downtown", persisted.Address.District);
+        Assert.Equal("EG", persisted.Address.CountryCode);
+        Assert.Equal("Cairo", persisted.Address.City);
+        Assert.Null(persisted.Address.Region);
+        Assert.Equal("Zamalek", persisted.Address.District);
         Assert.Equal("Sheikh Zayed Road", persisted.Address.AddressLine);
         Assert.Equal("00000", persisted.Address.PostalCode);
         Assert.Equal(25.1972m, persisted.Address.Latitude);
@@ -121,7 +120,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         var property = await SeedPropertyAsync();
         using var client = AuthorizedClient();
 
-        using var response = await client.PutAsJsonAsync($"{Route}/{property.Id}", new UpdatePropertyRequest("Apartment", "SA"));
+        using var response = await client.PutAsJsonAsync($"{Route}/{property.Id}", new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -146,25 +145,27 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
             24.7136m,
             46.6753m));
         using var client = AuthorizedClient();
+        var place = TestPlaces.Seed(_fixture);
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new { type = "Land", countryCode = "SA" });
+            new { type = "Land", areaId = place.AreaId });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<PropertyResponse>())!;
-        Assert.Null(body.Address.City);
+        Assert.Equal("SA", body.Address.CountryCode);
+        Assert.Equal("Riyadh", body.Address.City);
         Assert.Null(body.Address.Region);
-        Assert.Null(body.Address.District);
+        Assert.Equal("Al Malqa", body.Address.District);
         Assert.Null(body.Address.AddressLine);
         Assert.Null(body.Address.PostalCode);
         Assert.Null(body.Address.Latitude);
         Assert.Null(body.Address.Longitude);
 
         var persisted = await LoadAsync(property.Id);
-        Assert.Null(persisted.Address.City);
+        Assert.Equal("Riyadh", persisted.Address.City);
         Assert.Null(persisted.Address.Region);
-        Assert.Null(persisted.Address.District);
+        Assert.Equal("Al Malqa", persisted.Address.District);
         Assert.Null(persisted.Address.AddressLine);
         Assert.Null(persisted.Address.PostalCode);
         Assert.Null(persisted.Address.Latitude);
@@ -174,18 +175,19 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
     [Fact]
     public async Task WhitespaceOptionalValuesNormalizeToNull()
     {
-        var property = await SeedPropertyAsync(new PropertyAddress("SA", "Riyadh", "Riyadh Province"));
+        var property = await SeedPropertyAsync(new PropertyAddress("SA", addressLine: "King Fahd Road", postalCode: "12211"));
         using var client = AuthorizedClient();
+        var place = TestPlaces.Seed(_fixture);
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Land", "SA", City: "   ", Region: "", District: " Al Olaya "));
+            new UpdatePropertyRequest("Land", place.AreaId, AddressLine: "   ", PostalCode: ""));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<PropertyResponse>())!;
-        Assert.Null(body.Address.City);
-        Assert.Null(body.Address.Region);
-        Assert.Equal("Al Olaya", body.Address.District);
+        Assert.Null(body.Address.AddressLine);
+        Assert.Null(body.Address.PostalCode);
+        Assert.Equal("Al Malqa", body.Address.District);
     }
 
     [Theory]
@@ -199,7 +201,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Land", "SA", Latitude: Parse(latitude), Longitude: Parse(longitude)));
+            new UpdatePropertyRequest("Land", TestPlaces.Seed(_fixture).AreaId, Latitude: Parse(latitude), Longitude: Parse(longitude)));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<PropertyResponse>())!;
@@ -208,29 +210,81 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
     }
 
     [Theory]
-    [InlineData(null, "SA")]
-    [InlineData("", "SA")]
-    [InlineData("House", "SA")]
-    [InlineData("land", "SA")]
-    [InlineData("1", "SA")]
-    [InlineData("Land", null)]
-    [InlineData("Land", "")]
-    [InlineData("Land", "S")]
-    [InlineData("Land", "SAU")]
-    [InlineData("Land", "S1")]
-    public async Task InvalidTypeOrCountryCodeReturns422AndChangesNothing(string? type, string? countryCode)
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("House")]
+    [InlineData("land")]
+    [InlineData("1")]
+    public async Task InvalidTypeReturns422AndChangesNothing(string? type)
     {
         var property = await SeedPropertyAsync();
         using var client = AuthorizedClient();
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest(type, countryCode));
+            new UpdatePropertyRequest(type, TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
         Assert.Equal("validation.failed", error.Code);
         Assert.Equal(property.UpdatedAt, (await LoadAsync(property.Id)).UpdatedAt);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingOrEmptyAreaIdReturns422AndChangesNothing(bool emptyGuid)
+    {
+        var property = await SeedPropertyAsync();
+        using var client = AuthorizedClient();
+        Guid? areaId = emptyGuid ? Guid.Empty : null;
+
+        using var response = await client.PutAsJsonAsync(
+            $"{Route}/{property.Id}",
+            new UpdatePropertyRequest("Apartment", areaId));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
+        Assert.Equal("validation.failed", error.Code);
+        Assert.Contains("Area is required", error.Message);
+        Assert.Equal(property.UpdatedAt, (await LoadAsync(property.Id)).UpdatedAt);
+    }
+
+    [Fact]
+    public async Task UnknownAreaIdReturns422AndChangesNothing()
+    {
+        var property = await SeedPropertyAsync();
+        using var client = AuthorizedClient();
+
+        using var response = await client.PutAsJsonAsync(
+            $"{Route}/{property.Id}",
+            new UpdatePropertyRequest("Apartment", Guid.NewGuid()));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
+        Assert.Equal("validation.failed", error.Code);
+        Assert.Contains("Unknown area.", error.Message);
+        Assert.Equal(property.UpdatedAt, (await LoadAsync(property.Id)).UpdatedAt);
+    }
+
+    [Fact]
+    public async Task AreaInACountryWithoutACodeReturns422AndChangesNothing()
+    {
+        var property = await SeedPropertyAsync();
+        using var client = AuthorizedClient();
+        var place = TestPlaces.Seed(_fixture, countryNameEn: "Atlantis");
+
+        using var response = await client.PutAsJsonAsync(
+            $"{Route}/{property.Id}",
+            new UpdatePropertyRequest("Apartment", place.AreaId));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
+        Assert.Equal("validation.failed", error.Code);
+        Assert.Contains("'Atlantis' has no country code", error.Message);
+        var persisted = await LoadAsync(property.Id);
+        Assert.Equal(PropertyType.Land, persisted.Type);
+        Assert.Equal(property.UpdatedAt, persisted.UpdatedAt);
     }
 
     [Theory]
@@ -245,7 +299,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Land", "SA", Latitude: Parse(latitude), Longitude: Parse(longitude)));
+            new UpdatePropertyRequest("Land", TestPlaces.Seed(_fixture).AreaId, Latitude: Parse(latitude), Longitude: Parse(longitude)));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -257,7 +311,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
 
-        using var response = await client.PutAsJsonAsync($"{Route}/{Guid.NewGuid()}", MinimumRequest());
+        using var response = await client.PutAsJsonAsync($"{Route}/{Guid.NewGuid()}", MinimumRequest(TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -269,7 +323,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
 
-        using var response = await client.PutAsJsonAsync($"{Route}/not-a-guid", MinimumRequest());
+        using var response = await client.PutAsJsonAsync($"{Route}/not-a-guid", MinimumRequest(TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -277,7 +331,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
     [Theory]
     [InlineData("{")]
     [InlineData("")]
-    [InlineData("{\"type\":\"Land\",\"countryCode\":\"SA\",\"latitude\":\"north\"}")]
+    [InlineData("{\"type\":\"Land\",\"areaId\":\"3f2504e0-4f89-11d3-9a0c-0305e82c3301\",\"latitude\":\"north\"}")]
     public async Task MalformedBodyReturns400(string json)
     {
         var property = await SeedPropertyAsync();
@@ -299,7 +353,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "AE", "Dubai"));
+            new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture, "Egypt", "Cairo", "Zamalek").AreaId));
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -323,7 +377,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         var request = new
         {
             type = "Apartment",
-            countryCode = "SA",
+            areaId = TestPlaces.Seed(_fixture).AreaId,
             id = Guid.NewGuid(),
             status = "Archived",
             createdAt = requestedTime,
@@ -354,7 +408,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var update = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Building", "EG", "Cairo", Latitude: 30.0444m));
+            new UpdatePropertyRequest("Building", TestPlaces.Seed(_fixture, "Egypt", "Cairo", "Zamalek").AreaId, Latitude: 30.0444m));
         var updated = (await update.Content.ReadFromJsonAsync<PropertyResponse>())!;
 
         var fetched = (await client.GetFromJsonAsync<PropertyResponse>($"{Route}/{property.Id}"))!;
@@ -363,6 +417,7 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         Assert.Equal("Building", fetched.Type);
         Assert.Equal("EG", fetched.Address.CountryCode);
         Assert.Equal("Cairo", fetched.Address.City);
+        Assert.Equal("Zamalek", fetched.Address.District);
         Assert.Equal(30.0444m, fetched.Address.Latitude);
         Assert.Equal(updated.Address, fetched.Address);
         Assert.Equal(updated.UpdatedAt, fetched.UpdatedAt);
@@ -379,12 +434,12 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
 
         using var update = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "AE", "Dubai"));
+            new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture, "Egypt", "Cairo", "Zamalek").AreaId));
 
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         var updated = (await update.Content.ReadFromJsonAsync<PropertyResponse>())!;
         Assert.Equal("Apartment", updated.Type);
-        Assert.Equal("Dubai", updated.Address.City);
+        Assert.Equal("Cairo", updated.Address.City);
         Assert.Equal(property.UpdatedAt, updated.UpdatedAt);
 
         var persisted = await LoadAsync(property.Id);
@@ -394,31 +449,35 @@ public sealed class UpdatePropertyEndpointTests : IDisposable
         var fetched = (await client.GetFromJsonAsync<PropertyResponse>($"{Route}/{property.Id}"))!;
         Assert.Equal(updated.UpdatedAt, fetched.UpdatedAt);
     }
-
     [Fact]
     public async Task NoOpUpdateReturns200AndKeepsUpdatedAt()
     {
-        var property = await SeedPropertyAsync(new PropertyAddress("SA", "Riyadh", latitude: 24.7m));
+        var place = TestPlaces.Seed(_fixture);
+        var property = await SeedPropertyAsync();
         using var client = AuthorizedClient();
+        using var first = await client.PutAsJsonAsync(
+            $"{Route}/{property.Id}",
+            new UpdatePropertyRequest("Land", place.AreaId, Latitude: 24.7m));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var baseline = await LoadAsync(property.Id);
 
         using var response = await client.PutAsJsonAsync(
             $"{Route}/{property.Id}",
-            new UpdatePropertyRequest("Land", " sa ", " Riyadh ", PostalCode: "  ", Latitude: 24.70m));
+            new UpdatePropertyRequest("Land", place.AreaId, PostalCode: "  ", Latitude: 24.70m));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<PropertyResponse>())!;
-        Assert.Equal(property.UpdatedAt, body.UpdatedAt);
+        Assert.Equal(baseline.UpdatedAt, body.UpdatedAt);
         Assert.Equal("Riyadh", body.Address.City);
-        Assert.Equal(property.UpdatedAt, (await LoadAsync(property.Id)).UpdatedAt);
+        Assert.Equal(baseline.UpdatedAt, (await LoadAsync(property.Id)).UpdatedAt);
     }
-
     private HttpClient AuthorizedClient()
     {
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyUpdate);
         return _factory.CreateAuthenticatedClient(Guid.NewGuid());
     }
 
-    private static UpdatePropertyRequest MinimumRequest() => new("Land", "SA");
+    private static UpdatePropertyRequest MinimumRequest(Guid areaId) => new("Land", areaId);
 
     /// <summary>
     /// A seeded property whose timestamps are aligned to PostgreSQL microsecond precision, so they round-trip

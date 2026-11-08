@@ -1,4 +1,5 @@
 #nullable enable
+using SmartProperty.Api.Contracts.PropertyRegistry;
 namespace SmartProperty.Api.Contracts.PropertyMatching;
 
 /// <summary>A user's free-text search. <c>topK</c> is how many results to return (default 3, at most 10).</summary>
@@ -23,7 +24,8 @@ public sealed record PropertySearchItemResponse(
     string AiPropertyId,
     decimal MatchPercentage,
     string Description,
-    PropertySearchDetailsResponse Details);
+    PropertySearchDetailsResponse Details,
+    PropertyResponse? Property = null);
 
 public sealed record PropertySearchDetailsResponse(
     string? City,

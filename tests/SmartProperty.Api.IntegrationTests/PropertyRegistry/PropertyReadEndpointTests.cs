@@ -19,30 +19,31 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
         new("Bootstrap:Enabled", "false")
     ];
 
+    // Reading is public. The unknown id is a 404, which also shows the request got past authorization.
     [Theory]
-    [InlineData("/api/properties")]
-    [InlineData("/api/properties/11111111-1111-1111-1111-111111111111")]
-    public async Task UnauthenticatedReadReturns401(string route)
+    [InlineData("/api/properties", HttpStatusCode.OK)]
+    [InlineData("/api/properties/11111111-1111-1111-1111-111111111111", HttpStatusCode.NotFound)]
+    public async Task AnonymousReadNeedsNoSignInAndNoPermission(string route, HttpStatusCode expected)
     {
         using var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync(route);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(expected, response.StatusCode);
     }
 
     [Theory]
-    [InlineData("/api/properties")]
-    [InlineData("/api/properties/11111111-1111-1111-1111-111111111111")]
-    public async Task AuthenticatedCallerWithoutPermissionReturns403(string route)
+    [InlineData("/api/properties", HttpStatusCode.OK)]
+    [InlineData("/api/properties/11111111-1111-1111-1111-111111111111", HttpStatusCode.NotFound)]
+    public async Task ASignedInCallerWithoutPermissionCanReadToo(string route, HttpStatusCode expected)
     {
         using var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
         using var client = factory.CreateAuthenticatedClient(Guid.NewGuid());
 
         using var response = await client.GetAsync(route);
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(expected, response.StatusCode);
     }
 
     [Fact]

@@ -39,7 +39,7 @@ public sealed class PropertyListingHandlerTests
     {
         var result = await CreateHandler().Handle(new CreatePropertyCommand(
             "Penthouse",
-            "EG",
+            Helwan.Id,
             TransactionType: "Rent",
             Price: 85000m,
             AreaSqm: 240m,
@@ -50,7 +50,6 @@ public sealed class PropertyListingHandlerTests
             TitleEn: " Penthouse ",
             DescriptionAr: "وصف",
             DescriptionEn: "Description",
-            AreaId: Helwan.Id,
             CompoundId: GardenResidence.Id));
 
         Assert.True(result.IsSuccess);
@@ -80,7 +79,7 @@ public sealed class PropertyListingHandlerTests
     [Fact]
     public async Task CreateWithoutListingFieldsIsAvailableAndEmpty()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", "EG"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", Helwan.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PropertyListingInfo.Empty, Assert.Single(_properties.Added).Listing);
@@ -95,7 +94,7 @@ public sealed class PropertyListingHandlerTests
         _views.Seed("City", 1);
 
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Villa", "EG", ViewCodes: ["Sea", "City", "Sea"]));
+            new CreatePropertyCommand("Villa", Helwan.Id, ViewCodes: ["Sea", "City", "Sea"]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(2, Assert.Single(_properties.Added).Views.Count);
@@ -108,7 +107,7 @@ public sealed class PropertyListingHandlerTests
         _views.Seed("Sea", 7);
 
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Villa", "EG", ViewCodes: ["Sea", "Moon"]));
+            new CreatePropertyCommand("Villa", Helwan.Id, ViewCodes: ["Sea", "Moon"]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -122,7 +121,7 @@ public sealed class PropertyListingHandlerTests
     public async Task CreateRejectsABlankViewCode()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Villa", "EG", ViewCodes: [" "]));
+            new CreatePropertyCommand("Villa", Helwan.Id, ViewCodes: [" "]));
 
         Assert.True(result.IsFailure);
         Assert.Empty(_properties.Added);
@@ -131,7 +130,7 @@ public sealed class PropertyListingHandlerTests
     [Fact]
     public async Task CreateOffersThePropertyToTheAiServiceOnceAfterItIsCommitted()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", "EG"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", Helwan.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Same(Assert.Single(_properties.Added), Assert.Single(_ai.Synced));
@@ -141,7 +140,7 @@ public sealed class PropertyListingHandlerTests
     [Fact]
     public async Task CreateDoesNotOfferAPropertyThatWasRefused()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", "EG", Price: -1m));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", Helwan.Id, Price: -1m));
 
         Assert.True(result.IsFailure);
         Assert.Empty(_ai.Synced);
@@ -151,7 +150,7 @@ public sealed class PropertyListingHandlerTests
     [Fact]
     public async Task CreateReturnsTheSyncStateTheSynchronizerLeftOnTheProperty()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", "EG"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", Helwan.Id));
 
         Assert.Equal(AiSyncStatus.NotSynced, result.Value.AiSync!.Status);
     }
@@ -166,7 +165,7 @@ public sealed class PropertyListingHandlerTests
     [InlineData(null)]
     public async Task CreateAcceptsOnlyTheExactTypeNames(string? type)
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand(type, "EG"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand(type, Helwan.Id));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -192,7 +191,7 @@ public sealed class PropertyListingHandlerTests
     [InlineData("Farm")]
     public async Task CreateAcceptsEverySixteenAiType(string type)
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand(type, "EG"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand(type, Helwan.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(type, result.Value.Type.ToString());
@@ -205,7 +204,7 @@ public sealed class PropertyListingHandlerTests
     [InlineData("CoreAndShell")]
     public async Task CreateAcceptsEveryFinishingStatus(string status)
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", "EG", FinishingStatus: status));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", Helwan.Id, FinishingStatus: status));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(status, result.Value.FinishingStatus.ToString());
@@ -221,7 +220,7 @@ public sealed class PropertyListingHandlerTests
     [InlineData("Luxury Finished")]
     public async Task CreateRefusesTheOldAndMisspelledFinishingStatuses(string status)
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", "EG", FinishingStatus: status));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Apartment", Helwan.Id, FinishingStatus: status));
 
         Assert.True(result.IsFailure);
         Assert.Contains("CoreAndShell", result.Error!.Description);
@@ -229,17 +228,17 @@ public sealed class PropertyListingHandlerTests
 
     public static TheoryData<CreatePropertyCommand, string> InvalidListings => new()
     {
-        { new CreatePropertyCommand("Apartment", "EG", TransactionType: "Buy"), "Transaction type" },
-        { new CreatePropertyCommand("Apartment", "EG", TransactionType: "sale"), "Transaction type" },
-        { new CreatePropertyCommand("Apartment", "EG", ListingStatus: "Gone"), "Listing status" },
-        { new CreatePropertyCommand("Apartment", "EG", Price: 0m), "Price" },
-        { new CreatePropertyCommand("Apartment", "EG", Price: -10m), "Price" },
-        { new CreatePropertyCommand("Apartment", "EG", AreaSqm: 0m), "Area" },
-        { new CreatePropertyCommand("Apartment", "EG", AreaSqm: 100001m), "Area" },
-        { new CreatePropertyCommand("Apartment", "EG", Floor: -6), "Floor" },
-        { new CreatePropertyCommand("Apartment", "EG", Floor: 301), "Floor" },
-        { new CreatePropertyCommand("Apartment", "EG", TitleAr: new string('t', 301)), "title" },
-        { new CreatePropertyCommand("Apartment", "EG", DescriptionEn: new string('d', 10001)), "description" }
+        { new CreatePropertyCommand("Apartment", Helwan.Id, TransactionType: "Buy"), "Transaction type" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, TransactionType: "sale"), "Transaction type" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, ListingStatus: "Gone"), "Listing status" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, Price: 0m), "Price" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, Price: -10m), "Price" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, AreaSqm: 0m), "Area" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, AreaSqm: 100001m), "Area" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, Floor: -6), "Floor" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, Floor: 301), "Floor" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, TitleAr: new string('t', 301)), "title" },
+        { new CreatePropertyCommand("Apartment", Helwan.Id, DescriptionEn: new string('d', 10001)), "description" }
     };
 
     [Theory]
@@ -266,14 +265,13 @@ public sealed class PropertyListingHandlerTests
         var result = await UpdateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             "Villa",
-            "EG",
+            Maadi.Id,
             Bedrooms: 5,
             Bathrooms: 4,
             ViewCodes: ["Sea"],
             TransactionType: "Sale",
             Price: 9_000_000m,
-            AreaSqm: 400m,
-            AreaId: Maadi.Id));
+            AreaSqm: 400m));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PropertyType.Villa, property.Type);
@@ -291,7 +289,7 @@ public sealed class PropertyListingHandlerTests
         var property = SeedProperty(complete: true);
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "TwinHouse", "EG", Bedrooms: 4, Bathrooms: 3));
+            new UpdatePropertyCommand(property.Id, "TwinHouse", Helwan.Id, Bedrooms: 4, Bathrooms: 3));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(PropertyListingInfo.Empty, property.Listing);
@@ -306,7 +304,7 @@ public sealed class PropertyListingHandlerTests
         var result = await UpdateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             "TwinHouse",
-            "EG",
+            Helwan.Id,
             Bedrooms: 4,
             Bathrooms: 3,
             FinishingStatus: "LuxuryFinished",
@@ -320,7 +318,6 @@ public sealed class PropertyListingHandlerTests
             TitleEn: "Title",
             DescriptionAr: "وصف",
             DescriptionEn: "Description",
-            AreaId: Helwan.Id,
             CompoundId: GardenResidence.Id));
 
         Assert.True(result.IsSuccess);
@@ -342,7 +339,7 @@ public sealed class PropertyListingHandlerTests
         var result = await UpdateHandler().Handle(new UpdatePropertyCommand(
             property.Id,
             "TwinHouse",
-            "EG",
+            Helwan.Id,
             Bedrooms: 4,
             Bathrooms: 3,
             FinishingStatus: "LuxuryFinished",
@@ -356,7 +353,6 @@ public sealed class PropertyListingHandlerTests
             TitleEn: "Title",
             DescriptionAr: "وصف",
             DescriptionEn: "Description",
-            AreaId: Helwan.Id,
             CompoundId: GardenResidence.Id));
 
         Assert.True(result.IsSuccess);
@@ -370,7 +366,7 @@ public sealed class PropertyListingHandlerTests
         var property = SeedProperty();
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Apartment", "EG", Price: -1m));
+            new UpdatePropertyCommand(property.Id, "Apartment", Helwan.Id, Price: -1m));
 
         Assert.True(result.IsFailure);
         Assert.Empty(_ai.Synced);
@@ -382,7 +378,7 @@ public sealed class PropertyListingHandlerTests
         var property = SeedProperty();
 
         var result = await UpdateHandler().Handle(
-            new UpdatePropertyCommand(property.Id, "Apartment", "EG", ViewCodes: ["Moon"]));
+            new UpdatePropertyCommand(property.Id, "Apartment", Helwan.Id, ViewCodes: ["Moon"]));
 
         Assert.True(result.IsFailure);
         Assert.Contains("Moon", result.Error!.Description);
@@ -393,19 +389,54 @@ public sealed class PropertyListingHandlerTests
     // ---- place
 
     [Fact]
-    public async Task CreateWithoutAPlaceLeavesItEmpty()
+    public async Task CreateWithoutAnAreaIsRejectedAndStoresNothing()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", "EG"));
+        var missing = await CreateHandler().Handle(new CreatePropertyCommand("Land", null));
+        var empty = await CreateHandler().Handle(new CreatePropertyCommand("Land", Guid.Empty));
+
+        Assert.True(missing.IsFailure);
+        Assert.True(empty.IsFailure);
+        Assert.Equal("validation.failed", missing.Error!.Code);
+        Assert.Contains("Area is required", missing.Error.Description);
+        Assert.Contains("Area is required", empty.Error!.Description);
+        Assert.Empty(_properties.Added);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CreateRejectsAnAreaWhoseCountryHasNoCodeAndStoresNothing()
+    {
+        var atlantis = _locations.SeedArea(_locations.SeedCity(_locations.SeedCountry(9, "Atlantis", "أطلنطس")));
+
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", atlantis.Id));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation.failed", result.Error!.Code);
+        Assert.Contains("'Atlantis' has no country code", result.Error.Description);
+        Assert.Empty(_properties.Added);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CreateBuildsTheAddressFromTheAreaItsCityAndItsCountry()
+    {
+        var result = await CreateHandler().Handle(new CreatePropertyCommand(
+            "Land", Maadi.Id, AddressLine: " 9 Road ", PostalCode: " 11728 "));
 
         Assert.True(result.IsSuccess);
-        Assert.Null(Assert.Single(_properties.Added).AreaId);
-        Assert.Null(result.Value.Place);
+        var address = Assert.Single(_properties.Added).Address;
+        Assert.Equal("EG", address.CountryCode);
+        Assert.Equal("Cairo", address.City);
+        Assert.Equal("Maadi", address.District);
+        Assert.Null(address.Region);
+        Assert.Equal("9 Road", address.AddressLine);
+        Assert.Equal("11728", address.PostalCode);
     }
 
     [Fact]
     public async Task CreateLocatesThePropertyByAreaAndReturnsTheCityAndCountryAboveIt()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", "EG", AreaId: Maadi.Id));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", Maadi.Id));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(Maadi.Id, Assert.Single(_properties.Added).AreaId);
@@ -419,7 +450,7 @@ public sealed class PropertyListingHandlerTests
     [Fact]
     public async Task CreateRejectsAnUnknownAreaAndStoresNothing()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", "EG", AreaId: Guid.NewGuid()));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", Guid.NewGuid()));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -432,7 +463,7 @@ public sealed class PropertyListingHandlerTests
     public async Task CreateRejectsAnUnknownCompound()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Land", "EG", AreaId: Helwan.Id, CompoundId: Guid.NewGuid()));
+            new CreatePropertyCommand("Land", Helwan.Id, CompoundId: Guid.NewGuid()));
 
         Assert.True(result.IsFailure);
         Assert.Equal("Unknown compound.", result.Error!.Description);
@@ -443,10 +474,10 @@ public sealed class PropertyListingHandlerTests
     public async Task CreateRejectsACompoundWithoutItsArea()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Land", "EG", CompoundId: GardenResidence.Id));
+            new CreatePropertyCommand("Land", null, CompoundId: GardenResidence.Id));
 
         Assert.True(result.IsFailure);
-        Assert.Contains("together with its area", result.Error!.Description);
+        Assert.Contains("Area is required", result.Error!.Description);
         Assert.Empty(_properties.Added);
     }
 
@@ -454,7 +485,7 @@ public sealed class PropertyListingHandlerTests
     public async Task CreateRejectsACompoundThatBelongsToAnotherArea()
     {
         var result = await CreateHandler().Handle(
-            new CreatePropertyCommand("Land", "EG", AreaId: Maadi.Id, CompoundId: GardenResidence.Id));
+            new CreatePropertyCommand("Land", Maadi.Id, CompoundId: GardenResidence.Id));
 
         Assert.True(result.IsFailure);
         Assert.Equal("The compound does not belong to the area.", result.Error!.Description);
@@ -478,15 +509,37 @@ public sealed class PropertyListingHandlerTests
     }
 
     [Fact]
-    public async Task UpdateWithoutAPlaceClearsIt()
+    public async Task UpdateWithoutAnAreaIsRejectedAndKeepsThePlace()
     {
         var property = SeedProperty(complete: true);
 
-        var result = await UpdateHandler().Handle(CompleteUpdate(property.Id) with { AreaId = null, CompoundId = null });
+        var missing = await UpdateHandler().Handle(CompleteUpdate(property.Id) with { AreaId = null, CompoundId = null });
+        var empty = await UpdateHandler().Handle(CompleteUpdate(property.Id) with { AreaId = Guid.Empty, CompoundId = null });
 
-        Assert.True(result.IsSuccess);
-        Assert.Null(property.AreaId);
-        Assert.Null(result.Value.Place);
+        Assert.True(missing.IsFailure);
+        Assert.True(empty.IsFailure);
+        Assert.Equal("validation.failed", missing.Error!.Code);
+        Assert.Contains("Area is required", missing.Error.Description);
+        Assert.Contains("Area is required", empty.Error!.Description);
+        Assert.Equal(Helwan.Id, property.AreaId);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task UpdateRejectsAnAreaWhoseCountryHasNoCodeAndKeepsThePlace()
+    {
+        var property = SeedProperty(complete: true);
+        var atlantis = _locations.SeedArea(_locations.SeedCity(_locations.SeedCountry(9, "Atlantis", "أطلنطس")));
+
+        var result = await UpdateHandler().Handle(
+            CompleteUpdate(property.Id) with { AreaId = atlantis.Id, CompoundId = null });
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation.failed", result.Error!.Code);
+        Assert.Contains("'Atlantis' has no country code", result.Error.Description);
+        Assert.Equal(Helwan.Id, property.AreaId);
+        Assert.Equal("EG", property.Address.CountryCode);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
     }
 
     private static UpdatePropertyCommand CompleteUpdate(Guid id)
@@ -494,7 +547,7 @@ public sealed class PropertyListingHandlerTests
         return new UpdatePropertyCommand(
             id,
             "TwinHouse",
-            "EG",
+            Helwan.Id,
             Bedrooms: 4,
             Bathrooms: 3,
             FinishingStatus: "LuxuryFinished",
@@ -508,7 +561,6 @@ public sealed class PropertyListingHandlerTests
             TitleEn: "Title",
             DescriptionAr: "وصف",
             DescriptionEn: "Description",
-            AreaId: Helwan.Id,
             CompoundId: GardenResidence.Id);
     }
 

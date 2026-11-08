@@ -481,6 +481,11 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("ai_id");
 
+                    b.Property<string>("Code")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("code");
+
                     b.Property<string>("NameAr")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -499,7 +504,10 @@ namespace SmartProperty.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_locations_countries_ai_id");
 
-                    b.ToTable("countries", "locations");
+                    b.ToTable("countries", "locations", t =>
+                        {
+                            t.HasCheckConstraint("ck_locations_countries_code", "code IS NULL OR code ~ '^[A-Z]{2}$'");
+                        });
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.ListingReviewDecision", b =>
@@ -1049,6 +1057,39 @@ namespace SmartProperty.Persistence.Migrations
                             t.HasCheckConstraint("ck_identity_owner_profiles_review", "(status IN ('Approved', 'Rejected')) = (reviewed_at IS NOT NULL AND reviewed_by_user_id IS NOT NULL) AND ((status = 'Rejected') = (rejection_reason IS NOT NULL))");
 
                             t.HasCheckConstraint("ck_identity_owner_profiles_status", "status IN ('Draft', 'UnderReview', 'Approved', 'Rejected')");
+                        });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyComparison.PropertyComparisonItem", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.HasKey("UserId", "PropertyId")
+                        .HasName("PK_property_comparison_items");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("UserId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ux_registry_property_comparison_items_user_position");
+
+                    b.ToTable("property_comparison_items", "registry", t =>
+                        {
+                            t.HasCheckConstraint("ck_registry_property_comparison_items_position", "position BETWEEN 1 AND 3");
                         });
                 });
 
@@ -1895,6 +1936,21 @@ namespace SmartProperty.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.PropertyComparison.PropertyComparisonItem", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("SmartProperty.Domain.Identity.User", null)
                         .WithMany()

@@ -76,15 +76,20 @@ public sealed class CreatePropertyCommandHandler(
         }
 
         var createdAt = dateTimeProvider.UtcNow;
-        var address = new PropertyAddress(
-            command.CountryCode!,
-            command.City,
-            command.Region,
-            command.District,
+        var addressResult = PropertyCommandSupport.BuildAddress(
+            place.Value.Area!,
             command.AddressLine,
             command.PostalCode,
             command.Latitude,
-            command.Longitude);
+            command.Longitude,
+            CreatePropertyErrors.ValidationFailed);
+
+        if (addressResult.IsFailure)
+        {
+            return Result<CreatePropertyResult>.Failure(addressResult.Error!);
+        }
+
+        var address = addressResult.Value;
         var property = new Property(
             Guid.NewGuid(),
             propertyType,
