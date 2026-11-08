@@ -66,7 +66,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
 
         using var response = await client.PostAsJsonAsync(
             PropertiesRoute,
-            new CreatePropertyRequest("Apartment", "EG", AmenityCodes: ["SwimmingPool", "Balcony", "PrivateGym"]));
+            new CreatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId, AmenityCodes: ["SwimmingPool", "Balcony", "PrivateGym"]));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<CreatePropertyResponse>())!;
@@ -81,7 +81,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
 
-        using var response = await client.PostAsJsonAsync(PropertiesRoute, new CreatePropertyRequest("Land", "EG"));
+        using var response = await client.PostAsJsonAsync(PropertiesRoute, new CreatePropertyRequest("Land", TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<CreatePropertyResponse>())!;
@@ -96,7 +96,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
 
         using var response = await client.PostAsJsonAsync(
             PropertiesRoute,
-            new CreatePropertyRequest("Apartment", "EG", AmenityCodes: ["Balcony", "Balcony", " Balcony "]));
+            new CreatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId, AmenityCodes: ["Balcony", "Balcony", " Balcony "]));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<CreatePropertyResponse>())!;
@@ -111,7 +111,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
 
         using var response = await client.PostAsJsonAsync(
             PropertiesRoute,
-            new CreatePropertyRequest("Apartment", "EG", AmenityCodes: ["Balcony", "Helipad"]));
+            new CreatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId, AmenityCodes: ["Balcony", "Helipad"]));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
@@ -127,7 +127,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
 
         using var response = await client.PostAsJsonAsync(
             PropertiesRoute,
-            new CreatePropertyRequest("Apartment", "EG", AmenityCodes: ["Balcony", "  "]));
+            new CreatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId, AmenityCodes: ["Balcony", "  "]));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -140,7 +140,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
 
         using var replaced = await client.PutAsJsonAsync(
             $"{PropertiesRoute}/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "EG", AmenityCodes: ["Balcony", "Security"]));
+            new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId, AmenityCodes: ["Balcony", "Security"]));
 
         Assert.Equal(HttpStatusCode.OK, replaced.StatusCode);
         var body = (await replaced.Content.ReadFromJsonAsync<PropertyResponse>())!;
@@ -149,7 +149,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
 
         using var cleared = await client.PutAsJsonAsync(
             $"{PropertiesRoute}/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "EG"));
+            new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
         Assert.Empty(await LoadCodesAsync(property.Id));
@@ -163,7 +163,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
 
         using var response = await client.PutAsJsonAsync(
             $"{PropertiesRoute}/{property.Id}",
-            new UpdatePropertyRequest("Apartment", "EG", AmenityCodes: ["Helipad"]));
+            new UpdatePropertyRequest("Apartment", TestPlaces.Seed(_fixture).AreaId, AmenityCodes: ["Helipad"]));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal(["Balcony"], await LoadCodesAsync(property.Id));
@@ -188,7 +188,7 @@ public sealed class PropertyAmenitiesEndpointTests : IDisposable
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyCreate);
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyRead);
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyUpdate);
-        return _factory.CreateAuthenticatedClient(Guid.NewGuid());
+        return _factory.CreateAuthenticatedClient(TestUsers.Seed(_fixture));
     }
 
     private async Task<Property> SeedAsync(params string[] amenityCodes)

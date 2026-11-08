@@ -23,6 +23,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
         string[] expected =
         [
             "identity.one_time_codes",
+            "identity.owner_profiles",
             "identity.permissions",
             "identity.refresh_tokens",
             "identity.role_permissions",
@@ -68,6 +69,8 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
     {
         string[] expected =
         [
+            "ux_identity_owner_profiles_national_id",
+            "ux_identity_owner_profiles_user_id",
             "ux_identity_permissions_code",
             "ux_identity_refresh_tokens_token_hash",
             "ux_identity_roles_platform_name",
@@ -95,10 +98,15 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
         [
             "ck_identity_one_time_codes_expires_after_created",
             "ck_identity_one_time_codes_failed_attempts_not_negative",
+            "ck_identity_owner_profiles_address_numbers",
+            "ck_identity_owner_profiles_national_id",
+            "ck_identity_owner_profiles_review",
+            "ck_identity_owner_profiles_status",
             "ck_identity_refresh_tokens_expires_after_created",
             "ck_identity_refresh_tokens_revoked_after_created",
             "ck_identity_roles_scope_workspace",
             "ck_identity_user_credentials_updated_after_created",
+            "ck_locations_countries_code",
             "ck_marketplace_decisions_identity",
             "ck_marketplace_decisions_reason",
             "ck_marketplace_decisions_snapshots",
@@ -138,6 +146,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ck_registry_properties_status",
             "ck_registry_properties_transaction_type",
             "ck_registry_properties_type",
+            "ck_registry_property_comparison_items_position",
             "ck_registry_property_images_content_type",
             "ck_registry_property_images_size",
             "ck_registry_property_images_sort_order"

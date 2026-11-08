@@ -1,5 +1,6 @@
 using SmartProperty.Application.Abstractions.Ai;
 using SmartProperty.Application.Abstractions.Messaging;
+using SmartProperty.Application.PropertyRegistry;
 
 namespace SmartProperty.Application.PropertyMatching.Search;
 
@@ -32,4 +33,5 @@ public sealed record PropertySearchItem(
     string AiPropertyId,
     decimal MatchPercentage,
     string Description,
-    AiSearchItem Details);
+    AiSearchItem Details,
+    PropertyDetails? Property = null);

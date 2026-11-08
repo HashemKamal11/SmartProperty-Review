@@ -1,5 +1,6 @@
 using SmartProperty.Application.PropertyRegistry.Create;
 using SmartProperty.Common.Results;
+using SmartProperty.Domain.Locations;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.UnitTests.TestDoubles;
 using Xunit;
@@ -18,6 +19,16 @@ public sealed class CreatePropertyCommandHandlerTests
     private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeDateTimeProvider _clock = new(CreatedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly Area _olaya;
+
+    public CreatePropertyCommandHandlerTests()
+    {
+        _olaya = _locations.SeedArea(
+            _locations.SeedCity(_locations.SeedCountry(1, "Saudi Arabia", "السعودية"), 1, "Riyadh", "الرياض"),
+            1,
+            "Al Olaya",
+            "العليا");
+    }
 
     [Fact]
     public async Task ValidCommandCreatesAndReturnsTheCanonicalProperty()
@@ -26,10 +37,7 @@ public sealed class CreatePropertyCommandHandlerTests
 
         var result = await handler.Handle(new CreatePropertyCommand(
             "Building",
-            " sa ",
-            " Riyadh ",
-            " Riyadh Province ",
-            " Al Olaya ",
+            _olaya.Id,
             " King Fahd Road ",
             " 12211 ",
             24.7136m,
@@ -42,7 +50,7 @@ public sealed class CreatePropertyCommandHandlerTests
         Assert.Equal(PropertyStatus.Active, property.Status);
         Assert.Equal("SA", property.Address.CountryCode);
         Assert.Equal("Riyadh", property.Address.City);
-        Assert.Equal("Riyadh Province", property.Address.Region);
+        Assert.Null(property.Address.Region);
         Assert.Equal("Al Olaya", property.Address.District);
         Assert.Equal("King Fahd Road", property.Address.AddressLine);
         Assert.Equal("12211", property.Address.PostalCode);
@@ -63,33 +71,84 @@ public sealed class CreatePropertyCommandHandlerTests
     }
 
     [Fact]
-    public async Task MinimumCommandKeepsEveryOptionalAddressFieldNull()
+    public async Task MinimumCommandKeepsOnlyTheAreaDerivedAddressFields()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", "SA"));
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", _olaya.Id));
 
         Assert.True(result.IsSuccess);
-        Assert.Null(result.Value.Address.City);
+        Assert.Equal("SA", result.Value.Address.CountryCode);
+        Assert.Equal("Riyadh", result.Value.Address.City);
         Assert.Null(result.Value.Address.Region);
-        Assert.Null(result.Value.Address.District);
+        Assert.Equal("Al Olaya", result.Value.Address.District);
         Assert.Null(result.Value.Address.AddressLine);
         Assert.Null(result.Value.Address.PostalCode);
         Assert.Null(result.Value.Address.Latitude);
         Assert.Null(result.Value.Address.Longitude);
     }
 
-    [Theory]
-    [InlineData(null, "SA")]
-    [InlineData("", "SA")]
-    [InlineData("House", "SA")]
-    [InlineData("1", "SA")]
-    [InlineData("Land", null)]
-    [InlineData("Land", "")]
-    [InlineData("Land", "S")]
-    [InlineData("Land", "SAU")]
-    [InlineData("Land", "S1")]
-    public async Task InvalidRequiredValuesReturnValidationWithoutWriting(string? type, string? countryCode)
+    [Fact]
+    public async Task MissingAreaReturnsValidationWithoutWriting()
     {
-        var result = await CreateHandler().Handle(new CreatePropertyCommand(type, countryCode));
+        var missing = await CreateHandler().Handle(new CreatePropertyCommand("Land", null));
+        var empty = await CreateHandler().Handle(new CreatePropertyCommand("Land", Guid.Empty));
+
+        Assert.True(missing.IsFailure);
+        Assert.True(empty.IsFailure);
+        Assert.Equal("validation.failed", missing.Error!.Code);
+        Assert.Equal(ErrorType.Validation, missing.Error.Type);
+        Assert.Contains("Area is required", missing.Error.Description);
+        Assert.Contains("Area is required", empty.Error!.Description);
+        Assert.Empty(_properties.Added);
+        Assert.Equal(0, _clock.UtcNowCallCount);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task UnknownAreaReturnsValidationWithoutWriting()
+    {
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", Guid.NewGuid()));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation.failed", result.Error!.Code);
+        Assert.Equal("Unknown area.", result.Error.Description);
+        Assert.Empty(_properties.Added);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task AreaWhoseCountryHasNoCodeReturnsValidationWithoutWriting()
+    {
+        var atlantis = _locations.SeedArea(_locations.SeedCity(_locations.SeedCountry(9, "Atlantis", "أطلنطس")));
+
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", atlantis.Id));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("validation.failed", result.Error!.Code);
+        Assert.Contains("'Atlantis' has no country code", result.Error.Description);
+        Assert.Empty(_properties.Added);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task CompoundOfAnotherAreaReturnsValidationWithoutWriting()
+    {
+        var compound = _locations.SeedCompound(_locations.SeedArea(_locations.SeedCity(_locations.SeedCountry()), 40, "Maadi", "المعادي"));
+
+        var result = await CreateHandler().Handle(new CreatePropertyCommand("Land", _olaya.Id, CompoundId: compound.Id));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("The compound does not belong to the area.", result.Error!.Description);
+        Assert.Empty(_properties.Added);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("House")]
+    [InlineData("1")]
+    public async Task InvalidTypeReturnsValidationWithoutWriting(string? type)
+    {
+        var result = await CreateHandler().Handle(new CreatePropertyCommand(type, _olaya.Id));
 
         Assert.True(result.IsFailure);
         Assert.Equal(ErrorType.Validation, result.Error!.Type);
@@ -107,7 +166,7 @@ public sealed class CreatePropertyCommandHandlerTests
     {
         var result = await CreateHandler().Handle(new CreatePropertyCommand(
             "Apartment",
-            "SA",
+            _olaya.Id,
             Latitude: Parse(latitude),
             Longitude: Parse(longitude)));
 
@@ -125,7 +184,7 @@ public sealed class CreatePropertyCommandHandlerTests
     {
         var result = await CreateHandler().Handle(new CreatePropertyCommand(
             "Land",
-            "SA",
+            _olaya.Id,
             Latitude: Parse(latitude),
             Longitude: Parse(longitude)));
 

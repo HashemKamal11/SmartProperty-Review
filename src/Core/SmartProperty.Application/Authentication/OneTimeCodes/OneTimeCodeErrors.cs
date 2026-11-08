@@ -22,6 +22,12 @@ internal static class OneTimeCodeErrors
             ErrorType.Validation);
     }
 
+    // One answer for an unknown email, a disabled account, a wrong token, an expired token and a token already used.
+    public static Error InvalidResetToken { get; } = new(
+        "password_reset.invalid_token",
+        "The password reset session is invalid or has expired. Start again with your email.",
+        ErrorType.Validation);
+
     public static Error TooManyAttempts(OneTimeCodePurpose purpose)
     {
         return new Error(

@@ -49,5 +49,25 @@ public enum PersistenceConstraint
     /// <summary>
     /// A workspace membership can hold a given role at most once (the workspace_membership_roles composite key).
     /// </summary>
-    WorkspaceMembershipRoleKey = 9
+    WorkspaceMembershipRoleKey = 9,
+
+    /// <summary>
+    /// A user has at most one owner profile.
+    /// </summary>
+    OwnerProfileUser = 10,
+
+    /// <summary>
+    /// A national ID belongs to at most one owner profile.
+    /// </summary>
+    OwnerProfileNationalId = 11,
+
+    /// <summary>
+    /// A property is on a user's comparison list at most once (the property_comparison_items composite key).
+    /// </summary>
+    PropertyComparisonItem = 12,
+
+    /// <summary>
+    /// A comparison list has one property per position, which is what caps it at three.
+    /// </summary>
+    PropertyComparisonPosition = 13
 }

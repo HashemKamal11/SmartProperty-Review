@@ -143,4 +143,11 @@ public static class PermissionCodes
     public const string WorkspaceMembersCreate = "workspace.members.create";
 
     public const string WorkspaceMembersCreateDescription = "Create member accounts in the workspace.";
+
+    /// <summary>
+    /// Review owner verification profiles: read the queue and the evidence, approve or reject. Platform-scoped.
+    /// </summary>
+    public const string OwnerVerificationReview = "owner.verification.review";
+
+    public const string OwnerVerificationReviewDescription = "Review, approve or reject owner verification profiles.";
 }

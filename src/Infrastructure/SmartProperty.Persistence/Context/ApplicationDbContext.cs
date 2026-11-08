@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using SmartProperty.Domain.Favorites;
+using SmartProperty.Domain.OwnerVerification;
+using SmartProperty.Domain.PropertyComparison;
 using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.Locations;
 using SmartProperty.Domain.PropertyMatching;
@@ -35,6 +37,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Area> Areas => Set<Area>();
     public DbSet<Compound> Compounds => Set<Compound>();
     public DbSet<FavoriteProperty> FavoriteProperties => Set<FavoriteProperty>();
+    public DbSet<OwnerProfile> OwnerProfiles => Set<OwnerProfile>();
+    public DbSet<PropertyComparisonItem> PropertyComparisonItems => Set<PropertyComparisonItem>();
     public DbSet<PropertyImage> PropertyImages => Set<PropertyImage>();
     public DbSet<PropertyMatch> PropertyMatches => Set<PropertyMatch>();
     public DbSet<ListingSubmission> ListingSubmissions => Set<ListingSubmission>();

@@ -34,7 +34,7 @@ internal static class AiTestProperties
         return new Property(
             Guid.NewGuid(),
             PropertyType.TwinHouse,
-            new PropertyAddress("EG"),
+            new PropertyAddress("EG", "Cairo", region: null, district: "Helwan"),
             CreatedAt,
             bedrooms: 4,
             bathrooms: 3,

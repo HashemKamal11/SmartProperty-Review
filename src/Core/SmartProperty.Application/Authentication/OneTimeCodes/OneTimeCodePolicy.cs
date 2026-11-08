@@ -15,6 +15,12 @@ internal static class OneTimeCodePolicy
     public static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan ResendCooldown = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long the verified-reset token stays usable once the reset code has been entered correctly.</summary>
+    public static readonly TimeSpan ResetGrantLifetime = TimeSpan.FromMinutes(10);
+
+    private const int GrantTokenBytes = 32;
+    private const int GrantTokenLength = 43;
+
     public static string GenerateCode()
     {
         return RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", CultureInfo.InvariantCulture);
@@ -36,6 +42,32 @@ internal static class OneTimeCodePolicy
         var stored = Encoding.UTF8.GetBytes(storedHash);
 
         return CryptographicOperations.FixedTimeEquals(submitted, stored);
+    }
+
+    /// <summary>A 256-bit random token in URL-safe base64, 43 characters.</summary>
+    public static string GenerateGrantToken()
+    {
+        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(GrantTokenBytes))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    public static bool IsWellFormedGrantToken(string? token)
+    {
+        return token is { Length: GrantTokenLength }
+            && token.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+    }
+
+    public static OneTimeCode IssueGrant(Guid userId, string token, DateTimeOffset now)
+    {
+        return new OneTimeCode(
+            Guid.NewGuid(),
+            userId,
+            OneTimeCodePurpose.PasswordResetGrant,
+            HashCode(userId, OneTimeCodePurpose.PasswordResetGrant, token),
+            now,
+            now.Add(ResetGrantLifetime));
     }
 
     public static bool IsWellFormedCode(string? code)

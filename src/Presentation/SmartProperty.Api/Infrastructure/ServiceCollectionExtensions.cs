@@ -55,6 +55,16 @@ using SmartProperty.Application.Favorites;
 using SmartProperty.Application.Favorites.Add;
 using SmartProperty.Application.Favorites.List;
 using SmartProperty.Application.Favorites.Remove;
+using SmartProperty.Application.OwnerVerification;
+using SmartProperty.Application.OwnerVerification.Get;
+using SmartProperty.Application.OwnerVerification.Review;
+using SmartProperty.Application.OwnerVerification.Save;
+using SmartProperty.Application.OwnerVerification.Submit;
+using SmartProperty.Application.PropertyComparison;
+using SmartProperty.Application.PropertyComparison.Add;
+using SmartProperty.Application.PropertyComparison.Get;
+using SmartProperty.Application.PropertyComparison.Remove;
+using SmartProperty.Domain.OwnerVerification;
 using SmartProperty.Application.PropertyRegistry.Ai.Sync;
 using SmartProperty.Application.PropertyRegistry.Views;
 using SmartProperty.Application.PropertyMatching.Search;
@@ -314,6 +324,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<VerifyEmailCommand, EmailVerified>, VerifyEmailCommandHandler>();
         services.AddScoped<ICommandHandler<ResendEmailVerificationCommand>, ResendEmailVerificationCommandHandler>();
         services.AddScoped<ICommandHandler<ForgotPasswordCommand>, ForgotPasswordCommandHandler>();
+        services.AddScoped<ICommandHandler<VerifyResetCodeCommand, VerifyResetCodeResult>, VerifyResetCodeCommandHandler>();
         services.AddScoped<ICommandHandler<ResetPasswordCommand>, ResetPasswordCommandHandler>();
         services.AddScoped<ICommandHandler<LoginCommand, LoginResult>, LoginCommandHandler>();
         services.AddScoped<ICommandHandler<RefreshCommand, RefreshResult>, RefreshCommandHandler>();
@@ -339,6 +350,22 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<RemoveFavoriteCommand, RemoveFavoriteResult>, RemoveFavoriteCommandHandler>();
         services.AddScoped<IQueryHandler<GetFavoritesQuery, PagedList<FavoriteDetails>>, GetFavoritesQueryHandler>();
         services.AddScoped<IQueryHandler<GetFavoriteIdsQuery, IReadOnlyList<Guid>>, GetFavoriteIdsQueryHandler>();
+        services.AddScoped<OwnerAccessProvisioner>();
+        services.AddScoped<ICommandHandler<AddToComparisonCommand, AddToComparisonResult>, AddToComparisonCommandHandler>();
+        services.AddScoped<ICommandHandler<RemoveFromComparisonCommand, PropertyComparisonDetails>, RemoveFromComparisonCommandHandler>();
+        services.AddScoped<ICommandHandler<ClearComparisonCommand, PropertyComparisonDetails>, ClearComparisonCommandHandler>();
+        services.AddScoped<IQueryHandler<GetComparisonQuery, PropertyComparisonDetails>, GetComparisonQueryHandler>();
+        services.AddScoped<ICommandHandler<SaveOwnerIdentityCommand, OwnerProfileDetails>, SaveOwnerIdentityCommandHandler>();
+        services.AddScoped<ICommandHandler<SaveOwnerAddressCommand, OwnerProfileDetails>, SaveOwnerAddressCommandHandler>();
+        services.AddScoped<ICommandHandler<UploadAddressProofCommand, OwnerProfileDetails>, UploadAddressProofCommandHandler>();
+        services.AddScoped<ICommandHandler<SubmitOwnerProfileCommand, OwnerProfileDetails>, SubmitOwnerProfileCommandHandler>();
+        services.AddScoped<IQueryHandler<GetMyOwnerProfileQuery, OwnerProfileDetails>, GetMyOwnerProfileQueryHandler>();
+        services.AddScoped<IQueryHandler<GetOwnerProfileForReviewQuery, OwnerProfileDetails>, GetOwnerProfileForReviewQueryHandler>();
+        services.AddScoped<IQueryHandler<GetMyAddressProofQuery, AddressProofFile>, GetMyAddressProofQueryHandler>();
+        services.AddScoped<IQueryHandler<GetAddressProofForReviewQuery, AddressProofFile>, GetAddressProofForReviewQueryHandler>();
+        services.AddScoped<IQueryHandler<GetOwnerReviewQueueQuery, PagedList<OwnerReviewItem>>, GetOwnerReviewQueueQueryHandler>();
+        services.AddScoped<ICommandHandler<ApproveOwnerProfileCommand, OwnerProfileDetails>, ApproveOwnerProfileCommandHandler>();
+        services.AddScoped<ICommandHandler<RejectOwnerProfileCommand, OwnerProfileDetails>, RejectOwnerProfileCommandHandler>();
         services.AddScoped<ICommandHandler<RecordPropertyMatchCommand, PropertyMatchDetails>, RecordPropertyMatchCommandHandler>();
 
         services

@@ -188,6 +188,30 @@ public sealed class AuthController : ControllerBase
             "If an account uses this email, a password reset code has been sent to it."));
     }
 
+    // Step two: the code from the email, checked on its own. A correct code is spent and becomes a reset token.
+    // A wrong, expired or unknown code gets one answer, so the endpoint cannot be used to find registered emails.
+    [AllowAnonymous]
+    [HttpPost("verify-reset-code")]
+    public async Task<IActionResult> VerifyResetCode(
+        [FromBody] VerifyResetCodeRequest request,
+        [FromServices] ICommandHandler<VerifyResetCodeCommand, VerifyResetCodeResult> handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(
+            new VerifyResetCodeCommand(request.Email ?? string.Empty, request.Code ?? string.Empty),
+            cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        return Ok(new VerifyResetCodeResponse(result.Value.ResetToken, result.Value.ExpiresAt));
+    }
+
+    // Step three: the new password with the token from step two.
     [AllowAnonymous]
     [HttpPost("reset-password")]
     public async Task<IActionResult> ResetPassword(
@@ -197,8 +221,9 @@ public sealed class AuthController : ControllerBase
     {
         var command = new ResetPasswordCommand(
             request.Email ?? string.Empty,
-            request.Code ?? string.Empty,
-            request.NewPassword ?? string.Empty);
+            request.ResetToken ?? string.Empty,
+            request.NewPassword ?? string.Empty,
+            request.ConfirmPassword ?? string.Empty);
 
         var result = await handler.Handle(command, cancellationToken);
 

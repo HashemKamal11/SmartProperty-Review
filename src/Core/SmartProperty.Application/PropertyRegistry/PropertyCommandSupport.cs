@@ -258,6 +258,37 @@ internal static class PropertyCommandSupport
         return Result<(Area?, Compound?)>.Success((area, compound));
     }
 
+    /// <summary>
+    /// The address of a property placed in an area: country code, city and district come from the area, and only the
+    /// street line, postal code and coordinates are the caller's own. Region is not a level of the places, so it stays empty.
+    /// </summary>
+    public static Result<PropertyAddress> BuildAddress(
+        Area area,
+        string? addressLine,
+        string? postalCode,
+        decimal? latitude,
+        decimal? longitude,
+        Func<string, Error> validationFailed)
+    {
+        var country = area.City.Country;
+
+        if (country.Code is null)
+        {
+            return Result<PropertyAddress>.Failure(validationFailed(
+                $"The country '{country.NameEn}' has no country code yet, so a property cannot be placed in it."));
+        }
+
+        return Result<PropertyAddress>.Success(new PropertyAddress(
+            country.Code,
+            area.City.NameEn,
+            region: null,
+            area.NameEn,
+            addressLine,
+            postalCode,
+            latitude,
+            longitude));
+    }
+
     /// <summary>The place of a tracked property whose area, city, and country are loaded, or null without an area.</summary>
     public static PropertyPlaceDetails? ToPlaceDetails(Property property)
     {

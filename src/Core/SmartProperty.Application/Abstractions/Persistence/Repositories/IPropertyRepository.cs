@@ -23,6 +23,14 @@ public interface IPropertyRepository
     Task<PropertyDetails?> GetDetailsByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The read models of the properties among <paramref name="ids"/>, whatever their status, in one query. An id that is
+    /// not a property is simply absent from the result.
+    /// </summary>
+    Task<IReadOnlyList<PropertyDetails>> GetDetailsByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// One page of properties matching every non-null filter, ordered newest first and tie-broken by id, together
     /// with the total the filters match. A null <paramref name="status"/> includes Active and Archived alike.
     /// </summary>

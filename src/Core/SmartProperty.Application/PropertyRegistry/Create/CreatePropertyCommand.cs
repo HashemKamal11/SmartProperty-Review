@@ -4,10 +4,7 @@ namespace SmartProperty.Application.PropertyRegistry.Create;
 
 public sealed record CreatePropertyCommand(
     string? Type,
-    string? CountryCode,
-    string? City = null,
-    string? Region = null,
-    string? District = null,
+    Guid? AreaId,
     string? AddressLine = null,
     string? PostalCode = null,
     decimal? Latitude = null,
@@ -28,5 +25,5 @@ public sealed record CreatePropertyCommand(
     string? TitleEn = null,
     string? DescriptionAr = null,
     string? DescriptionEn = null,
-    Guid? AreaId = null,
-    Guid? CompoundId = null) : ICommand<CreatePropertyResult>;
+    Guid? CompoundId = null,
+    Guid? OwnerUserId = null) : ICommand<CreatePropertyResult>;

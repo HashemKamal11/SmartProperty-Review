@@ -78,6 +78,21 @@ internal sealed class FakePropertyRepository : IPropertyRepository
         return Task.FromResult(Details.GetValueOrDefault(id));
     }
 
+    public int GetDetailsByIdsCallCount { get; private set; }
+
+    public Task<IReadOnlyList<PropertyDetails>> GetDetailsByIdsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        GetDetailsByIdsCallCount++;
+        IReadOnlyList<PropertyDetails> found = ids
+            .Where(Details.ContainsKey)
+            .Select(id => Details[id])
+            .ToList();
+
+        return Task.FromResult(found);
+    }
+
     public Task<PropertyPage> ListAsync(
         PropertyType? type,
         PropertyStatus? status,

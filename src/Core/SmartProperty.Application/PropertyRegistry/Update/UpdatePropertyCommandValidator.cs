@@ -23,17 +23,10 @@ internal static class UpdatePropertyCommandValidator
                 $"Type must be one of: {PropertyCommandSupport.NamesOf<PropertyType>()}.");
         }
 
-        if (string.IsNullOrWhiteSpace(command.CountryCode))
+        // The place decides the address: country, city and district come from the area chosen from the locations list.
+        if (command.AreaId is null || command.AreaId == Guid.Empty)
         {
-            return UpdatePropertyErrors.ValidationFailed("Country code is required.");
-        }
-
-        var countryCode = command.CountryCode.Trim();
-        if (countryCode.Length != 2
-            || !char.IsAsciiLetter(countryCode[0])
-            || !char.IsAsciiLetter(countryCode[1]))
-        {
-            return UpdatePropertyErrors.ValidationFailed("Country code must contain exactly two ASCII letters.");
+            return UpdatePropertyErrors.ValidationFailed("Area is required: choose the property's area from the locations list.");
         }
 
         if (command.Latitude is < -90m or > 90m)

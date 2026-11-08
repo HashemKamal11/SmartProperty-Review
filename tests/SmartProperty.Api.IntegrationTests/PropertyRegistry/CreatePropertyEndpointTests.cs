@@ -34,7 +34,7 @@ public sealed class CreatePropertyEndpointTests : IDisposable
     {
         using var client = _factory.CreateClient();
 
-        using var response = await client.PostAsJsonAsync(Route, MinimumRequest());
+        using var response = await client.PostAsJsonAsync(Route, MinimumRequest(Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -44,7 +44,7 @@ public sealed class CreatePropertyEndpointTests : IDisposable
     {
         using var client = _factory.CreateAuthenticatedClient(Guid.NewGuid());
 
-        using var response = await client.PostAsJsonAsync(Route, MinimumRequest());
+        using var response = await client.PostAsJsonAsync(Route, MinimumRequest(Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -54,7 +54,7 @@ public sealed class CreatePropertyEndpointTests : IDisposable
     {
         using var client = AuthorizedClient();
 
-        using var response = await client.PostAsJsonAsync(Route, MinimumRequest());
+        using var response = await client.PostAsJsonAsync(Route, MinimumRequest(TestPlaces.Seed(_fixture).AreaId));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = (await response.Content.ReadFromJsonAsync<CreatePropertyResponse>())!;
@@ -62,9 +62,9 @@ public sealed class CreatePropertyEndpointTests : IDisposable
         Assert.Equal("Land", body.Type);
         Assert.Equal("Active", body.Status);
         Assert.Equal("SA", body.Address.CountryCode);
-        Assert.Null(body.Address.City);
+        Assert.Equal("Riyadh", body.Address.City);
         Assert.Null(body.Address.Region);
-        Assert.Null(body.Address.District);
+        Assert.Equal("Al Malqa", body.Address.District);
         Assert.Null(body.Address.AddressLine);
         Assert.Null(body.Address.PostalCode);
         Assert.Null(body.Address.Latitude);
@@ -84,19 +84,18 @@ public sealed class CreatePropertyEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task AuthorizedFullRequestNormalizesAndPersistsEveryAddressField()
+    public async Task AuthorizedFullRequestDerivesTheAddressFromTheAreaAndPersistsEveryAddressField()
     {
         using var client = AuthorizedClient();
+        var place = TestPlaces.Seed(_fixture);
         var request = new CreatePropertyRequest(
             "Building",
-            " sa ",
-            " Riyadh ",
-            " Riyadh Province ",
-            " Al Olaya ",
+            place.AreaId,
             " King Fahd Road ",
             " 12211 ",
             24.7136m,
-            46.6753m);
+            46.6753m,
+            CompoundId: place.CompoundId);
 
         using var response = await client.PostAsJsonAsync(Route, request);
 
@@ -105,8 +104,8 @@ public sealed class CreatePropertyEndpointTests : IDisposable
         Assert.Equal("Building", body.Type);
         Assert.Equal("SA", body.Address.CountryCode);
         Assert.Equal("Riyadh", body.Address.City);
-        Assert.Equal("Riyadh Province", body.Address.Region);
-        Assert.Equal("Al Olaya", body.Address.District);
+        Assert.Null(body.Address.Region);
+        Assert.Equal("Al Malqa", body.Address.District);
         Assert.Equal("King Fahd Road", body.Address.AddressLine);
         Assert.Equal("12211", body.Address.PostalCode);
         Assert.Equal(24.7136m, body.Address.Latitude);
@@ -125,24 +124,68 @@ public sealed class CreatePropertyEndpointTests : IDisposable
     }
 
     [Theory]
-    [InlineData(null, "SA")]
-    [InlineData("", "SA")]
-    [InlineData("House", "SA")]
-    [InlineData("1", "SA")]
-    [InlineData("Land", null)]
-    [InlineData("Land", "")]
-    [InlineData("Land", "S")]
-    [InlineData("Land", "SAU")]
-    [InlineData("Land", "S1")]
-    public async Task InvalidTypeOrCountryCodeReturns422(string? type, string? countryCode)
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("House")]
+    [InlineData("1")]
+    public async Task InvalidTypeReturns422(string? type)
     {
         using var client = AuthorizedClient();
+        var place = TestPlaces.Seed(_fixture);
 
-        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest(type, countryCode));
+        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest(type, place.AreaId));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
         Assert.Equal("validation.failed", error.Code);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MissingOrEmptyAreaIdReturns422(bool emptyGuid)
+    {
+        using var client = AuthorizedClient();
+        Guid? areaId = emptyGuid ? Guid.Empty : null;
+
+        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", areaId));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
+        Assert.Equal("validation.failed", error.Code);
+        Assert.Contains("Area is required", error.Message);
+    }
+
+    [Fact]
+    public async Task UnknownAreaIdReturns422()
+    {
+        using var client = AuthorizedClient();
+
+        using var response = await client.PostAsJsonAsync(Route, new CreatePropertyRequest("Land", Guid.NewGuid()));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
+        Assert.Equal("validation.failed", error.Code);
+        Assert.Contains("Unknown area.", error.Message);
+    }
+
+    [Fact]
+    public async Task AreaInACountryWithoutACodeReturns422AndStoresNothing()
+    {
+        using var client = AuthorizedClient();
+        var place = TestPlaces.Seed(_fixture, countryNameEn: "Atlantis");
+        var addressLine = Guid.NewGuid().ToString("N");
+
+        using var response = await client.PostAsJsonAsync(
+            Route,
+            new CreatePropertyRequest("Land", place.AreaId, AddressLine: addressLine));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var error = (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!;
+        Assert.Equal("validation.failed", error.Code);
+        Assert.Contains("'Atlantis' has no country code", error.Message);
+        await using var context = _fixture.CreateContext();
+        Assert.False(await context.Properties.AnyAsync(row => row.Address.AddressLine == addressLine));
     }
 
     [Theory]
@@ -155,7 +198,7 @@ public sealed class CreatePropertyEndpointTests : IDisposable
         using var client = AuthorizedClient();
         var request = new CreatePropertyRequest(
             "Land",
-            "SA",
+            TestPlaces.Seed(_fixture).AreaId,
             Latitude: Parse(latitude),
             Longitude: Parse(longitude));
 
@@ -172,7 +215,7 @@ public sealed class CreatePropertyEndpointTests : IDisposable
         using var client = AuthorizedClient();
         var request = new CreatePropertyRequest(
             "Apartment",
-            "SA",
+            TestPlaces.Seed(_fixture).AreaId,
             Latitude: Parse(latitude),
             Longitude: Parse(longitude));
 
@@ -193,7 +236,7 @@ public sealed class CreatePropertyEndpointTests : IDisposable
         var request = new
         {
             type = "Land",
-            countryCode = "SA",
+            areaId = TestPlaces.Seed(_fixture).AreaId,
             id = requestedId,
             status = "Archived",
             createdAt = requestedTime,
@@ -213,10 +256,10 @@ public sealed class CreatePropertyEndpointTests : IDisposable
     private HttpClient AuthorizedClient()
     {
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyCreate);
-        return _factory.CreateAuthenticatedClient(Guid.NewGuid());
+        return _factory.CreateAuthenticatedClient(TestUsers.Seed(_fixture));
     }
 
-    private static CreatePropertyRequest MinimumRequest() => new("Land", "SA");
+    private static CreatePropertyRequest MinimumRequest(Guid areaId) => new("Land", areaId);
 
     private static decimal? Parse(string? value)
     {

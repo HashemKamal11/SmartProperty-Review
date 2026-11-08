@@ -26,11 +26,12 @@ public sealed class BootstrapAssignsNoAuthorityPermissionsTests
         "marketplace.authority.grants.read",
     ];
 
-    // The seven permissions bootstrap provisions and attaches today, in ordinal order.
+    // The eight permissions bootstrap provisions and attaches today, in ordinal order.
     private static readonly string[] ProvisionedCodes =
     [
         "marketplace.submissions.review.decide",
         "marketplace.submissions.review.read",
+        "owner.verification.review",
         "property.archive",
         "property.create",
         "property.read",
@@ -58,7 +59,7 @@ public sealed class BootstrapAssignsNoAuthorityPermissionsTests
     private readonly FakePlatformAdminBootstrapCoordinator _coordinator = new();
 
     [Fact]
-    public async Task AFirstRunCreatesAndAttachesExactlyTheSevenAndNoAuthorityPermission()
+    public async Task AFirstRunCreatesAndAttachesExactlyTheEightAndNoAuthorityPermission()
     {
         var user = SeedUser(UserStatus.Pending);
 
@@ -66,7 +67,7 @@ public sealed class BootstrapAssignsNoAuthorityPermissionsTests
 
         Assert.True(result.IsSuccess);
         Assert.Equal(ProvisionedCodes, _permissions.Added.Select(permission => permission.Code).Order(StringComparer.Ordinal));
-        Assert.Equal(7, _roles.AddedRolePermissions.Count);
+        Assert.Equal(8, _roles.AddedRolePermissions.Count);
         AssertNoAuthorityRows();
         Assert.Equal(ProvisionedCodes, await EffectiveCodesAsync(user.Id));
     }
@@ -81,9 +82,9 @@ public sealed class BootstrapAssignsNoAuthorityPermissionsTests
         var second = await handler.Handle(new BootstrapPlatformAdminCommand(AdminEmail));
 
         Assert.True(second.Value.MadeNoChange);
-        Assert.Equal(7, _permissions.Added.Count);
-        Assert.Equal(7, _roles.AddedRolePermissions.Count);
-        Assert.Equal(7, _roles.RolePermissions.Count);
+        Assert.Equal(8, _permissions.Added.Count);
+        Assert.Equal(8, _roles.AddedRolePermissions.Count);
+        Assert.Equal(8, _roles.RolePermissions.Count);
         AssertNoAuthorityRows();
         Assert.Equal(ProvisionedCodes, await EffectiveCodesAsync(user.Id));
     }
@@ -112,7 +113,7 @@ public sealed class BootstrapAssignsNoAuthorityPermissionsTests
     }
 
     [Fact]
-    public async Task AnEnvironmentBootstrappedWithTheOriginalFiveGainsOnlyTheTwoListingReviewPermissions()
+    public async Task AnEnvironmentBootstrappedWithTheOriginalFiveGainsOnlyTheListingReviewAndOwnerReviewPermissions()
     {
         var user = SeedUser(UserStatus.Active);
         var role = SeedPlatformAdminRole();
@@ -126,9 +127,9 @@ public sealed class BootstrapAssignsNoAuthorityPermissionsTests
         await CreateHandler().Handle(new BootstrapPlatformAdminCommand(AdminEmail));
 
         Assert.Equal(
-            new[] { "marketplace.submissions.review.decide", "marketplace.submissions.review.read" },
+            new[] { "marketplace.submissions.review.decide", "marketplace.submissions.review.read", "owner.verification.review" },
             _permissions.Added.Select(permission => permission.Code).Order(StringComparer.Ordinal));
-        Assert.Equal(2, _roles.AddedRolePermissions.Count);
+        Assert.Equal(3, _roles.AddedRolePermissions.Count);
         AssertNoAuthorityRows();
         Assert.Equal(ProvisionedCodes, await EffectiveCodesAsync(user.Id));
     }
@@ -153,7 +154,7 @@ public sealed class BootstrapAssignsNoAuthorityPermissionsTests
 
         Assert.True(result.Value.MadeNoChange);
         Assert.Empty(_roles.AddedRolePermissions);
-        Assert.Equal(7, _roles.RolePermissions.Count);
+        Assert.Equal(8, _roles.RolePermissions.Count);
         Assert.Equal(ProvisionedCodes, await EffectiveCodesAsync(user.Id));
     }
 
@@ -233,7 +234,7 @@ public sealed class BootstrapAssignsNoAuthorityPermissionsTests
             attachedCodes.Add((await _permissions.GetByIdAsync(rolePermission.PermissionId))!.Code);
         }
 
-        Assert.Equal(7, attachedCodes.Count);
+        Assert.Equal(8, attachedCodes.Count);
         Assert.Empty(attachedCodes.Where(code => AuthorityCodes.Contains(code, StringComparer.Ordinal)).ToArray());
     }
 

@@ -1,5 +1,7 @@
 using SmartProperty.Application.Abstractions.Ai;
 using SmartProperty.Application.PropertyMatching.Search;
+using SmartProperty.Application.PropertyRegistry;
+using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.UnitTests.TestDoubles;
 using Xunit;
 
@@ -90,6 +92,60 @@ public sealed class SearchPropertiesCommandHandlerTests
         Assert.Equal(ours, item.PropertyId);
         Assert.Equal(ours.ToString(), item.ExternalId);
         Assert.Equal("PF-123", item.AiPropertyId);
+    }
+
+    [Fact]
+    public async Task EachOfOurResultsCarriesTheFullPropertyAsGetByIdReturnsItAndOthersCarryNone()
+    {
+        var ours = Guid.NewGuid();
+        _properties.ExistingIds.Add(ours);
+        var stored = new PropertyDetails(
+            ours,
+            PropertyType.Villa,
+            PropertyStatus.Active,
+            new PropertyAddressDetails("SA", "Riyadh", null, "Al Malqa", null, null, null, null),
+            DateTimeOffset.UtcNow.AddDays(-3),
+            DateTimeOffset.UtcNow.AddDays(-2),
+            Bedrooms: 5);
+        _properties.Details[ours] = stored;
+        _gateway.SearchOutcome = Outcome(
+            Item(ours.ToString(), 0.96, descriptionAr: "وصف"),
+            Item(null, 0.8, descriptionEn: "someone else's", aiId: "PF-9"));
+
+        var result = await CreateHandler().Handle(new SearchPropertiesCommand(_userId, "villa"));
+
+        Assert.Equal(stored, result.Value.Items[0].Property);
+        Assert.Null(result.Value.Items[1].Property);
+    }
+
+    [Fact]
+    public async Task AnAnonymousSearchAlsoCarriesTheFullProperty()
+    {
+        var ours = Guid.NewGuid();
+        _properties.ExistingIds.Add(ours);
+        _properties.Details[ours] = new PropertyDetails(
+            ours,
+            PropertyType.Apartment,
+            PropertyStatus.Active,
+            new PropertyAddressDetails("SA", null, null, null, null, null, null, null),
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow);
+        _gateway.SearchOutcome = Outcome(Item(ours.ToString(), 0.7, descriptionAr: "وصف"));
+
+        var result = await CreateHandler().Handle(new SearchPropertiesCommand(null, "flat"));
+
+        Assert.Equal(ours, Assert.Single(result.Value.Items).Property!.Id);
+        Assert.Empty(_matches.Added);
+    }
+
+    [Fact]
+    public async Task NoResultOfOursMeansNoDetailsAreLoaded()
+    {
+        _gateway.SearchOutcome = Outcome(Item(null, 0.9, descriptionAr: "وصف", aiId: "PF-1"));
+
+        await CreateHandler().Handle(new SearchPropertiesCommand(_userId, "flat"));
+
+        Assert.Equal(0, _properties.GetDetailsByIdsCallCount);
     }
 
     [Fact]

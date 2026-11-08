@@ -55,6 +55,9 @@ public interface IRoleRepository
 
     Task AddUserAssignmentAsync(UserPlatformRole userPlatformRole, CancellationToken cancellationToken = default);
 
+    /// <summary>Tracks the removal of a platform role from a user and reports whether the user held it. Committed by the caller.</summary>
+    Task<bool> RemoveUserAssignmentAsync(Guid userId, Guid roleId, CancellationToken cancellationToken = default);
+
     /// <summary>True when this workspace membership already holds this role.</summary>
     Task<bool> IsAssignedToMembershipAsync(
         Guid workspaceMembershipId,

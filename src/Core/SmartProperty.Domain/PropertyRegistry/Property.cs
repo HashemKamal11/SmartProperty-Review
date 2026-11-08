@@ -32,7 +32,8 @@ public sealed class Property
         IEnumerable<PropertyView>? views = null,
         PropertyListingInfo? listing = null,
         Area? area = null,
-        Compound? compound = null)
+        Compound? compound = null,
+        Guid? ownerUserId = null)
     {
         if (id == Guid.Empty)
         {
@@ -48,7 +49,13 @@ public sealed class Property
         ValidateSpecifications(bedrooms, bathrooms, builtDate, finishingStatus);
         ValidatePlace(area, compound);
 
+        if (ownerUserId == Guid.Empty)
+        {
+            throw new ArgumentException("Owner user id must not be empty.", nameof(ownerUserId));
+        }
+
         Id = id;
+        OwnerUserId = ownerUserId;
         Type = type;
         Address = address;
         Bedrooms = bedrooms;
@@ -66,6 +73,10 @@ public sealed class Property
     }
 
     public Guid Id { get; private set; }
+
+    /// <summary>The user who registered the property, or null for one registered before owners were recorded.</summary>
+    public Guid? OwnerUserId { get; private set; }
+
     public PropertyType Type { get; private set; }
     public PropertyAddress Address { get; private set; }
     public PropertyStatus Status { get; private set; }
