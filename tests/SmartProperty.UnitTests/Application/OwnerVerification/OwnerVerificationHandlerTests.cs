@@ -72,7 +72,7 @@ public sealed class OwnerVerificationHandlerTests
         var handler = IdentityHandler();
 
         var result = await handler.Handle(
-            new SaveOwnerIdentityCommand(_owner.Id, "1234567890", "Saudi", null, null, true));
+            new SaveOwnerIdentityCommand(_owner.Id, "SA", "1234567890", "Saudi", null, null, true));
 
         Assert.Equal(ErrorType.Validation, result.Error!.Type);
     }
@@ -86,6 +86,25 @@ public sealed class OwnerVerificationHandlerTests
 
         Assert.Equal("owner_profile.national_id_taken", result.Error!.Code);
         Assert.Equal(ErrorType.Conflict, result.Error.Type);
+    }
+
+    [Fact]
+    public async Task TheSameIdWrittenWithHyphensIsStillAConflict()
+    {
+        await SaveIdentityAsync(_reviewer.Id, nationalId: "784199012345671", country: "AE");
+
+        var result = await SaveIdentityAsync(_owner.Id, nationalId: "784-1990-1234567-1", country: "ae");
+
+        Assert.Equal("owner_profile.national_id_taken", result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task AnUnsupportedIdCountryIsAValidationFailure()
+    {
+        var result = await SaveIdentityAsync(_owner.Id, country: "US");
+
+        Assert.Equal(ErrorType.Validation, result.Error!.Type);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
     }
 
     [Fact]
@@ -386,7 +405,7 @@ public sealed class OwnerVerificationHandlerTests
     [Fact]
     public async Task TheQueueListsSubmittedProfilesOnly()
     {
-        await SaveIdentityAsync(_reviewer.Id, nationalId: "9999999999");
+        await SaveIdentityAsync(_reviewer.Id, nationalId: "1999999999");
         await CompleteAndSubmitAsync(_owner.Id);
         var handler = new GetOwnerReviewQueueQueryHandler(_profiles);
 
@@ -463,10 +482,12 @@ public sealed class OwnerVerificationHandlerTests
     private Task<Result<OwnerProfileDetails>> SaveIdentityAsync(
         Guid userId,
         string nationalId = "1234567890",
-        string nationality = "Saudi")
+        string nationality = "Saudi",
+        string country = "SA")
     {
         return IdentityHandler().Handle(new SaveOwnerIdentityCommand(
             userId,
+            country,
             nationalId,
             nationality,
             new DateOnly(1990, 1, 1),

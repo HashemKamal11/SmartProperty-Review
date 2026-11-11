@@ -61,9 +61,31 @@ public sealed class OwnerProfilePersistenceTests(PostgreSqlFixture fixture) : Da
         using var scope = Host.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IOwnerProfileRepository>();
 
-        Assert.True(await repository.NationalIdUsedByAnotherAsync("1234567890", other.Id));
-        Assert.False(await repository.NationalIdUsedByAnotherAsync("1234567890", owner.Id));
-        Assert.False(await repository.NationalIdUsedByAnotherAsync("9999999999", other.Id));
+        Assert.True(await repository.NationalIdUsedByAnotherAsync("SA", "1234567890", other.Id));
+        Assert.False(await repository.NationalIdUsedByAnotherAsync("SA", "1234567890", owner.Id));
+        Assert.False(await repository.NationalIdUsedByAnotherAsync("SA", "1999999999", other.Id));
+        // The same digits from another country are another document.
+        Assert.False(await repository.NationalIdUsedByAnotherAsync("EG", "1234567890", other.Id));
+    }
+
+    [Fact]
+    public async Task EgyptianAndEmiratiIdsRoundTrip()
+    {
+        var egyptian = await SeedUserAsync();
+        var emirati = await SeedUserAsync();
+        // The helper's birth date is 1990-01-01, which the Egyptian ID must encode.
+        var egyptianProfile = Submitted(egyptian.Id, "29001010101234", country: NationalIdRules.Egypt);
+        var emiratiProfile = Submitted(emirati.Id, "784-1990-1234567-1", country: NationalIdRules.UnitedArabEmirates);
+        await AddAsync(egyptianProfile);
+        await AddAsync(emiratiProfile);
+
+        using var scope = Host.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IOwnerProfileRepository>();
+        var storedEgyptian = await repository.GetByIdAsync(egyptianProfile.Id);
+        var storedEmirati = await repository.GetByIdAsync(emiratiProfile.Id);
+
+        Assert.Equal(("EG", "29001010101234"), (storedEgyptian!.IdCountryCode, storedEgyptian.NationalId));
+        Assert.Equal(("AE", "784199012345671"), (storedEmirati!.IdCountryCode, storedEmirati.NationalId));
     }
 
     // ---- the queue
@@ -165,6 +187,28 @@ public sealed class OwnerProfilePersistenceTests(PostgreSqlFixture fixture) : Da
             : $"INSERT INTO identity.owner_profiles (id, user_id, status, created_at, updated_at, {column}) "
                 + $"VALUES ('{Guid.NewGuid()}', '{user.Id}', 'Draft', now(), now(), {value})";
 
+        await AssertRefusedAsync(sql);
+    }
+
+    [Theory]
+    [InlineData("NULL", "'1234567890'")] // an ID without its country
+    [InlineData("'SA'", "NULL")] // a country without an ID
+    [InlineData("'SA'", "'123456789012345'")]
+    [InlineData("'EG'", "'1234567890'")]
+    [InlineData("'EG'", "'19001010101234'")]
+    [InlineData("'AE'", "'123199012345671'")]
+    [InlineData("'US'", "'1234567890'")]
+    public async Task TheDatabaseRefusesAnIdThatDoesNotFitItsCountry(string country, string nationalId)
+    {
+        var user = await SeedUserAsync();
+
+        await AssertRefusedAsync(
+            "INSERT INTO identity.owner_profiles (id, user_id, status, created_at, updated_at, id_country_code, national_id) "
+            + $"VALUES ('{Guid.NewGuid()}', '{user.Id}', 'Draft', now(), now(), {country}, {nationalId})");
+    }
+
+    private async Task AssertRefusedAsync(string sql)
+    {
         var exception = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(sql));
 
         // A value too long for its column is refused by the column before the check is reached; either way it is refused.
@@ -295,11 +339,15 @@ public sealed class OwnerProfilePersistenceTests(PostgreSqlFixture fixture) : Da
 
     // ---- helpers
 
-    private static OwnerProfile Submitted(Guid userId, string nationalId, DateTimeOffset? submittedAt = null)
+    private static OwnerProfile Submitted(
+        Guid userId,
+        string nationalId,
+        DateTimeOffset? submittedAt = null,
+        string country = NationalIdRules.SaudiArabia)
     {
         var at = submittedAt ?? T0;
         var profile = new OwnerProfile(Guid.NewGuid(), userId, T0);
-        profile.SaveIdentity(nationalId, "Saudi", new DateOnly(1990, 1, 1), Today.AddYears(5), true, Today, T0);
+        profile.SaveIdentity(country, nationalId, "Saudi", new DateOnly(1990, 1, 1), Today.AddYears(5), true, Today, T0);
         profile.SaveAddress("1234", "Al Olaya", "Al Malqa", "Riyadh", "12345", "5678", true, T0);
         profile.SetAddressProof("owner-profiles/k.png", "image/png", "card.png", T0);
         profile.Submit(at);

@@ -44,6 +44,7 @@ public sealed record OwnerProfileDetails(
 
         var identity = profile.IsIdentityComplete
             ? new OwnerIdentityStep(
+                profile.IdCountryCode!,
                 profile.NationalId!,
                 profile.Nationality!,
                 profile.BirthDate!.Value,
@@ -85,6 +86,7 @@ public sealed record OwnerAccountStep(
     bool IsEmailVerified);
 
 public sealed record OwnerIdentityStep(
+    string IdCountryCode,
     string NationalId,
     string Nationality,
     DateOnly BirthDate,

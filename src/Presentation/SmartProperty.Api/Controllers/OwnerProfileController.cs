@@ -68,6 +68,7 @@ public sealed class OwnerProfileController : ControllerBase
         return ToResult(await handler.Handle(
             new SaveOwnerIdentityCommand(
                 userId,
+                request.IdCountryCode,
                 request.NationalId,
                 request.Nationality,
                 request.BirthDate,

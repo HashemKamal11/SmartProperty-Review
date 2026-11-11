@@ -27,25 +27,88 @@ public sealed class OwnerProfileTests
     {
         var profile = NewProfile();
 
-        var wasApproved = profile.SaveIdentity("1234567890", " Saudi ", Today.AddYears(-30), Today.AddYears(5), true, Today, Now);
+        var wasApproved = profile.SaveIdentity(" sa ", "1234567890", " Saudi ", Today.AddYears(-30), Today.AddYears(5), true, Today, Now);
 
         Assert.False(wasApproved);
         Assert.True(profile.IsIdentityComplete);
+        Assert.Equal("SA", profile.IdCountryCode);
         Assert.Equal("1234567890", profile.NationalId);
         Assert.Equal("Saudi", profile.Nationality);
     }
 
     [Theory]
-    [InlineData("")]
-    [InlineData("123456789")]
-    [InlineData("12345678901")]
-    [InlineData("12345abcde")]
-    [InlineData("١٢٣٤٥٦٧٨٩٠")]
-    public void ANationalIdThatIsNotTenAsciiDigitsIsRefused(string nationalId)
+    [InlineData("SA", "1234567890")] // Saudi citizen
+    [InlineData("SA", "2234567890")] // Iqama (resident)
+    [InlineData("AE", "784199012345671")]
+    [InlineData("AE", "784-1990-1234567-1")] // as printed on the card
+    public void SaudiAndEmiratiIdsAreAccepted(string country, string nationalId)
     {
         var profile = NewProfile();
 
-        Assert.Throws<ArgumentException>(() => SaveIdentity(profile, nationalId: nationalId));
+        SaveIdentity(profile, country: country, nationalId: nationalId);
+
+        Assert.Equal(country, profile.IdCountryCode);
+        Assert.Equal(nationalId.Replace("-", "", StringComparison.Ordinal), profile.NationalId);
+    }
+
+    [Theory]
+    [InlineData("29001150101234", 1990, 1, 15)]
+    [InlineData("30502280101234", 2005, 2, 28)]
+    [InlineData("2 900115 01 0123 4", 1990, 1, 15)]
+    public void AnEgyptianIdWhoseEncodedBirthDateMatchesIsAccepted(string nationalId, int year, int month, int day)
+    {
+        var profile = NewProfile();
+
+        SaveIdentity(profile, country: "EG", nationalId: nationalId, birthDate: new DateOnly(year, month, day));
+
+        Assert.Equal("EG", profile.IdCountryCode);
+        Assert.Equal(nationalId.Replace(" ", "", StringComparison.Ordinal), profile.NationalId);
+    }
+
+    [Theory]
+    [InlineData("SA", "")]
+    [InlineData("SA", "123456789")]
+    [InlineData("SA", "12345678901")]
+    [InlineData("SA", "12345abcde")]
+    [InlineData("SA", "١٢٣٤٥٦٧٨٩٠")]
+    [InlineData("SA", "3234567890")] // neither citizen (1) nor resident (2)
+    [InlineData("AE", "78419901234567")] // 14 digits
+    [InlineData("AE", "123199012345671")] // not 784
+    [InlineData("EG", "2900115010123")] // 13 digits
+    [InlineData("EG", "19001150101234")] // century digit 1
+    [InlineData("EG", "29013150101234")] // month 13
+    [InlineData("EG", "29002300101234")] // 30 February
+    [InlineData("SA", "29001150101234")] // an Egyptian ID declared as Saudi
+    [InlineData("EG", "1234567890")] // a Saudi ID declared as Egyptian
+    public void AnIdThatDoesNotMatchItsCountryIsRefused(string country, string nationalId)
+    {
+        var profile = NewProfile();
+
+        Assert.Throws<ArgumentException>(
+            () => SaveIdentity(profile, country: country, nationalId: nationalId, birthDate: new DateOnly(1990, 1, 15)));
+        Assert.Null(profile.NationalId);
+    }
+
+    [Fact]
+    public void AnEgyptianIdWhoseEncodedBirthDateDiffersIsRefused()
+    {
+        var profile = NewProfile();
+
+        var exception = Assert.Throws<ArgumentException>(
+            () => SaveIdentity(profile, country: "EG", nationalId: "29001150101234", birthDate: new DateOnly(1990, 1, 16)));
+
+        Assert.Contains("does not match", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("US")]
+    [InlineData("KSA")]
+    public void AnUnsupportedIdCountryIsRefused(string country)
+    {
+        var profile = NewProfile();
+
+        Assert.Throws<ArgumentException>(() => SaveIdentity(profile, country: country));
     }
 
     [Fact]
@@ -253,9 +316,11 @@ public sealed class OwnerProfileTests
         string nationality = "Saudi",
         DateOnly? birthDate = null,
         DateOnly? idExpiryDate = null,
-        bool confirmed = true)
+        bool confirmed = true,
+        string country = "SA")
     {
         return profile.SaveIdentity(
+            country,
             nationalId,
             nationality,
             birthDate ?? Today.AddYears(-30),

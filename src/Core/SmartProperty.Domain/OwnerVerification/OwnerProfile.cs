@@ -11,7 +11,6 @@ namespace SmartProperty.Domain.OwnerVerification;
 /// </remarks>
 public sealed class OwnerProfile
 {
-    public const int NationalIdLength = 10;
     public const int BuildingNumberLength = 4;
     public const int PostalCodeLength = 5;
     public const int AdditionalNumberLength = 4;
@@ -46,6 +45,10 @@ public sealed class OwnerProfile
     public Guid UserId { get; private set; }
     public OwnerVerificationStatus Status { get; private set; }
 
+    /// <summary>The country that issued the ID, one of <see cref="NationalIdRules.SupportedCountries"/>.</summary>
+    public string? IdCountryCode { get; private set; }
+
+    /// <summary>Digits only; unique per <see cref="IdCountryCode"/>.</summary>
     public string? NationalId { get; private set; }
     public string? Nationality { get; private set; }
     public DateOnly? BirthDate { get; private set; }
@@ -84,7 +87,12 @@ public sealed class OwnerProfile
     /// Saves the national-ID step. The confirmation is the user's statement that the data matches the original ID.
     /// </summary>
     /// <returns>True when an approved profile was sent back to Draft by the edit, so its grant must be withdrawn.</returns>
+    /// <remarks>
+    /// <paramref name="nationalId"/> may contain spaces or hyphens; they are removed. The format depends on
+    /// <paramref name="idCountryCode"/> (see <see cref="NationalIdRules"/>).
+    /// </remarks>
     public bool SaveIdentity(
+        string idCountryCode,
         string nationalId,
         string nationality,
         DateOnly birthDate,
@@ -95,9 +103,16 @@ public sealed class OwnerProfile
     {
         EnsureEditable();
 
-        if (!IsValidNationalId(nationalId))
+        var country = NationalIdRules.NormalizeCountry(idCountryCode)
+            ?? throw new ArgumentException(
+                $"The ID country must be one of {string.Join(", ", NationalIdRules.SupportedCountries)}.",
+                nameof(idCountryCode));
+
+        var normalizedId = NationalIdRules.NormalizeNationalId(nationalId);
+
+        if (NationalIdRules.Validate(country, normalizedId, birthDate) is { } idError)
         {
-            throw new ArgumentException($"The national ID must be exactly {NationalIdLength} digits.", nameof(nationalId));
+            throw new ArgumentException(idError, nameof(nationalId));
         }
 
         var trimmedNationality = TrimRequired(nationality, nameof(nationality));
@@ -117,7 +132,8 @@ public sealed class OwnerProfile
             throw new ArgumentException("The data must be confirmed as matching the original ID.", nameof(confirmed));
         }
 
-        NationalId = nationalId;
+        IdCountryCode = country;
+        NationalId = normalizedId;
         Nationality = trimmedNationality;
         BirthDate = birthDate;
         IdExpiryDate = idExpiryDate;
@@ -252,8 +268,6 @@ public sealed class OwnerProfile
         RejectionReason = trimmed;
         UpdatedAt = at;
     }
-
-    public static bool IsValidNationalId(string? value) => IsDigits(value, NationalIdLength);
 
     private static bool IsDigits(string? value, int length)
     {

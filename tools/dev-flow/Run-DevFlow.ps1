@@ -158,8 +158,9 @@ Check "2 /me owner is Active" (Invoke-Api GET "/api/auth/me" -Token $ownerToken 
 $fixtures = Join-Path $env:TEMP "smartproperty-fixtures"
 New-Item -ItemType Directory -Force $fixtures | Out-Null
 [IO.File]::WriteAllBytes("$fixtures\address-proof.png", [Convert]::FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
-$nid = (Get-Random -Minimum 1000000000 -Maximum 1999999999).ToString()
-$r = Invoke-Api PUT "/api/owner-profile/identity" -Token $ownerToken -Quiet -Json (@{ nationalId = $nid; nationality = "Egyptian"; birthDate = "1990-01-01"; idExpiryDate = "2031-01-01"; confirmed = $true } | ConvertTo-Json)
+# Egyptian national ID: century 2 (1900s) + birth date 900101 (matches birthDate) + 7 random digits.
+$nid = "2900101" + (Get-Random -Minimum 1000000 -Maximum 9999999).ToString()
+$r = Invoke-Api PUT "/api/owner-profile/identity" -Token $ownerToken -Quiet -Json (@{ idCountryCode = "EG"; nationalId = $nid; nationality = "Egyptian"; birthDate = "1990-01-01"; idExpiryDate = "2031-01-01"; confirmed = $true } | ConvertTo-Json)
 Check "3a identity" $r 200
 $r = Invoke-Api PUT "/api/owner-profile/address" -Token $ownerToken -Quiet -Json (@{ buildingNumber = "1234"; streetName = "Example Street"; district = "Maadi"; city = "Cairo"; postalCode = "11728"; additionalNumber = "5678"; confirmed = $true } | ConvertTo-Json)
 Check "3b address" $r 200
@@ -556,8 +557,9 @@ $owner2Email = "demo.owner2.$stamp@demo.local"; $owner2Password = New-DemoPasswo
 Check "P register a second owner" (Invoke-Api POST "/api/auth/register" -Quiet -Json (@{ email = $owner2Email; password = $owner2Password; firstName = "Omar"; lastName = "Owner"; phoneNumber = "+2013$stamp" } | ConvertTo-Json)) 201
 Check "P verify the second owner's email" (Invoke-Api POST "/api/auth/verify-email" -Quiet -Json (@{ email = $owner2Email; code = (Get-EmailCode $owner2Email) } | ConvertTo-Json)) 200
 $owner2Token = (Invoke-Api POST "/api/auth/login" -Quiet -Json (@{ email = $owner2Email; password = $owner2Password } | ConvertTo-Json)).Body.accessToken
+# Saudi Iqama (resident ID): 10 digits starting with 2.
 $nid2 = (Get-Random -Minimum 2000000000 -Maximum 2999999999).ToString()
-Check "P identity" (Invoke-Api PUT "/api/owner-profile/identity" -Token $owner2Token -Quiet -Json (@{ nationalId = $nid2; nationality = "Egyptian"; birthDate = "1991-02-02"; idExpiryDate = "2031-01-01"; confirmed = $true } | ConvertTo-Json)) 200
+Check "P identity" (Invoke-Api PUT "/api/owner-profile/identity" -Token $owner2Token -Quiet -Json (@{ idCountryCode = "SA"; nationalId = $nid2; nationality = "Egyptian"; birthDate = "1991-02-02"; idExpiryDate = "2031-01-01"; confirmed = $true } | ConvertTo-Json)) 200
 Check "P address" (Invoke-Api PUT "/api/owner-profile/address" -Token $owner2Token -Quiet -Json (@{ buildingNumber = "4321"; streetName = "Another Street"; district = "Maadi"; city = "Cairo"; postalCode = "11728"; additionalNumber = "8765"; confirmed = $true } | ConvertTo-Json)) 200
 $o = curl.exe -s -w "`n%{http_code}" -X PUT "$base/api/owner-profile/address-proof" -H "Authorization: Bearer $owner2Token" -F "file=@$fixtures\address-proof.png;type=image/png"
 Check "P address proof" ([pscustomobject]@{ Status = [int](($o -split "`n")[-1]); Body = $null }) 200

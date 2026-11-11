@@ -3,8 +3,14 @@ using SmartProperty.Application.OwnerVerification;
 
 namespace SmartProperty.Api.Contracts.OwnerVerification;
 
-/// <summary>Step 2: the national ID. <c>confirmed</c> is the user's statement that the data matches the original ID.</summary>
+/// <summary>
+/// Step 2: the national ID. <c>idCountryCode</c> is the issuing country: <c>SA</c> (national ID or Iqama, 10 digits
+/// starting with 1 or 2), <c>EG</c> (14 digits; digits 2 to 7 must match <c>birthDate</c>) or <c>AE</c> (Emirates ID,
+/// 15 digits starting with 784). Spaces and hyphens in <c>nationalId</c> are ignored. <c>confirmed</c> is the user's
+/// statement that the data matches the original ID.
+/// </summary>
 public sealed record SaveOwnerIdentityRequest(
+    string? IdCountryCode,
     string? NationalId,
     string? Nationality,
     DateOnly? BirthDate,
@@ -56,6 +62,7 @@ public sealed record OwnerProfileResponse(
             details.Identity is null
                 ? null
                 : new OwnerIdentityStepResponse(
+                    details.Identity.IdCountryCode,
                     details.Identity.NationalId,
                     details.Identity.Nationality,
                     details.Identity.BirthDate,
@@ -86,6 +93,7 @@ public sealed record OwnerAccountStepResponse(
     bool IsEmailVerified);
 
 public sealed record OwnerIdentityStepResponse(
+    string IdCountryCode,
     string NationalId,
     string Nationality,
     DateOnly BirthDate,

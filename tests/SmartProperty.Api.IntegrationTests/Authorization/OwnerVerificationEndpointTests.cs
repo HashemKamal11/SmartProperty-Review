@@ -148,6 +148,39 @@ public sealed class OwnerVerificationEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task AnEgyptianIdIsSavedAndReadBackWithItsCountry()
+    {
+        using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
+        // Century 2 (1900s), born 1990-01-01, then a random governorate and sequence so the ID is unique per run.
+        var nationalId = $"2900101{Random.Shared.Next(1_000_000, 9_999_999)}";
+
+        using var response = await client.PutAsJsonAsync(
+            $"{MyRoute}/identity",
+            IdentityBody() with { IdCountryCode = "eg", NationalId = nationalId, Nationality = "Egyptian" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var profile = (await response.Content.ReadFromJsonAsync<OwnerProfileResponse>())!;
+        Assert.Equal("EG", profile.Identity!.IdCountryCode);
+        Assert.Equal(nationalId, profile.Identity.NationalId);
+    }
+
+    [Theory]
+    [InlineData("EG", "29001020101234")] // encodes 1990-01-02, the body says 1990-01-01
+    [InlineData("AE", "123199012345671")]
+    [InlineData("US", "1234567890")]
+    [InlineData(null, "1234567890")]
+    public async Task AnIdThatDoesNotFitItsCountryReturns422(string? country, string nationalId)
+    {
+        using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
+
+        using var response = await client.PutAsJsonAsync(
+            $"{MyRoute}/identity",
+            IdentityBody() with { IdCountryCode = country, NationalId = nationalId });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Fact]
     public async Task InvalidAddressReturns422()
     {
         using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
@@ -397,11 +430,12 @@ public sealed class OwnerVerificationEndpointTests : IDisposable
     }
 
     // The tests share one database and a national ID belongs to one account, so each call gets an ID of its own.
-    private static string UniqueNationalId() => $"{Random.Shared.NextInt64(1_000_000_000, 9_999_999_999)}";
+    // Saudi IDs start with 1 (citizen) or 2 (resident).
+    private static string UniqueNationalId() => $"{Random.Shared.NextInt64(1_000_000_000, 2_999_999_999)}";
 
     private static SaveOwnerIdentityRequest IdentityBody(string? nationalId = null)
     {
-        return new SaveOwnerIdentityRequest(nationalId ?? UniqueNationalId(), "Saudi", new DateOnly(1990, 1, 1), new DateOnly(2032, 1, 1), true);
+        return new SaveOwnerIdentityRequest("SA", nationalId ?? UniqueNationalId(), "Saudi", new DateOnly(1990, 1, 1), new DateOnly(2032, 1, 1), true);
     }
 
     private static SaveOwnerAddressRequest AddressBody()

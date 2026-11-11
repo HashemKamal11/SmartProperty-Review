@@ -14,8 +14,9 @@ public interface IOwnerProfileRepository
     /// <summary>Tracks a new profile. Committed by the caller.</summary>
     Task AddAsync(OwnerProfile profile, CancellationToken cancellationToken = default);
 
-    /// <summary>True when a profile of a different user already carries this national ID.</summary>
+    /// <summary>True when a profile of a different user already carries this national ID from this country.</summary>
     Task<bool> NationalIdUsedByAnotherAsync(
+        string idCountryCode,
         string nationalId,
         Guid userId,
         CancellationToken cancellationToken = default);

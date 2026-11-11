@@ -10,6 +10,7 @@ namespace SmartProperty.Application.OwnerVerification.Save;
 /// <summary>Saves the national-ID step (step 2) of the signed-in user's owner profile.</summary>
 public sealed record SaveOwnerIdentityCommand(
     Guid UserId,
+    string? IdCountryCode,
     string? NationalId,
     string? Nationality,
     DateOnly? BirthDate,
@@ -54,8 +55,13 @@ public sealed class SaveOwnerIdentityCommandHandler(
                 OwnerVerificationErrors.ValidationFailed("The birth date and the ID expiry date are required."));
         }
 
-        if (OwnerProfile.IsValidNationalId(command.NationalId)
-            && await profileRepository.NationalIdUsedByAnotherAsync(command.NationalId!, command.UserId, cancellationToken))
+        // The domain reports a malformed ID below; only a well-formed one is looked up.
+        var country = NationalIdRules.NormalizeCountry(command.IdCountryCode);
+        var nationalId = NationalIdRules.NormalizeNationalId(command.NationalId);
+
+        if (country is not null
+            && NationalIdRules.IsValid(country, nationalId)
+            && await profileRepository.NationalIdUsedByAnotherAsync(country, nationalId!, command.UserId, cancellationToken))
         {
             unitOfWork.DiscardTrackedChanges();
 
@@ -67,6 +73,7 @@ public sealed class SaveOwnerIdentityCommandHandler(
         try
         {
             wasApproved = profile.SaveIdentity(
+                command.IdCountryCode!,
                 command.NationalId!,
                 command.Nationality!,
                 command.BirthDate.Value,

@@ -10,7 +10,9 @@ internal sealed class OwnerProfileConfiguration : IEntityTypeConfiguration<Owner
     /// <summary>One profile per user.</summary>
     public const string UserUniqueIndexName = "ux_identity_owner_profiles_user_id";
 
-    /// <summary>One profile per national ID. Rows that have not saved the ID step hold null and do not collide.</summary>
+    /// <summary>
+    /// One profile per national ID of a country. Rows that have not saved the ID step hold null and do not collide.
+    /// </summary>
     public const string NationalIdUniqueIndexName = "ux_identity_owner_profiles_national_id";
 
     public void Configure(EntityTypeBuilder<OwnerProfile> builder)
@@ -21,9 +23,17 @@ internal sealed class OwnerProfileConfiguration : IEntityTypeConfiguration<Owner
                 "ck_identity_owner_profiles_status",
                 "status IN ('Draft', 'UnderReview', 'Approved', 'Rejected')");
 
+            // The country and the ID are saved together. The shape per country is a backstop for the domain rules
+            // (which are stricter: the Saudi first digit and the Egyptian birth date are checked only there).
+            // The explicit IS NOT NULL tests matter: a CHECK whose result is NULL passes, so without them an ID with
+            // no country (or a country with no ID) would be accepted.
             tableBuilder.HasCheckConstraint(
                 "ck_identity_owner_profiles_national_id",
-                "national_id IS NULL OR national_id ~ '^[0-9]{10}$'");
+                "(national_id IS NULL AND id_country_code IS NULL)"
+                + " OR (national_id IS NOT NULL AND id_country_code IS NOT NULL AND ("
+                + "(id_country_code = 'SA' AND national_id ~ '^[0-9]{10}$')"
+                + " OR (id_country_code = 'EG' AND national_id ~ '^[23][0-9]{13}$')"
+                + " OR (id_country_code = 'AE' AND national_id ~ '^784[0-9]{12}$')))");
 
             tableBuilder.HasCheckConstraint(
                 "ck_identity_owner_profiles_address_numbers",
@@ -53,9 +63,13 @@ internal sealed class OwnerProfileConfiguration : IEntityTypeConfiguration<Owner
             .HasMaxLength(32)
             .IsRequired();
 
+        builder.Property(profile => profile.IdCountryCode)
+            .HasColumnName("id_country_code")
+            .HasMaxLength(NationalIdRules.CountryCodeLength);
+
         builder.Property(profile => profile.NationalId)
             .HasColumnName("national_id")
-            .HasMaxLength(OwnerProfile.NationalIdLength);
+            .HasMaxLength(NationalIdRules.MaxNationalIdLength);
 
         builder.Property(profile => profile.Nationality)
             .HasColumnName("nationality")
@@ -145,7 +159,7 @@ internal sealed class OwnerProfileConfiguration : IEntityTypeConfiguration<Owner
             .IsUnique()
             .HasDatabaseName(UserUniqueIndexName);
 
-        builder.HasIndex(profile => profile.NationalId)
+        builder.HasIndex(profile => new { profile.IdCountryCode, profile.NationalId })
             .IsUnique()
             .HasDatabaseName(NationalIdUniqueIndexName)
             .HasFilter("national_id IS NOT NULL");

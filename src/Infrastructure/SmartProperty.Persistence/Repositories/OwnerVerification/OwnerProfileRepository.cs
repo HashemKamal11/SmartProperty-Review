@@ -25,13 +25,18 @@ internal sealed class OwnerProfileRepository(ApplicationDbContext dbContext) : I
     }
 
     public Task<bool> NationalIdUsedByAnotherAsync(
+        string idCountryCode,
         string nationalId,
         Guid userId,
         CancellationToken cancellationToken = default)
     {
         return dbContext.OwnerProfiles
             .AsNoTracking()
-            .AnyAsync(profile => profile.NationalId == nationalId && profile.UserId != userId, cancellationToken);
+            .AnyAsync(
+                profile => profile.IdCountryCode == idCountryCode
+                    && profile.NationalId == nationalId
+                    && profile.UserId != userId,
+                cancellationToken);
     }
 
     public async Task<OwnerReviewPage> ListForReviewAsync(

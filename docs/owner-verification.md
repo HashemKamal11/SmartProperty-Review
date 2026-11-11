@@ -24,9 +24,19 @@ NotStarted -> Draft -> UnderReview -> Approved
 
 1. **Account data** (name, email, phone, verification flags): read from the account, never edited here.
 2. **National ID**: `PUT /api/owner-profile/identity`
-   `{ nationalId (10 digits), nationality, birthDate, idExpiryDate, confirmed }`
-   The owner must be 18 or older, the ID must not be expired, and `confirmed` must be true. A national ID can belong to
-   one account only (`409 owner_profile.national_id_taken`).
+   `{ idCountryCode, nationalId, nationality, birthDate, idExpiryDate, confirmed }`
+   `idCountryCode` is the country that issued the ID (case-insensitive); spaces and hyphens in `nationalId` are ignored:
+
+   | `idCountryCode` | Document | Format |
+   |---|---|---|
+   | `SA` | Saudi national ID or Iqama | 10 digits, starting with 1 (citizen) or 2 (resident) |
+   | `EG` | Egyptian national ID | 14 digits: century (2 = 1900s, 3 = 2000s), then `YYMMDD`, which must equal `birthDate` |
+   | `AE` | Emirates ID | 15 digits starting with 784 (e.g. `784-1990-1234567-1`) |
+
+   Only the format is checked: check digits are not verified and no issuing authority is consulted. `nationality` is
+   free text and separate (an Egyptian living in Saudi Arabia uses `SA` with an Iqama). The owner must be 18 or older,
+   the ID must not be expired, and `confirmed` must be true. A national ID of a country can belong to one account only
+   (`409 owner_profile.national_id_taken`). The response's `identity` includes `idCountryCode`.
 3. **National address**: `PUT /api/owner-profile/address`
    `{ buildingNumber (4 digits), streetName, district, city, postalCode (5 digits), additionalNumber (4 digits), confirmed }`
    then `PUT /api/owner-profile/address-proof` as `multipart/form-data`, field `file` (JPEG, PNG or WebP, at most 10 MB).

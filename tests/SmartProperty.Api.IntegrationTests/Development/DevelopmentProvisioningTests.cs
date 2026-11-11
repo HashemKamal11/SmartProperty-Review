@@ -338,7 +338,8 @@ public sealed class DevelopmentProvisioningTests(ApiPostgreSqlFixture fixture)
         context.Properties.Add(property);
         var profile = new OwnerProfile(Guid.NewGuid(), owner.Id, Now.AddDays(-1));
         var today = DateOnly.FromDateTime(Now.UtcDateTime);
-        profile.SaveIdentity(Random.Shared.NextInt64(1_000_000_000, 9_999_999_999).ToString(), "Egyptian", new DateOnly(1990, 1, 1), today.AddYears(5), true, today, Now.AddDays(-1));
+        // Egyptian ID encoding the birth date 1990-01-01, with random trailing digits so it is unique per run.
+        profile.SaveIdentity("EG", $"2900101{Random.Shared.Next(1_000_000, 9_999_999)}", "Egyptian", new DateOnly(1990, 1, 1), today.AddYears(5), true, today, Now.AddDays(-1));
         profile.SaveAddress("1234", "Example Street", "Maadi", "Cairo", "11728", "5678", true, Now.AddDays(-1));
         profile.SetAddressProof("proof-key", "image/png", "proof.png", Now.AddDays(-1));
         profile.Submit(Now.AddDays(-1));

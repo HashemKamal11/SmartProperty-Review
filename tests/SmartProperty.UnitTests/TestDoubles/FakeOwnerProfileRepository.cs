@@ -32,11 +32,13 @@ internal sealed class FakeOwnerProfileRepository : IOwnerProfileRepository
     }
 
     public Task<bool> NationalIdUsedByAnotherAsync(
+        string idCountryCode,
         string nationalId,
         Guid userId,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(Stored.Any(profile => profile.NationalId == nationalId && profile.UserId != userId));
+        return Task.FromResult(Stored.Any(profile =>
+            profile.IdCountryCode == idCountryCode && profile.NationalId == nationalId && profile.UserId != userId));
     }
 
     public Task<OwnerReviewPage> ListForReviewAsync(

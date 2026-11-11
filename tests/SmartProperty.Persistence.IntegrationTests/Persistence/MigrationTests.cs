@@ -25,6 +25,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string AuthorityGrantsMigration = "20261110093003_AddAuthorityGrants";
     private const string RentalPricingMigration = "20261110111138_AddRentalPricingOptionsAndCountryTimeZone";
     private const string PropertyTimeZoneMigration = "20261110111934_AddPropertyTimeZone";
+    private const string NationalIdCountriesMigration = "20261111092923_SupportEgyptAndUaeNationalIds";
     private const string RequestsAndCommitmentsMigration = "20261110115157_AddRequestDetailsAndCommitments";
     private const string ListingDraftDiscardAuditMigration = "20261028072837_AddListingDraftDiscardAudit";
 
@@ -56,7 +57,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheRequestsAndCommitmentsMigration()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheNationalIdCountriesMigration()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -69,7 +70,8 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(RequestsAndCommitmentsMigration, applied[^1]);
+        Assert.Equal(NationalIdCountriesMigration, applied[^1]);
+        Assert.Contains(RequestsAndCommitmentsMigration, applied);
         Assert.Contains(PropertyTimeZoneMigration, applied);
         Assert.Contains(AuthorityGrantsMigration, applied);
         Assert.Contains(RentalPricingMigration, applied);
