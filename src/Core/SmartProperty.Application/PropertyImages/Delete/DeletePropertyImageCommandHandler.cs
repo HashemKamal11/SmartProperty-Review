@@ -12,7 +12,7 @@ namespace SmartProperty.Application.PropertyImages.Delete;
 /// rather than a row pointing at a file that is gone (a broken image on the property).
 /// </remarks>
 public sealed class DeletePropertyImageCommandHandler(
-    IPropertyRepository propertyRepository,
+    PropertyImageAccess imageAccess,
     IPropertyImageRepository imageRepository,
     IImageStorage imageStorage,
     IUnitOfWork unitOfWork)
@@ -24,21 +24,11 @@ public sealed class DeletePropertyImageCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        if (command.PropertyId == Guid.Empty)
-        {
-            return Result<DeletePropertyImageResult>.Failure(PropertyImageErrors.PropertyNotFound);
-        }
+        var access = await imageAccess.EnsureCanManageAsync(command.UserId, command.PropertyId, cancellationToken);
 
-        var property = await propertyRepository.GetDetailsByIdAsync(command.PropertyId, cancellationToken);
-
-        if (property is null)
+        if (access.IsFailure)
         {
-            return Result<DeletePropertyImageResult>.Failure(PropertyImageErrors.PropertyNotFound);
-        }
-
-        if (property.Status != PropertyStatus.Active)
-        {
-            return Result<DeletePropertyImageResult>.Failure(PropertyImageErrors.PropertyArchived);
+            return Result<DeletePropertyImageResult>.Failure(access.Error!);
         }
 
         var key = await imageRepository.RemoveAsync(command.PropertyId, command.ImageId, cancellationToken);

@@ -7,7 +7,7 @@ using SmartProperty.Domain.PropertyRegistry;
 namespace SmartProperty.Application.PropertyImages.Reorder;
 
 public sealed class ReorderPropertyImagesCommandHandler(
-    IPropertyRepository propertyRepository,
+    PropertyImageAccess imageAccess,
     IPropertyImageRepository imageRepository,
     IUnitOfWork unitOfWork)
     : ICommandHandler<ReorderPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>>
@@ -23,21 +23,11 @@ public sealed class ReorderPropertyImagesCommandHandler(
             return Failure(PropertyImageErrors.ValidationFailed("The list of image ids is required."));
         }
 
-        if (command.PropertyId == Guid.Empty)
-        {
-            return Failure(PropertyImageErrors.PropertyNotFound);
-        }
+        var access = await imageAccess.EnsureCanManageAsync(command.UserId, command.PropertyId, cancellationToken);
 
-        var property = await propertyRepository.GetDetailsByIdAsync(command.PropertyId, cancellationToken);
-
-        if (property is null)
+        if (access.IsFailure)
         {
-            return Failure(PropertyImageErrors.PropertyNotFound);
-        }
-
-        if (property.Status != PropertyStatus.Active)
-        {
-            return Failure(PropertyImageErrors.PropertyArchived);
+            return Failure(access.Error!);
         }
 
         var images = await imageRepository.ListAsync(command.PropertyId, cancellationToken);

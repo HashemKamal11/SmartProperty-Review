@@ -4,9 +4,9 @@ namespace SmartProperty.Application.PropertyImages.Upload;
 
 /// <summary>
 /// Adds photos to the end of a property's group. All of them are added or none: one bad file refuses the whole
-/// upload.
+/// upload. <paramref name="UserId"/> must be allowed by <see cref="PropertyImageAccess"/>.
 /// </summary>
-public sealed record UploadPropertyImagesCommand(Guid PropertyId, IReadOnlyList<ImageUpload> Files)
+public sealed record UploadPropertyImagesCommand(Guid UserId, Guid PropertyId, IReadOnlyList<ImageUpload> Files)
     : ICommand<IReadOnlyList<PropertyImageDetails>>;
 
 /// <summary>One file being uploaded. The stream must be readable from its start and support seeking.</summary>

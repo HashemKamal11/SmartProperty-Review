@@ -343,6 +343,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetViewsQuery, IReadOnlyList<ViewDetails>>, GetViewsQueryHandler>();
         services.AddScoped<IQueryHandler<GetLocationsQuery, IReadOnlyList<LocationDetails>>, GetLocationsQueryHandler>();
         services.AddScoped<ICommandHandler<SearchPropertiesCommand, PropertySearchResult>, SearchPropertiesCommandHandler>();
+        services.AddScoped<PropertyImageAccess>();
         services.AddScoped<ICommandHandler<UploadPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>>, UploadPropertyImagesCommandHandler>();
         services.AddScoped<ICommandHandler<DeletePropertyImageCommand, DeletePropertyImageResult>, DeletePropertyImageCommandHandler>();
         services.AddScoped<ICommandHandler<ReorderPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>>, ReorderPropertyImagesCommandHandler>();

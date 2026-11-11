@@ -1,8 +1,9 @@
+using SmartProperty.Application.Authorization;
+using SmartProperty.Application.PropertyImages;
 using SmartProperty.Application.PropertyImages.Delete;
 using SmartProperty.Application.PropertyImages.GetFile;
 using SmartProperty.Application.PropertyImages.Reorder;
 using SmartProperty.Application.PropertyImages.Upload;
-using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.UnitTests.TestDoubles;
 using Xunit;
@@ -17,11 +18,93 @@ public sealed class PropertyImageHandlerTests
     private readonly FakePropertyImageRepository _images = new();
     private readonly FakeImageStorage _storage = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly FakePermissionChecker _permissions = new();
+
+    // An administrator (property.update), and an approved owner (property.create) who owns _propertyId.
+    private readonly Guid _admin = Guid.NewGuid();
+    private readonly Guid _owner = Guid.NewGuid();
     private readonly Guid _propertyId;
 
     public PropertyImageHandlerTests()
     {
-        _propertyId = SeedProperty();
+        _permissions.Grant(_admin, PermissionCodes.PropertyUpdate);
+        _permissions.Grant(_owner, PermissionCodes.PropertyCreate);
+        _propertyId = SeedProperty(owner: _owner);
+    }
+
+    // ---- who may change the photos
+
+    [Fact]
+    public async Task TheOwnerOfThePropertyCanUploadReorderAndDeleteItsPhotos()
+    {
+        var uploaded = await UploadHandler().Handle(UploadAs(_owner, _propertyId));
+        var image = Assert.Single(uploaded.Value);
+
+        var reordered = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_owner, _propertyId, [image.Id]));
+        var deleted = await DeleteHandler().Handle(new DeletePropertyImageCommand(_owner, _propertyId, image.Id));
+
+        Assert.True(uploaded.IsSuccess);
+        Assert.True(reordered.IsSuccess);
+        Assert.True(deleted.Value.Removed);
+    }
+
+    [Fact]
+    public async Task AnApprovedOwnerCannotTouchThePhotosOfSomeoneElsesProperty()
+    {
+        var otherOwner = Guid.NewGuid();
+        var theirs = SeedProperty(owner: otherOwner);
+        var image = SeedImage(sortOrder: 0, propertyId: theirs);
+
+        var upload = await UploadHandler().Handle(UploadAs(_owner, theirs));
+        var reorder = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_owner, theirs, [image.Id]));
+        var delete = await DeleteHandler().Handle(new DeletePropertyImageCommand(_owner, theirs, image.Id));
+
+        Assert.All([upload.Error, reorder.Error, delete.Error], error => Assert.Equal("authorization.forbidden", error!.Code));
+        Assert.Empty(_storage.Saved);
+        Assert.Single(_images.Stored);
+        Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task AnOwnerWhoseApprovalWasWithdrawnCannotChangeTheirPhotos()
+    {
+        var formerOwner = Guid.NewGuid(); // owns the property, but no longer holds property.create
+        var property = SeedProperty(owner: formerOwner);
+
+        var result = await UploadHandler().Handle(UploadAs(formerOwner, property));
+
+        Assert.Equal("authorization.forbidden", result.Error!.Code);
+        Assert.Empty(_storage.Saved);
+    }
+
+    [Fact]
+    public async Task APropertyWithNoRecordedOwnerCanOnlyBeChangedByAnAdministrator()
+    {
+        var legacy = SeedProperty(owner: null);
+
+        var byOwner = await UploadHandler().Handle(UploadAs(_owner, legacy));
+        var byAdmin = await UploadHandler().Handle(UploadAs(_admin, legacy));
+
+        Assert.Equal("authorization.forbidden", byOwner.Error!.Code);
+        Assert.True(byAdmin.IsSuccess);
+    }
+
+    [Fact]
+    public async Task AnAdministratorCanChangeThePhotosOfAnyProperty()
+    {
+        var result = await UploadHandler().Handle(UploadAs(_admin, SeedProperty(owner: Guid.NewGuid())));
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Fact]
+    public async Task ForbiddenComesBeforeArchivedSoAStrangerLearnsNothingAboutTheState()
+    {
+        var archivedOfOther = SeedProperty(PropertyStatus.Archived, owner: Guid.NewGuid());
+
+        var result = await UploadHandler().Handle(UploadAs(_owner, archivedOfOther));
+
+        Assert.Equal("authorization.forbidden", result.Error!.Code);
     }
 
     // ---- upload
@@ -133,9 +216,11 @@ public sealed class PropertyImageHandlerTests
     public async Task AFileOverTheSizeLimitIsRefusedAndOneAtTheLimitIsAccepted()
     {
         var over = new UploadPropertyImagesCommand(
+            _admin,
             _propertyId,
             [new ImageUpload("big.jpg", new MemoryStream(TestImages.Jpeg(64)), PropertyImage.MaxSizeBytes + 1)]);
         var atLimit = new UploadPropertyImagesCommand(
+            _admin,
             _propertyId,
             [new ImageUpload("limit.jpg", new MemoryStream(TestImages.Jpeg(64)), PropertyImage.MaxSizeBytes)]);
 
@@ -150,7 +235,7 @@ public sealed class PropertyImageHandlerTests
     [Fact]
     public async Task NoFilesIsRefused()
     {
-        var result = await UploadHandler().Handle(new UploadPropertyImagesCommand(_propertyId, []));
+        var result = await UploadHandler().Handle(new UploadPropertyImagesCommand(_admin, _propertyId, []));
 
         Assert.True(result.IsFailure);
         Assert.Equal("validation.failed", result.Error!.Code);
@@ -190,7 +275,7 @@ public sealed class PropertyImageHandlerTests
     public async Task AnUnknownPropertyIsNotFoundAndNothingIsStored()
     {
         var result = await UploadHandler().Handle(
-            new UploadPropertyImagesCommand(Guid.NewGuid(), [new ImageUpload("a.jpg", new MemoryStream(TestImages.Jpeg()), 64)]));
+            new UploadPropertyImagesCommand(_admin, Guid.NewGuid(), [new ImageUpload("a.jpg", new MemoryStream(TestImages.Jpeg()), 64)]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("properties.not_found", result.Error!.Code);
@@ -203,7 +288,7 @@ public sealed class PropertyImageHandlerTests
         var archived = SeedProperty(PropertyStatus.Archived);
 
         var result = await UploadHandler().Handle(
-            new UploadPropertyImagesCommand(archived, [new ImageUpload("a.jpg", new MemoryStream(TestImages.Jpeg()), 64)]));
+            new UploadPropertyImagesCommand(_admin, archived, [new ImageUpload("a.jpg", new MemoryStream(TestImages.Jpeg()), 64)]));
 
         Assert.True(result.IsFailure);
         Assert.Equal("properties.archived", result.Error!.Code);
@@ -239,6 +324,7 @@ public sealed class PropertyImageHandlerTests
     public async Task AStreamThatCannotBeSoughtIsRefusedRatherThanReadWrongly()
     {
         var result = await UploadHandler().Handle(new UploadPropertyImagesCommand(
+            _admin,
             _propertyId,
             [new ImageUpload("a.jpg", new NonSeekableStream(TestImages.Jpeg()), 64)]));
 
@@ -254,7 +340,7 @@ public sealed class PropertyImageHandlerTests
         var image = SeedImage(sortOrder: 0);
         _storage.Files[image.StorageKey] = [1, 2, 3];
 
-        var result = await DeleteHandler().Handle(new DeletePropertyImageCommand(_propertyId, image.Id));
+        var result = await DeleteHandler().Handle(new DeletePropertyImageCommand(_admin, _propertyId, image.Id));
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value.Removed);
@@ -266,7 +352,7 @@ public sealed class PropertyImageHandlerTests
     [Fact]
     public async Task DeletingAnImageThePropertyDoesNotHaveIsASuccessThatChangesNothing()
     {
-        var result = await DeleteHandler().Handle(new DeletePropertyImageCommand(_propertyId, Guid.NewGuid()));
+        var result = await DeleteHandler().Handle(new DeletePropertyImageCommand(_admin, _propertyId, Guid.NewGuid()));
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.Removed);
@@ -280,7 +366,7 @@ public sealed class PropertyImageHandlerTests
         var other = SeedProperty();
         var image = SeedImage(sortOrder: 0, propertyId: other);
 
-        var result = await DeleteHandler().Handle(new DeletePropertyImageCommand(_propertyId, image.Id));
+        var result = await DeleteHandler().Handle(new DeletePropertyImageCommand(_admin, _propertyId, image.Id));
 
         Assert.False(result.Value.Removed);
         Assert.Single(_images.Stored);
@@ -292,7 +378,7 @@ public sealed class PropertyImageHandlerTests
         var image = SeedImage(sortOrder: 0);
         _storage.FailOnDelete = true;
 
-        var result = await DeleteHandler().Handle(new DeletePropertyImageCommand(_propertyId, image.Id));
+        var result = await DeleteHandler().Handle(new DeletePropertyImageCommand(_admin, _propertyId, image.Id));
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value.Removed);
@@ -304,8 +390,8 @@ public sealed class PropertyImageHandlerTests
     {
         var archived = SeedProperty(PropertyStatus.Archived);
 
-        var unknown = await DeleteHandler().Handle(new DeletePropertyImageCommand(Guid.NewGuid(), Guid.NewGuid()));
-        var frozen = await DeleteHandler().Handle(new DeletePropertyImageCommand(archived, Guid.NewGuid()));
+        var unknown = await DeleteHandler().Handle(new DeletePropertyImageCommand(_admin, Guid.NewGuid(), Guid.NewGuid()));
+        var frozen = await DeleteHandler().Handle(new DeletePropertyImageCommand(_admin, archived, Guid.NewGuid()));
 
         Assert.Equal("properties.not_found", unknown.Error!.Code);
         Assert.Equal("properties.archived", frozen.Error!.Code);
@@ -320,7 +406,7 @@ public sealed class PropertyImageHandlerTests
         var b = SeedImage(sortOrder: 1);
         var c = SeedImage(sortOrder: 2);
 
-        var result = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_propertyId, [c.Id, a.Id, b.Id]));
+        var result = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, _propertyId, [c.Id, a.Id, b.Id]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal([c.Id, a.Id, b.Id], result.Value.Select(image => image.Id));
@@ -337,7 +423,7 @@ public sealed class PropertyImageHandlerTests
         var a = SeedImage(sortOrder: 0);
         var b = SeedImage(sortOrder: 1);
 
-        var result = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_propertyId, [a.Id, b.Id]));
+        var result = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, _propertyId, [a.Id, b.Id]));
 
         Assert.True(result.IsSuccess);
         Assert.Equal(0, _unitOfWork.SaveChangesCallCount);
@@ -349,7 +435,7 @@ public sealed class PropertyImageHandlerTests
         var a = SeedImage(sortOrder: 3);
         var b = SeedImage(sortOrder: 9);
 
-        var result = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_propertyId, [a.Id, b.Id]));
+        var result = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, _propertyId, [a.Id, b.Id]));
 
         Assert.Equal([0, 1], result.Value.Select(image => image.SortOrder));
     }
@@ -360,10 +446,10 @@ public sealed class PropertyImageHandlerTests
         var a = SeedImage(sortOrder: 0);
         var b = SeedImage(sortOrder: 1);
 
-        var missing = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_propertyId, [a.Id]));
-        var extra = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_propertyId, [a.Id, b.Id, Guid.NewGuid()]));
-        var repeated = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_propertyId, [a.Id, a.Id]));
-        var none = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_propertyId, null));
+        var missing = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, _propertyId, [a.Id]));
+        var extra = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, _propertyId, [a.Id, b.Id, Guid.NewGuid()]));
+        var repeated = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, _propertyId, [a.Id, a.Id]));
+        var none = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, _propertyId, null));
 
         Assert.All([missing, extra, repeated, none], result =>
         {
@@ -381,7 +467,7 @@ public sealed class PropertyImageHandlerTests
         var mine = SeedImage(sortOrder: 0);
         var theirs = SeedImage(sortOrder: 0, propertyId: SeedProperty());
 
-        var result = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_propertyId, [mine.Id, theirs.Id]));
+        var result = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, _propertyId, [mine.Id, theirs.Id]));
 
         Assert.True(result.IsFailure);
     }
@@ -391,8 +477,8 @@ public sealed class PropertyImageHandlerTests
     {
         var archived = SeedProperty(PropertyStatus.Archived);
 
-        var unknown = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(Guid.NewGuid(), []));
-        var frozen = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(archived, []));
+        var unknown = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, Guid.NewGuid(), []));
+        var frozen = await ReorderHandler().Handle(new ReorderPropertyImagesCommand(_admin, archived, []));
 
         Assert.Equal("properties.not_found", unknown.Error!.Code);
         Assert.Equal("properties.archived", frozen.Error!.Code);
@@ -453,18 +539,25 @@ public sealed class PropertyImageHandlerTests
 
     // ---- helpers
 
-    private Guid SeedProperty(PropertyStatus status = PropertyStatus.Active)
+    private Guid SeedProperty(PropertyStatus status = PropertyStatus.Active, Guid? owner = null)
     {
-        var id = Guid.NewGuid();
-        _properties.Details[id] = new PropertyDetails(
-            id,
-            PropertyType.Apartment,
-            status,
-            new PropertyAddressDetails("EG", null, null, null, null, null, null, null),
-            Now.AddDays(-5),
-            Now.AddDays(-5));
+        var property = new Property(
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), Now.AddDays(-5), ownerUserId: owner);
 
-        return id;
+        if (status == PropertyStatus.Archived)
+        {
+            property.Archive(Now.AddDays(-1));
+        }
+
+        _properties.Tracked[property.Id] = property;
+
+        return property.Id;
+    }
+
+    private static UploadPropertyImagesCommand UploadAs(Guid userId, Guid propertyId)
+    {
+        return new UploadPropertyImagesCommand(
+            userId, propertyId, [new ImageUpload("a.jpg", new MemoryStream(TestImages.Jpeg()), 64)]);
     }
 
     private PropertyImage SeedImage(int sortOrder, Guid? propertyId = null)
@@ -481,24 +574,27 @@ public sealed class PropertyImageHandlerTests
     private UploadPropertyImagesCommand Upload(params (string Name, byte[] Bytes)[] files)
     {
         return new UploadPropertyImagesCommand(
+            _admin,
             _propertyId,
             files.Select(file => new ImageUpload(file.Name, new MemoryStream(file.Bytes), file.Bytes.Length)).ToList());
     }
 
+    private PropertyImageAccess Access() => new(_properties, _permissions);
+
     private UploadPropertyImagesCommandHandler UploadHandler()
     {
         return new UploadPropertyImagesCommandHandler(
-            _properties, _images, _storage, new FakeDateTimeProvider(Now), _unitOfWork);
+            Access(), _images, _storage, new FakeDateTimeProvider(Now), _unitOfWork);
     }
 
     private DeletePropertyImageCommandHandler DeleteHandler()
     {
-        return new DeletePropertyImageCommandHandler(_properties, _images, _storage, _unitOfWork);
+        return new DeletePropertyImageCommandHandler(Access(), _images, _storage, _unitOfWork);
     }
 
     private ReorderPropertyImagesCommandHandler ReorderHandler()
     {
-        return new ReorderPropertyImagesCommandHandler(_properties, _images, _unitOfWork);
+        return new ReorderPropertyImagesCommandHandler(Access(), _images, _unitOfWork);
     }
 
     private GetPropertyImageFileQueryHandler FileHandler()

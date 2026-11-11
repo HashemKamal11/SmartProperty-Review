@@ -8,7 +8,8 @@ namespace SmartProperty.Application.OwnerVerification;
 /// <summary>
 /// Grants and withdraws the right to add properties by assigning the "Property Owner" platform role: a role holding
 /// only <c>property.create</c> and <c>property.read</c>, so the existing permission check is the one gate and owners
-/// can neither update nor archive properties.
+/// can neither update nor archive properties. The one exception is the photos of a property they own, which
+/// <see cref="PropertyImages.PropertyImageAccess"/> allows on the strength of that ownership plus this role.
 /// </summary>
 /// <remarks>
 /// The role and its permissions are created on first use, so no bootstrap step is needed. Everything is tracked only;

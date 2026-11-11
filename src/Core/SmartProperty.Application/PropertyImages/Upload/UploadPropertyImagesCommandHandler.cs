@@ -16,7 +16,7 @@ namespace SmartProperty.Application.PropertyImages.Upload;
 /// after the files were written, those files are deleted again rather than left behind with nothing pointing at them.
 /// </remarks>
 public sealed class UploadPropertyImagesCommandHandler(
-    IPropertyRepository propertyRepository,
+    PropertyImageAccess imageAccess,
     IPropertyImageRepository imageRepository,
     IImageStorage imageStorage,
     IDateTimeProvider dateTimeProvider,
@@ -43,21 +43,11 @@ public sealed class UploadPropertyImagesCommandHandler(
                 $"A request may carry at most {MaxFilesPerRequest} files."));
         }
 
-        if (command.PropertyId == Guid.Empty)
-        {
-            return Failure(PropertyImageErrors.PropertyNotFound);
-        }
+        var access = await imageAccess.EnsureCanManageAsync(command.UserId, command.PropertyId, cancellationToken);
 
-        var property = await propertyRepository.GetDetailsByIdAsync(command.PropertyId, cancellationToken);
-
-        if (property is null)
+        if (access.IsFailure)
         {
-            return Failure(PropertyImageErrors.PropertyNotFound);
-        }
-
-        if (property.Status != PropertyStatus.Active)
-        {
-            return Failure(PropertyImageErrors.PropertyArchived);
+            return Failure(access.Error!);
         }
 
         var existing = await imageRepository.CountAsync(command.PropertyId, cancellationToken);

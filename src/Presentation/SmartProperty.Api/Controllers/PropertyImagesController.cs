@@ -5,6 +5,7 @@ using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.PropertyImages;
 using SmartProperty.Api.Infrastructure.Authorization;
 using SmartProperty.Api.Infrastructure.Errors;
+using SmartProperty.Application.Abstractions.Identity;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Authorization;
 using SmartProperty.Application.PropertyImages;
@@ -19,7 +20,8 @@ namespace SmartProperty.Api.Controllers;
 /// The photos of a property: an ordered group, the first of which is its cover.
 /// </summary>
 /// <remarks>
-/// Changing the group needs <c>property.update</c>, like changing any other detail of a property. The photos of a
+/// Changing the group is allowed to administrators holding <c>property.update</c> and to the property's own owner while
+/// they are an approved owner (see <see cref="PropertyImageAccess"/>); anyone else gets <c>403</c>. The photos of a
 /// property are listed in the property itself (<c>images</c>), so there is no separate list endpoint. The file endpoint
 /// is public, because a browser cannot send an access token from an <c>img</c> tag; the ids are random, so a photo's
 /// address cannot be guessed.
@@ -58,7 +60,7 @@ public sealed class PropertyImagesController : ControllerBase
     /// with <c>409 properties.archived</c>.
     /// </remarks>
     [HttpPost]
-    [RequirePermission(PermissionCodes.PropertyUpdate)]
+    [Authorize]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(MaxRequestBytes)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxRequestBytes)]
@@ -71,9 +73,15 @@ public sealed class PropertyImagesController : ControllerBase
     public async Task<IActionResult> Upload(
         Guid propertyId,
         IFormFileCollection files,
+        [FromServices] ICurrentUser currentUser,
         [FromServices] ICommandHandler<UploadPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>> handler,
         CancellationToken cancellationToken)
     {
+        if (currentUser.UserId is not { } userId)
+        {
+            return Unauthorized(ApiErrorResponseFactory.Unauthorized(HttpContext));
+        }
+
         var streams = new List<Stream>(files.Count);
 
         try
@@ -87,7 +95,7 @@ public sealed class PropertyImagesController : ControllerBase
                 uploads.Add(new ImageUpload(file.FileName, stream, file.Length));
             }
 
-            var result = await handler.Handle(new UploadPropertyImagesCommand(propertyId, uploads), cancellationToken);
+            var result = await handler.Handle(new UploadPropertyImagesCommand(userId, propertyId, uploads), cancellationToken);
 
             if (result.IsFailure)
             {
@@ -112,7 +120,7 @@ public sealed class PropertyImagesController : ControllerBase
     /// Sets the order of the photos: send every image id, exactly once; the first becomes the cover.
     /// </summary>
     [HttpPut("order")]
-    [RequirePermission(PermissionCodes.PropertyUpdate)]
+    [Authorize]
     [ProducesResponseType<PropertyImageResponse[]>(StatusCodes.Status200OK)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
@@ -122,11 +130,17 @@ public sealed class PropertyImagesController : ControllerBase
     public async Task<IActionResult> Reorder(
         Guid propertyId,
         ReorderPropertyImagesRequest request,
+        [FromServices] ICurrentUser currentUser,
         [FromServices] ICommandHandler<ReorderPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>> handler,
         CancellationToken cancellationToken)
     {
+        if (currentUser.UserId is not { } userId)
+        {
+            return Unauthorized(ApiErrorResponseFactory.Unauthorized(HttpContext));
+        }
+
         var result = await handler.Handle(
-            new ReorderPropertyImagesCommand(propertyId, request.ImageIds),
+            new ReorderPropertyImagesCommand(userId, propertyId, request.ImageIds),
             cancellationToken);
 
         if (result.IsFailure)
@@ -140,7 +154,7 @@ public sealed class PropertyImagesController : ControllerBase
 
     /// <summary>Removes one photo. <c>204</c> whether or not the property had it.</summary>
     [HttpDelete("{imageId:guid}")]
-    [RequirePermission(PermissionCodes.PropertyUpdate)]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
@@ -149,10 +163,16 @@ public sealed class PropertyImagesController : ControllerBase
     public async Task<IActionResult> Delete(
         Guid propertyId,
         Guid imageId,
+        [FromServices] ICurrentUser currentUser,
         [FromServices] ICommandHandler<DeletePropertyImageCommand, DeletePropertyImageResult> handler,
         CancellationToken cancellationToken)
     {
-        var result = await handler.Handle(new DeletePropertyImageCommand(propertyId, imageId), cancellationToken);
+        if (currentUser.UserId is not { } userId)
+        {
+            return Unauthorized(ApiErrorResponseFactory.Unauthorized(HttpContext));
+        }
+
+        var result = await handler.Handle(new DeletePropertyImageCommand(userId, propertyId, imageId), cancellationToken);
 
         if (result.IsFailure)
         {

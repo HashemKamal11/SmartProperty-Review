@@ -6,6 +6,7 @@ using SmartProperty.Api.Contracts.PropertyImages;
 using SmartProperty.Api.Contracts.PropertyRegistry;
 using SmartProperty.Api.IntegrationTests.Infrastructure;
 using SmartProperty.Application.Authorization;
+using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.PropertyRegistry;
 using Xunit;
 
@@ -60,6 +61,41 @@ public sealed class PropertyImagesEndpointTests : IDisposable
 
         Assert.All([upload, order, delete], response => Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode));
         Assert.Empty(Directory.Exists(_factory.ImageRoot) ? Directory.GetFiles(_factory.ImageRoot, "*", SearchOption.AllDirectories) : []);
+    }
+
+    [Fact]
+    public async Task AnApprovedOwnerCanManageThePhotosOfTheirOwnProperty()
+    {
+        var owner = await SeedUserAsync();
+        var property = await SeedPropertyAsync(ownerUserId: owner);
+        // An approved owner holds property.create and property.read only, never property.update.
+        _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyCreate);
+        using var client = _factory.CreateAuthenticatedClient(owner);
+        var url = ImagesUrl(property.Id);
+
+        using var upload = await client.PostAsync(url, Form(("a.jpg", Jpeg()), ("b.png", Png())));
+        var images = (await upload.Content.ReadFromJsonAsync<PropertyImageResponse[]>())!;
+        using var order = await client.PutAsJsonAsync($"{url}/order", new ReorderPropertyImagesRequest([images[1].Id, images[0].Id]));
+        using var delete = await client.DeleteAsync($"{url}/{images[0].Id}");
+
+        Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, order.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnApprovedOwnerCannotChangeThePhotosOfAnotherOwnersProperty()
+    {
+        var owner = await SeedUserAsync();
+        var stranger = await SeedUserAsync();
+        var property = await SeedPropertyAsync(ownerUserId: owner);
+        _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyCreate);
+        using var client = _factory.CreateAuthenticatedClient(stranger);
+
+        using var upload = await client.PostAsync(ImagesUrl(property.Id), Form(("a.jpg", Jpeg())));
+
+        Assert.Equal(HttpStatusCode.Forbidden, upload.StatusCode);
+        Assert.Empty(StoredFiles());
     }
 
     // ---- upload
@@ -462,11 +498,23 @@ public sealed class PropertyImagesEndpointTests : IDisposable
         return bytes;
     }
 
-    private async Task<Property> SeedPropertyAsync(bool archive = false)
+    private async Task<Guid> SeedUserAsync()
+    {
+        var user = new User(Guid.NewGuid(), $"{Guid.NewGuid():n}@example.com", "Test", "Owner", DateTimeOffset.UtcNow);
+
+        await using var context = _fixture.CreateContext();
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        return user.Id;
+    }
+
+    private async Task<Property> SeedPropertyAsync(bool archive = false, Guid? ownerUserId = null)
     {
         var now = DateTimeOffset.UtcNow;
         var createdAt = new DateTimeOffset(now.Ticks - (now.Ticks % 10), TimeSpan.Zero).AddMinutes(-10);
-        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), createdAt);
+        var property = new Property(
+            Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), createdAt, ownerUserId: ownerUserId);
 
         if (archive)
         {
