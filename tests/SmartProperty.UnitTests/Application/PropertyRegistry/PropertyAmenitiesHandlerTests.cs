@@ -16,7 +16,6 @@ public sealed class PropertyAmenitiesHandlerTests
     private readonly FakeAmenityRepository _amenities = new();
     private readonly FakeViewRepository _views = new();
     private readonly FakeLocationRepository _locations = new();
-    private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
     private Area? _place;
     private readonly Amenity _pool;
@@ -184,12 +183,12 @@ public sealed class PropertyAmenitiesHandlerTests
     private CreatePropertyCommandHandler CreateHandler()
     {
         return new CreatePropertyCommandHandler(
-            _properties, _amenities, _views, _locations, _ai, new FakeDateTimeProvider(Now), _unitOfWork);
+            _properties, _amenities, _views, _locations, new FakeDateTimeProvider(Now), _unitOfWork);
     }
 
     private UpdatePropertyCommandHandler UpdateHandler()
     {
         return new UpdatePropertyCommandHandler(
-            _properties, _amenities, _views, _locations, _ai, new FakeDateTimeProvider(Now), _unitOfWork);
+            _properties, _amenities, _views, _locations, new FakeDateTimeProvider(Now), _unitOfWork);
     }
 }

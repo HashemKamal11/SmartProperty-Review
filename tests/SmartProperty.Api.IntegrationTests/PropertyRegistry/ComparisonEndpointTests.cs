@@ -57,7 +57,7 @@ public sealed class ComparisonEndpointTests : IDisposable
     public async Task AnyUserWithoutAnyPermissionCanCompare()
     {
         var userId = await SeedUserAsync();
-        var propertyId = await SeedPropertyAsync(TransactionType.Sale);
+        var propertyId = await SeedPropertyAsync();
         using var client = _factory.CreateAuthenticatedClient(userId);
 
         using var response = await client.PutAsync($"{Route}/{propertyId}", content: null);
@@ -78,14 +78,13 @@ public sealed class ComparisonEndpointTests : IDisposable
         Assert.False(list.CanCompare);
         Assert.Equal(3, list.MaxItems);
         Assert.Equal(2, list.MinItemsToCompare);
-        Assert.Null(list.TransactionType);
     }
 
     [Fact]
     public async Task AddingReturns201WithTheWholeListAndStoresIt()
     {
         var userId = await SeedUserAsync();
-        var propertyId = await SeedPropertyAsync(TransactionType.Sale, price: 4_850_000m);
+        var propertyId = await SeedPropertyAsync(areaSqm: 485m);
         using var client = _factory.CreateAuthenticatedClient(userId);
 
         using var response = await client.PutAsync($"{Route}/{propertyId}", content: null);
@@ -94,8 +93,7 @@ public sealed class ComparisonEndpointTests : IDisposable
         var list = (await response.Content.ReadFromJsonAsync<PropertyComparisonResponse>())!;
         var item = Assert.Single(list.Items);
         Assert.Equal(propertyId, item.Property.Id);
-        Assert.Equal(4_850_000m, item.Property.Listing!.Price);
-        Assert.Equal("Sale", list.TransactionType);
+        Assert.Equal(485m, item.Property.Physical!.AreaSqm);
         Assert.False(list.CanCompare);
 
         await using var context = _fixture.CreateContext();
@@ -108,8 +106,8 @@ public sealed class ComparisonEndpointTests : IDisposable
     public async Task TwoPropertiesCanBeComparedAndAgainAddingTheSameOneIs200()
     {
         var userId = await SeedUserAsync();
-        var first = await SeedPropertyAsync(TransactionType.Rent);
-        var second = await SeedPropertyAsync(TransactionType.Rent);
+        var first = await SeedPropertyAsync();
+        var second = await SeedPropertyAsync();
         using var client = _factory.CreateAuthenticatedClient(userId);
         (await client.PutAsync($"{Route}/{first}", content: null)).Dispose();
 
@@ -131,45 +129,21 @@ public sealed class ComparisonEndpointTests : IDisposable
         using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
         for (var index = 0; index < 3; index++)
         {
-            (await client.PutAsync($"{Route}/{await SeedPropertyAsync(TransactionType.Sale)}", content: null)).Dispose();
+            (await client.PutAsync($"{Route}/{await SeedPropertyAsync()}", content: null)).Dispose();
         }
 
-        using var response = await client.PutAsync($"{Route}/{await SeedPropertyAsync(TransactionType.Sale)}", content: null);
+        using var response = await client.PutAsync($"{Route}/{await SeedPropertyAsync()}", content: null);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal("comparison.limit_reached", (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!.Code);
     }
 
-    [Fact]
-    public async Task ASaleCannotBeComparedWithARent()
-    {
-        using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
-        (await client.PutAsync($"{Route}/{await SeedPropertyAsync(TransactionType.Sale)}", content: null)).Dispose();
-
-        using var response = await client.PutAsync($"{Route}/{await SeedPropertyAsync(TransactionType.Rent)}", content: null);
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal(
-            "comparison.transaction_type_mismatch",
-            (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!.Code);
-    }
-
-    [Fact]
-    public async Task APropertyForNeitherSaleNorRentIs409()
-    {
-        using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
-
-        using var response = await client.PutAsync($"{Route}/{await SeedPropertyAsync(transactionType: null)}", content: null);
-
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("comparison.property_not_listed", (await response.Content.ReadFromJsonAsync<ApiErrorResponse>())!.Code);
-    }
 
     [Fact]
     public async Task AnUnknownPropertyIs404AndAnArchivedOneIs409()
     {
         using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
-        var archived = await SeedPropertyAsync(TransactionType.Sale, archive: true);
+        var archived = await SeedPropertyAsync(archive: true);
 
         using var unknown = await client.PutAsync($"{Route}/{Guid.NewGuid()}", content: null);
         using var gone = await client.PutAsync($"{Route}/{archived}", content: null);
@@ -185,8 +159,8 @@ public sealed class ComparisonEndpointTests : IDisposable
     public async Task TheMatchShowsWhenTheAiGaveOneAndIsNullWhenItDidNot()
     {
         var userId = await SeedUserAsync();
-        var matched = await SeedPropertyAsync(TransactionType.Sale);
-        var unmatched = await SeedPropertyAsync(TransactionType.Sale);
+        var matched = await SeedPropertyAsync();
+        var unmatched = await SeedPropertyAsync();
         await StoreMatchAsync(userId, matched, 70m, DateTimeOffset.UtcNow.AddHours(-2));
         await StoreMatchAsync(userId, matched, 96m, DateTimeOffset.UtcNow.AddHours(-1));
         using var client = _factory.CreateAuthenticatedClient(userId);
@@ -208,8 +182,8 @@ public sealed class ComparisonEndpointTests : IDisposable
     [Fact]
     public async Task RemovingReturnsTheRemainingListAndRemovingAgainIsFine()
     {
-        var first = await SeedPropertyAsync(TransactionType.Sale);
-        var second = await SeedPropertyAsync(TransactionType.Sale);
+        var first = await SeedPropertyAsync();
+        var second = await SeedPropertyAsync();
         using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
         (await client.PutAsync($"{Route}/{first}", content: null)).Dispose();
         (await client.PutAsync($"{Route}/{second}", content: null)).Dispose();
@@ -225,13 +199,13 @@ public sealed class ComparisonEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task ClearingEmptiesTheListAndFreesTheKindAgain()
+    public async Task ClearingEmptiesTheList()
     {
         using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
-        (await client.PutAsync($"{Route}/{await SeedPropertyAsync(TransactionType.Sale)}", content: null)).Dispose();
+        (await client.PutAsync($"{Route}/{await SeedPropertyAsync()}", content: null)).Dispose();
 
         using var cleared = await client.DeleteAsync(Route);
-        using var rent = await client.PutAsync($"{Route}/{await SeedPropertyAsync(TransactionType.Rent)}", content: null);
+        using var rent = await client.PutAsync($"{Route}/{await SeedPropertyAsync()}", content: null);
 
         Assert.Empty((await cleared.Content.ReadFromJsonAsync<PropertyComparisonResponse>())!.Items);
         Assert.Equal(HttpStatusCode.Created, rent.StatusCode);
@@ -240,7 +214,7 @@ public sealed class ComparisonEndpointTests : IDisposable
     [Fact]
     public async Task OneUserNeverSeesOrChangesAnothersList()
     {
-        var propertyId = await SeedPropertyAsync(TransactionType.Sale);
+        var propertyId = await SeedPropertyAsync();
         using var mine = _factory.CreateAuthenticatedClient(await SeedUserAsync());
         using var theirs = _factory.CreateAuthenticatedClient(await SeedUserAsync());
         (await mine.PutAsync($"{Route}/{propertyId}", content: null)).Dispose();
@@ -267,21 +241,15 @@ public sealed class ComparisonEndpointTests : IDisposable
         return user.Id;
     }
 
-    private async Task<Guid> SeedPropertyAsync(
-        TransactionType? transactionType,
-        decimal price = 2_000_000m,
-        bool archive = false)
+    private async Task<Guid> SeedPropertyAsync(decimal areaSqm = 150m, bool archive = false)
     {
         var createdAt = DateTimeOffset.UtcNow.AddMinutes(-10);
-        var listing = transactionType is null
-            ? null
-            : new PropertyListingInfo(transactionType, price, 150m, titleEn: "A villa");
         var property = new Property(
             Guid.NewGuid(),
             PropertyType.Villa,
             new PropertyAddress("SA"),
             createdAt,
-            listing: listing);
+            physical: new PropertyPhysicalInfo(areaSqm));
 
         if (archive)
         {

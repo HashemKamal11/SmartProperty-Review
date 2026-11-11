@@ -498,6 +498,11 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name_en");
 
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("time_zone_id");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AiId")
@@ -653,9 +658,292 @@ namespace SmartProperty.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_marketplace_submissions_identity", "id <> '00000000-0000-0000-0000-000000000000'::uuid AND version > 0 AND ((version = 1 AND predecessor_id IS NULL) OR (version > 1 AND predecessor_id IS NOT NULL AND predecessor_id <> id))");
 
+                            t.HasCheckConstraint("ck_marketplace_submissions_rent_terms", "COALESCE(((NOT jsonb_exists(content_snapshot->'Payload','PricingOptions') AND NOT jsonb_exists(content_snapshot->'Payload','RentalTerms')) OR (purpose = 'Rent' AND jsonb_typeof(content_snapshot->'Payload'->'PricingOptions') = 'array' AND jsonb_array_length(content_snapshot->'Payload'->'PricingOptions') BETWEEN 1 AND 4 AND jsonb_typeof(content_snapshot->'Payload'->'RentalTerms') = 'object' AND jsonb_typeof(content_snapshot->'Payload'->'RentalTerms'->'Windows') = 'array' AND jsonb_array_length(content_snapshot->'Payload'->'RentalTerms'->'Windows') >= 1)), false)");
+
                             t.HasCheckConstraint("ck_marketplace_submissions_revision", "revision > 0");
 
                             t.HasCheckConstraint("ck_marketplace_submissions_state", "purpose IN ('Sale','Rent') AND status IN ('Draft','PendingReview','Approved','Rejected','Superseded') AND updated_at >= created_at AND ((status = 'Draft' AND submitted_at IS NULL) OR (status <> 'Draft' AND submitted_at IS NOT NULL AND submitted_at >= created_at AND submitted_at <= updated_at))");
+                        });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.MarketplaceSettings", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint")
+                        .HasColumnName("id");
+
+                    b.Property<int>("SigningWindowHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("signing_window_hours");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_marketplace_settings");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.ToTable("settings", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_settings_signing_window", "signing_window_hours BETWEEN 1 AND 720");
+
+                            t.HasCheckConstraint("ck_marketplace_settings_singleton", "id = 1");
+                        });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.PropertyAuthorityGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Authority")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("authority_snapshot");
+
+                    b.Property<Guid>("GranteeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grantee_user_id");
+
+                    b.Property<DateTimeOffset>("IssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("issued_at");
+
+                    b.Property<Guid>("IssuedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issued_by_user_id");
+
+                    b.Property<string>("Issuer")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("issuer_snapshot");
+
+                    b.Property<Guid>("LegalReviewReferenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_review_reference_id");
+
+                    b.Property<DateTimeOffset>("LegalReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("legal_reviewed_at");
+
+                    b.Property<Guid>("LegalReviewedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_reviewed_by_user_id");
+
+                    b.Property<string>("LegalReviewer")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("legal_reviewer_snapshot");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("purpose");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<Guid?>("RevokedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("revoked_by_user_id");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_marketplace_authority_grants");
+
+                    b.HasIndex("IssuedByUserId");
+
+                    b.HasIndex("LegalReviewedByUserId");
+
+                    b.HasIndex("RevokedByUserId");
+
+                    b.HasIndex("GranteeUserId", "PropertyId", "Purpose")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_authority_grants_active")
+                        .HasFilter("revoked_at IS NULL");
+
+                    b.HasIndex("PropertyId", "GranteeUserId", "Purpose", "IssuedAt")
+                        .HasDatabaseName("ix_marketplace_authority_grants_lookup");
+
+                    b.ToTable("authority_grants", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_authority_grants_ids", "id <> '00000000-0000-0000-0000-000000000000'::uuid AND property_id <> '00000000-0000-0000-0000-000000000000'::uuid AND grantee_user_id <> '00000000-0000-0000-0000-000000000000'::uuid AND legal_review_reference_id <> '00000000-0000-0000-0000-000000000000'::uuid AND issued_by_user_id <> '00000000-0000-0000-0000-000000000000'::uuid AND legal_reviewed_by_user_id <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_grants_independence", "issued_by_user_id <> grantee_user_id AND legal_reviewed_by_user_id <> grantee_user_id AND legal_reviewed_by_user_id <> issued_by_user_id");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_grants_revocation", "(revoked_at IS NULL AND revoked_by_user_id IS NULL AND version = 1) OR (revoked_at IS NOT NULL AND revoked_by_user_id IS NOT NULL AND revoked_at >= issued_at AND version > 1)");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_grants_snapshots", "COALESCE((authority_snapshot->>'FormatVersion' = '1' AND issuer_snapshot->>'FormatVersion' = '1' AND legal_reviewer_snapshot->>'FormatVersion' = '1' AND authority_snapshot->'Payload'->>'PropertyId' = property_id::text AND authority_snapshot->'Payload'->>'ActingUserId' = grantee_user_id::text AND authority_snapshot->'Payload'->>'Purpose' = (CASE purpose WHEN 'Sale' THEN '1' ELSE '2' END) AND authority_snapshot->'Payload'->>'Representation' IN ('1','2') AND authority_snapshot->'Payload'->'WorkspaceId' = 'null'::jsonb AND jsonb_typeof(authority_snapshot->'Payload'->'ValidUntil') = 'string' AND issuer_snapshot->'Payload'->>'ReviewerUserId' = issued_by_user_id::text AND legal_reviewer_snapshot->'Payload'->>'ReviewerUserId' = legal_reviewed_by_user_id::text), false)");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_grants_values", "purpose IN ('Sale','Rent') AND version > 0 AND legal_reviewed_at <= issued_at AND isfinite(issued_at) AND isfinite(legal_reviewed_at)");
+                        });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.PropertyCommitment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<TimeOnly?>("CheckInTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("check_in_time");
+
+                    b.Property<TimeOnly?>("CheckOutTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("check_out_time");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character(3)")
+                        .HasColumnName("currency")
+                        .IsFixedLength();
+
+                    b.Property<Guid>("CustomerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_user_id");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
+                    b.Property<DateTimeOffset?>("ExpiredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expired_at");
+
+                    b.Property<DateTimeOffset?>("HandedOverAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("handed_over_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("ListingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("listing_id");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_user_id");
+
+                    b.Property<string>("PricingPeriod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("pricing_period");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<Guid?>("PurchaseRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("purchase_request_id");
+
+                    b.Property<Guid?>("RentalRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rental_request_id");
+
+                    b.Property<DateTimeOffset?>("SignedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("signed_at");
+
+                    b.Property<DateTimeOffset>("SigningDeadline")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("signing_deadline");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("time_zone_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_marketplace_property_commitments");
+
+                    b.HasIndex("ListingId");
+
+                    b.HasIndex("PurchaseRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_commitments_purchase_request")
+                        .HasFilter("purchase_request_id IS NOT NULL");
+
+                    b.HasIndex("RentalRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_commitments_rental_request")
+                        .HasFilter("rental_request_id IS NOT NULL");
+
+                    b.HasIndex("SubmissionId");
+
+                    b.HasIndex("CustomerUserId", "AcceptedAt")
+                        .HasDatabaseName("ix_marketplace_commitments_customer");
+
+                    b.HasIndex("OwnerUserId", "AcceptedAt")
+                        .HasDatabaseName("ix_marketplace_commitments_owner");
+
+                    b.HasIndex("PropertyId", "Status")
+                        .HasDatabaseName("ix_marketplace_commitments_property_status");
+
+                    b.ToTable("property_commitments", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_commitments_history", "signing_deadline > accepted_at AND updated_at >= accepted_at AND ((status = 'PendingSignature' AND signed_at IS NULL AND handed_over_at IS NULL AND completed_at IS NULL AND expired_at IS NULL) OR (status = 'Signed' AND signed_at IS NOT NULL AND handed_over_at IS NULL AND completed_at IS NULL AND expired_at IS NULL) OR (status = 'Occupied' AND kind = 'Rental' AND signed_at IS NOT NULL AND handed_over_at IS NOT NULL AND completed_at IS NULL AND expired_at IS NULL) OR (status = 'Completed' AND signed_at IS NOT NULL AND completed_at IS NOT NULL AND expired_at IS NULL) OR (status = 'Expired' AND expired_at IS NOT NULL AND signed_at IS NULL AND handed_over_at IS NULL AND completed_at IS NULL))");
+
+                            t.HasCheckConstraint("ck_marketplace_commitments_money", "amount > 0 AND currency ~ '^[A-Z]{3}$'");
+
+                            t.HasCheckConstraint("ck_marketplace_commitments_shape", "(kind = 'Sale' AND purchase_request_id IS NOT NULL AND rental_request_id IS NULL AND pricing_period IS NULL AND start_date IS NULL AND end_date IS NULL AND check_in_time IS NULL AND check_out_time IS NULL AND time_zone_id IS NULL) OR (kind = 'Rental' AND rental_request_id IS NOT NULL AND purchase_request_id IS NULL AND pricing_period IN ('Daily', 'Weekly', 'Monthly', 'Yearly') AND start_date IS NOT NULL AND end_date IS NOT NULL AND end_date > start_date AND check_in_time IS NOT NULL AND check_out_time IS NOT NULL AND time_zone_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_marketplace_commitments_state", "kind IN ('Sale', 'Rental') AND status IN ('PendingSignature', 'Signed', 'Occupied', 'Completed', 'Expired')");
                         });
                 });
 
@@ -798,6 +1086,12 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("buyer_user_id");
 
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character(3)")
+                        .HasColumnName("currency")
+                        .IsFixedLength();
+
                     b.Property<DateTimeOffset?>("DecidedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("decided_at");
@@ -812,6 +1106,16 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("listing_purpose");
 
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("message");
+
+                    b.Property<decimal?>("OfferedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("offered_amount");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid")
                         .HasColumnName("property_id");
@@ -822,6 +1126,10 @@ namespace SmartProperty.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("status");
+
+                    b.Property<Guid?>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
 
                     b.Property<DateTimeOffset>("SubmittedAt")
                         .HasColumnType("timestamp with time zone")
@@ -837,7 +1145,15 @@ namespace SmartProperty.Persistence.Migrations
                     b.HasAlternateKey("Id", "ListingId", "PropertyId")
                         .HasName("ak_marketplace_purchase_requests_identity");
 
-                    b.HasIndex("BuyerUserId");
+                    b.HasIndex("SubmissionId");
+
+                    b.HasIndex("BuyerUserId", "SubmittedAt")
+                        .HasDatabaseName("ix_marketplace_purchase_requests_buyer");
+
+                    b.HasIndex("ListingId", "BuyerUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_purchase_requests_open")
+                        .HasFilter("status = 'Submitted'");
 
                     b.HasIndex("PropertyId", "Status")
                         .HasDatabaseName("ix_marketplace_purchase_requests_property_status");
@@ -851,6 +1167,8 @@ namespace SmartProperty.Persistence.Migrations
                             t.HasCheckConstraint("ck_marketplace_purchase_requests_ids", "id <> '00000000-0000-0000-0000-000000000000'::uuid AND listing_id <> '00000000-0000-0000-0000-000000000000'::uuid AND property_id <> '00000000-0000-0000-0000-000000000000'::uuid AND buyer_user_id <> '00000000-0000-0000-0000-000000000000'::uuid");
 
                             t.HasCheckConstraint("ck_marketplace_purchase_requests_state", "listing_purpose = 'Sale' AND status IN ('Submitted', 'Accepted', 'Rejected', 'WithdrawnByRequester', 'ClosedListingUnavailable')");
+
+                            t.HasCheckConstraint("ck_marketplace_purchase_requests_terms", "(submission_id IS NULL AND offered_amount IS NULL AND currency IS NULL) OR (submission_id IS NOT NULL AND offered_amount > 0 AND currency ~ '^[A-Z]{3}$')");
                         });
                 });
 
@@ -860,9 +1178,32 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<TimeOnly?>("CheckInTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("check_in_time");
+
+                    b.Property<TimeOnly?>("CheckOutTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("check_out_time");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character(3)")
+                        .HasColumnName("currency")
+                        .IsFixedLength();
+
                     b.Property<DateTimeOffset?>("DecidedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("decided_at");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
 
                     b.Property<Guid>("ListingId")
                         .HasColumnType("uuid")
@@ -874,6 +1215,16 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("listing_purpose");
 
+                    b.Property<string>("Message")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("PricingPeriod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("pricing_period");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid")
                         .HasColumnName("property_id");
@@ -882,6 +1233,10 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("renter_user_id");
 
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -889,9 +1244,18 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
+
                     b.Property<DateTimeOffset>("SubmittedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("submitted_at");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("time_zone_id");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -903,10 +1267,18 @@ namespace SmartProperty.Persistence.Migrations
                     b.HasAlternateKey("Id", "ListingId", "PropertyId")
                         .HasName("ak_marketplace_rental_requests_identity");
 
-                    b.HasIndex("RenterUserId");
+                    b.HasIndex("SubmissionId");
+
+                    b.HasIndex("ListingId", "RenterUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_rental_requests_open")
+                        .HasFilter("status = 'Submitted'");
 
                     b.HasIndex("PropertyId", "Status")
                         .HasDatabaseName("ix_marketplace_rental_requests_property_status");
+
+                    b.HasIndex("RenterUserId", "SubmittedAt")
+                        .HasDatabaseName("ix_marketplace_rental_requests_renter");
 
                     b.HasIndex("ListingId", "PropertyId", "ListingPurpose");
 
@@ -917,6 +1289,8 @@ namespace SmartProperty.Persistence.Migrations
                             t.HasCheckConstraint("ck_marketplace_rental_requests_ids", "id <> '00000000-0000-0000-0000-000000000000'::uuid AND listing_id <> '00000000-0000-0000-0000-000000000000'::uuid AND property_id <> '00000000-0000-0000-0000-000000000000'::uuid AND renter_user_id <> '00000000-0000-0000-0000-000000000000'::uuid");
 
                             t.HasCheckConstraint("ck_marketplace_rental_requests_state", "listing_purpose = 'Rent' AND status IN ('Submitted', 'Accepted', 'Rejected', 'WithdrawnByRequester', 'ClosedListingUnavailable')");
+
+                            t.HasCheckConstraint("ck_marketplace_rental_requests_terms", "(submission_id IS NULL AND pricing_period IS NULL AND amount IS NULL AND currency IS NULL AND start_date IS NULL AND end_date IS NULL AND check_in_time IS NULL AND check_out_time IS NULL AND time_zone_id IS NULL) OR (submission_id IS NOT NULL AND pricing_period IN ('Daily', 'Weekly', 'Monthly', 'Yearly') AND amount > 0 AND currency ~ '^[A-Z]{3}$' AND start_date IS NOT NULL AND end_date IS NOT NULL AND end_date > start_date AND check_in_time IS NOT NULL AND check_out_time IS NOT NULL AND time_zone_id IS NOT NULL)");
                         });
                 });
 
@@ -1191,23 +1565,6 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("AiSyncError")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("ai_sync_error");
-
-                    b.Property<string>("AiSyncStatus")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasDefaultValue("NotSynced")
-                        .HasColumnName("ai_sync_status");
-
-                    b.Property<DateTimeOffset?>("AiSyncedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("ai_synced_at");
-
                     b.Property<Guid?>("AreaId")
                         .HasColumnType("uuid")
                         .HasColumnName("area_id");
@@ -1297,7 +1654,7 @@ namespace SmartProperty.Persistence.Migrations
                                 .HasColumnName("address_region");
                         });
 
-                    b.ComplexProperty(typeof(Dictionary<string, object>), "Listing", "SmartProperty.Domain.PropertyRegistry.Property.Listing#PropertyListingInfo", b1 =>
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Physical", "SmartProperty.Domain.PropertyRegistry.Property.Physical#PropertyPhysicalInfo", b1 =>
                         {
                             b1.IsRequired();
 
@@ -1305,16 +1662,6 @@ namespace SmartProperty.Persistence.Migrations
                                 .HasPrecision(12, 2)
                                 .HasColumnType("numeric(12,2)")
                                 .HasColumnName("area_sqm");
-
-                            b1.Property<string>("DescriptionAr")
-                                .HasMaxLength(10000)
-                                .HasColumnType("character varying(10000)")
-                                .HasColumnName("description_ar");
-
-                            b1.Property<string>("DescriptionEn")
-                                .HasMaxLength(10000)
-                                .HasColumnType("character varying(10000)")
-                                .HasColumnName("description_en");
 
                             b1.Property<int?>("Floor")
                                 .HasColumnType("integer")
@@ -1324,33 +1671,10 @@ namespace SmartProperty.Persistence.Migrations
                                 .HasColumnType("boolean")
                                 .HasColumnName("furnished");
 
-                            b1.Property<string>("ListingStatus")
-                                .IsRequired()
-                                .ValueGeneratedOnAdd()
-                                .HasMaxLength(32)
-                                .HasColumnType("character varying(32)")
-                                .HasDefaultValue("Available")
-                                .HasColumnName("listing_status");
-
-                            b1.Property<decimal?>("Price")
-                                .HasPrecision(18, 2)
-                                .HasColumnType("numeric(18,2)")
-                                .HasColumnName("price");
-
-                            b1.Property<string>("TitleAr")
-                                .HasMaxLength(300)
-                                .HasColumnType("character varying(300)")
-                                .HasColumnName("title_ar");
-
-                            b1.Property<string>("TitleEn")
-                                .HasMaxLength(300)
-                                .HasColumnType("character varying(300)")
-                                .HasColumnName("title_en");
-
-                            b1.Property<string>("TransactionType")
-                                .HasMaxLength(32)
-                                .HasColumnType("character varying(32)")
-                                .HasColumnName("transaction_type");
+                            b1.Property<string>("TimeZoneId")
+                                .HasMaxLength(64)
+                                .HasColumnType("character varying(64)")
+                                .HasColumnName("time_zone_id");
                         });
 
                     b.HasKey("Id");
@@ -1365,8 +1689,6 @@ namespace SmartProperty.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_registry_properties_address_country_code", "address_country_code ~ '^[A-Z]{2}$'");
 
-                            t.HasCheckConstraint("ck_registry_properties_ai_sync_status", "ai_sync_status IN ('NotSynced', 'Synced', 'Failed')");
-
                             t.HasCheckConstraint("ck_registry_properties_area_sqm_range", "area_sqm IS NULL OR (area_sqm > 0 AND area_sqm <= 100000)");
 
                             t.HasCheckConstraint("ck_registry_properties_bathrooms_range", "bathrooms IS NULL OR bathrooms BETWEEN 0 AND 100");
@@ -1379,17 +1701,11 @@ namespace SmartProperty.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_registry_properties_latitude_range", "latitude IS NULL OR latitude BETWEEN -90 AND 90");
 
-                            t.HasCheckConstraint("ck_registry_properties_listing_status", "listing_status IN ('Available', 'Reserved', 'Sold', 'Rented')");
-
                             t.HasCheckConstraint("ck_registry_properties_longitude_range", "longitude IS NULL OR longitude BETWEEN -180 AND 180");
 
                             t.HasCheckConstraint("ck_registry_properties_place", "compound_id IS NULL OR area_id IS NOT NULL");
 
-                            t.HasCheckConstraint("ck_registry_properties_price_positive", "price IS NULL OR price > 0");
-
                             t.HasCheckConstraint("ck_registry_properties_status", "status IN ('Active', 'Archived')");
-
-                            t.HasCheckConstraint("ck_registry_properties_transaction_type", "transaction_type IS NULL OR transaction_type IN ('Sale', 'Rent')");
 
                             t.HasCheckConstraint("ck_registry_properties_type", "type IN ('Land', 'Building', 'Apartment', 'Villa', 'Duplex', 'Studio', 'Chalet', 'Townhouse', 'TwinHouse', 'Penthouse', 'StandaloneVilla', 'HotelApartment', 'Office', 'Shop', 'Warehouse', 'Farm')");
                         });
@@ -1845,6 +2161,103 @@ namespace SmartProperty.Persistence.Migrations
                         .HasConstraintName("fk_marketplace_submissions_predecessor");
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.MarketplaceSettings", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_settings_updated_by");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.PropertyAuthorityGrant", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("GranteeUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_authority_grants_grantee");
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("IssuedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_authority_grants_issuer");
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("LegalReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_authority_grants_legal_reviewer");
+
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_authority_grants_property");
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_marketplace_authority_grants_revoker");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.PropertyCommitment", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_commitments_customer");
+
+                    b.HasOne("SmartProperty.Domain.Marketplace.PropertyListing", null)
+                        .WithMany()
+                        .HasForeignKey("ListingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_commitments_listing");
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_commitments_owner");
+
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_commitments_property");
+
+                    b.HasOne("SmartProperty.Domain.Marketplace.PurchaseRequest", null)
+                        .WithMany()
+                        .HasForeignKey("PurchaseRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_marketplace_commitments_purchase_request");
+
+                    b.HasOne("SmartProperty.Domain.Marketplace.RentalRequest", null)
+                        .WithMany()
+                        .HasForeignKey("RentalRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_marketplace_commitments_rental_request");
+
+                    b.HasOne("SmartProperty.Domain.Marketplace.ListingSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_marketplace_commitments_submission");
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.PropertyListing", b =>
                 {
                     b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
@@ -1903,6 +2316,12 @@ namespace SmartProperty.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_marketplace_purchase_requests_buyer");
 
+                    b.HasOne("SmartProperty.Domain.Marketplace.ListingSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_marketplace_purchase_requests_submission");
+
                     b.HasOne("SmartProperty.Domain.Marketplace.PropertyListing", null)
                         .WithMany()
                         .HasForeignKey("ListingId", "PropertyId", "ListingPurpose")
@@ -1920,6 +2339,12 @@ namespace SmartProperty.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_marketplace_rental_requests_renter");
+
+                    b.HasOne("SmartProperty.Domain.Marketplace.ListingSubmission", null)
+                        .WithMany()
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_marketplace_rental_requests_submission");
 
                     b.HasOne("SmartProperty.Domain.Marketplace.PropertyListing", null)
                         .WithMany()

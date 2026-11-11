@@ -27,6 +27,7 @@ internal sealed class CountryConfiguration : IEntityTypeConfiguration<Country>
         builder.Property(country => country.NameEn).HasColumnName("name_en").HasMaxLength(200).IsRequired();
         builder.Property(country => country.NameAr).HasColumnName("name_ar").HasMaxLength(200).IsRequired();
         builder.Property(country => country.Code).HasColumnName("code").HasMaxLength(2);
+        builder.Property(country => country.TimeZoneId).HasColumnName("time_zone_id").HasMaxLength(64);
 
         builder.HasIndex(country => country.AiId).IsUnique().HasDatabaseName(LocationIndexNames.Country);
     }

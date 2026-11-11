@@ -14,9 +14,9 @@ public sealed class PropertyDetailsByIdsPersistenceTests(PostgreSqlFixture fixtu
     [Fact]
     public async Task EachFoundPropertyComesBackWithTheSameReadModelAsTheSingleRead()
     {
-        var first = await SeedAsync(TransactionType.Sale, 1_000_000m);
-        var second = await SeedAsync(TransactionType.Rent, 8_000m);
-        await SeedAsync(TransactionType.Sale, 3_000_000m);
+        var first = await SeedAsync(100m);
+        var second = await SeedAsync(80m);
+        await SeedAsync(300m);
 
         using var scope = Host.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IPropertyRepository>();
@@ -29,7 +29,7 @@ public sealed class PropertyDetailsByIdsPersistenceTests(PostgreSqlFixture fixtu
             var single = (await repository.GetDetailsByIdAsync(id))!;
             var fromBatch = batch.Single(details => details.Id == id);
 
-            Assert.Equal(single.Listing, fromBatch.Listing);
+            Assert.Equal(single.Physical, fromBatch.Physical);
             Assert.Equal(single.Address, fromBatch.Address);
             Assert.Equal(single.Status, fromBatch.Status);
             Assert.Equal(single.Type, fromBatch.Type);
@@ -39,7 +39,7 @@ public sealed class PropertyDetailsByIdsPersistenceTests(PostgreSqlFixture fixtu
     [Fact]
     public async Task ArchivedPropertiesAreIncludedAndNothingAskedForMeansNothingRead()
     {
-        var archived = await SeedAsync(TransactionType.Sale, 1m, archive: true);
+        var archived = await SeedAsync(1m, archive: true);
 
         using var scope = Host.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IPropertyRepository>();
@@ -53,14 +53,14 @@ public sealed class PropertyDetailsByIdsPersistenceTests(PostgreSqlFixture fixtu
             .ChangeTracker.Entries());
     }
 
-    private async Task<Guid> SeedAsync(TransactionType transactionType, decimal price, bool archive = false)
+    private async Task<Guid> SeedAsync(decimal areaSqm, bool archive = false)
     {
         var property = new Property(
             Guid.NewGuid(),
             PropertyType.Villa,
             new PropertyAddress("SA"),
             T0.AddDays(-5),
-            listing: new PropertyListingInfo(transactionType, price, 200m, titleEn: "A villa"));
+            physical: new PropertyPhysicalInfo(areaSqm));
 
         if (archive)
         {

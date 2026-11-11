@@ -32,6 +32,11 @@ internal static class CanonicalListingContent
 
         try
         {
+            if (input.PricingOptions is { Count: > 0 })
+            {
+                return BuildRental(property, input);
+            }
+
             return Result<ListingSubmissionContent>.Success(new ListingSubmissionContent(
                 property.CountryCode,
                 property.Region!,
@@ -52,6 +57,35 @@ internal static class CanonicalListingContent
             return Result<ListingSubmissionContent>.Failure(
                 ListingSubmissionErrors.ValidationFailed("The listing content is invalid."));
         }
+    }
+
+    // A rental with pricing options is dated in the property's own time zone, which comes from its country and never
+    // from the request. Without one the rental is refused rather than dated by a guess.
+    private static Result<ListingSubmissionContent> BuildRental(LockedPropertyView property, ListingDraftContentInput input)
+    {
+        if (string.IsNullOrWhiteSpace(property.TimeZoneId))
+        {
+            return Result<ListingSubmissionContent>.Failure(WriteErrors.RentalTimeZoneUnavailable);
+        }
+
+        var terms = input.RentalTerms!;
+        var rentalTerms = new RentalTerms(
+            property.TimeZoneId,
+            terms.CheckInTime,
+            terms.CheckOutTime,
+            terms.Windows.Select(window => new RentalWindow(window.StartDate, window.EndDate)),
+            terms.MinimumStayDays);
+
+        return Result<ListingSubmissionContent>.Success(ListingSubmissionContent.ForRent(
+            property.CountryCode,
+            property.Region!,
+            property.City!,
+            property.District!,
+            input.Title,
+            input.Description,
+            property.PropertyType,
+            input.PricingOptions!.Select(option => new RentPricingOption(option.Period, option.Amount, option.Currency)),
+            rentalTerms));
     }
 
     /// <summary>

@@ -7,28 +7,46 @@ namespace SmartProperty.Domain.Marketplace;
 /// </summary>
 public sealed class PropertyAuthorityGrant
 {
+    private PropertyAuthorityGrant()
+    {
+        // Persistence reconstitutes a grant that the Domain already validated when it was issued.
+        Authority = null!;
+        Issuer = null!;
+        LegalReviewer = null!;
+    }
+
     private PropertyAuthorityGrant(Guid id, ListingLegalAuthority authority, ListingReviewContext issuer,
         Guid legalReviewReferenceId, ListingReviewContext legalReviewer, DateTimeOffset reviewedAt, DateTimeOffset issuedAt)
     {
         Id = id;
         Authority = authority;
+        PropertyId = authority.PropertyId;
+        Purpose = authority.Purpose;
+        GranteeUserId = authority.ActingUserId;
         Issuer = issuer;
+        IssuedByUserId = issuer.ReviewerUserId;
         LegalReviewReferenceId = legalReviewReferenceId;
         LegalReviewer = legalReviewer;
+        LegalReviewedByUserId = legalReviewer.ReviewerUserId;
         LegalReviewedAt = reviewedAt;
         IssuedAt = issuedAt;
     }
 
-    public Guid Id { get; }
-    public ListingLegalAuthority Authority { get; }
-    public Guid PropertyId => Authority.PropertyId;
-    public ListingPurpose Purpose => Authority.Purpose;
-    public Guid GranteeUserId => Authority.ActingUserId;
-    public ListingReviewContext Issuer { get; }
-    public Guid LegalReviewReferenceId { get; }
-    public ListingReviewContext LegalReviewer { get; }
-    public DateTimeOffset LegalReviewedAt { get; }
-    public DateTimeOffset IssuedAt { get; }
+    public Guid Id { get; private set; }
+    public ListingLegalAuthority Authority { get; private set; }
+
+    // Copied from the authority when the grant is issued, so persistence can find a grant by its subject. They never
+    // change, and the database checks that they agree with the stored authority.
+    public Guid PropertyId { get; private set; }
+    public ListingPurpose Purpose { get; private set; }
+    public Guid GranteeUserId { get; private set; }
+    public ListingReviewContext Issuer { get; private set; }
+    public Guid IssuedByUserId { get; private set; }
+    public Guid LegalReviewReferenceId { get; private set; }
+    public ListingReviewContext LegalReviewer { get; private set; }
+    public Guid LegalReviewedByUserId { get; private set; }
+    public DateTimeOffset LegalReviewedAt { get; private set; }
+    public DateTimeOffset IssuedAt { get; private set; }
     public long Version { get; private set; } = 1;
     public DateTimeOffset? RevokedAt { get; private set; }
     public Guid? RevokedByUserId { get; private set; }

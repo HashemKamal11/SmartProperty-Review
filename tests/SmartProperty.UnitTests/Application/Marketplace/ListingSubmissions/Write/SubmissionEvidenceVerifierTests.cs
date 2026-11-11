@@ -180,7 +180,8 @@ public sealed class SubmissionEvidenceVerifierTests
                 EvidenceVerificationFailure.AssessmentInvalidOrNotClean,
             },
             results.Select(verification => verification.Failure!.Value).ToArray());
-        Assert.All(results, verification => Assert.Same(WriteErrors.PrerequisitesUnverified, verification.Result.Error));
+        Assert.Same(WriteErrors.EvidenceVerificationUnavailable, results[0].Result.Error);
+        Assert.All(results.Skip(1), verification => Assert.Same(WriteErrors.PrerequisitesUnverified, verification.Result.Error));
     }
 
     [Fact]
@@ -290,9 +291,20 @@ public sealed class SubmissionEvidenceVerifierTests
     private static void AssertUnverified(EvidenceVerification verification, EvidenceVerificationFailure expected)
     {
         Assert.True(verification.Result.IsFailure);
-        Assert.Same(WriteErrors.PrerequisitesUnverified, verification.Result.Error);
-        Assert.Equal("listing_submissions.prerequisites_unverified", verification.Result.Error!.Code);
-        Assert.Equal(ErrorType.Conflict, verification.Result.Error.Type);
+
+        if (expected == EvidenceVerificationFailure.ProviderUnavailable)
+        {
+            Assert.Same(WriteErrors.EvidenceVerificationUnavailable, verification.Result.Error);
+            Assert.Equal("listing_submissions.evidence_verification_unavailable", verification.Result.Error!.Code);
+            Assert.Equal(ErrorType.ServiceUnavailable, verification.Result.Error.Type);
+        }
+        else
+        {
+            Assert.Same(WriteErrors.PrerequisitesUnverified, verification.Result.Error);
+            Assert.Equal("listing_submissions.prerequisites_unverified", verification.Result.Error!.Code);
+            Assert.Equal(ErrorType.Conflict, verification.Result.Error.Type);
+        }
+
         Assert.Equal(expected, verification.Failure);
     }
 

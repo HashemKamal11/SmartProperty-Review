@@ -68,7 +68,7 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
         using var client = factory.CreateAuthenticatedClient(Guid.NewGuid());
 
         var body = await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>(
-            $"{Route}?type=Unit&status=Active&countryCode=%20xz%20&page=1&pageSize=1");
+            $"{Route}?type=Apartment&status=Active&countryCode=%20xz%20&page=1&pageSize=1");
 
         Assert.NotNull(body);
         Assert.Equal(1, body.Page);
@@ -116,20 +116,20 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task SearchSortAndListingStatusParametersAreAcceptedAndBadValuesAre400()
+    public async Task SearchAndSortParametersAreAcceptedAndBadValuesAreRefused()
     {
         using var factory = ReadAuthorizedFactory();
         using var client = factory.CreateAuthenticatedClient(Guid.NewGuid());
 
-        using var ok = await client.GetAsync(
-            $"{Route}?countryCode=XU&q=villa%20hittin&sort=PriceDesc&listingStatus=Available");
+        using var ok = await client.GetAsync($"{Route}?countryCode=XU&q=villa%20hittin&sort=Newest");
         using var badSort = await client.GetAsync($"{Route}?sort=Cheapest");
-        using var badListing = await client.GetAsync($"{Route}?listingStatus=Gone");
+        // Price is a listing fact, so a property cannot be sorted by it any more.
+        using var priceSort = await client.GetAsync($"{Route}?sort=PriceDesc");
         using var tooManyWords = await client.GetAsync($"{Route}?q=a%20b%20c%20d%20e%20f");
 
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, badSort.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, badListing.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, priceSort.StatusCode);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, tooManyWords.StatusCode);
     }
 

@@ -68,21 +68,13 @@ public sealed class PropertyTypeTests
         Assert.Equal(expected, AiVocabulary.ToAi(status));
     }
 
-    [Theory]
-    [InlineData(TransactionType.Sale, "Sale")]
-    [InlineData(TransactionType.Rent, "Rent")]
-    public void AiVocabulary_SpellsEveryTransactionTypeAsTheAiServiceDoes(TransactionType type, string expected)
-    {
-        Assert.Equal(expected, AiVocabulary.ToAi(type));
-    }
 
     [Theory]
-    [InlineData(ListingStatus.Available, "Available")]
-    [InlineData(ListingStatus.Reserved, "Reserved")]
-    [InlineData(ListingStatus.Sold, "Sold")]
-    [InlineData(ListingStatus.Rented, "Rented")]
-    public void AiVocabulary_SpellsEveryListingStatusAsTheAiServiceDoes(ListingStatus status, string expected)
+    [InlineData(SmartProperty.Domain.Marketplace.ListingPurpose.Sale, "Sale")]
+    [InlineData(SmartProperty.Domain.Marketplace.ListingPurpose.Rent, "Rent")]
+    public void AiVocabulary_SpellsEveryListingPurposeAsTheAiServiceDoes(
+        SmartProperty.Domain.Marketplace.ListingPurpose purpose, string expected)
     {
-        Assert.Equal(expected, AiVocabulary.ToAi(status));
+        Assert.Equal(expected, AiVocabulary.ToAi(purpose));
     }
 }

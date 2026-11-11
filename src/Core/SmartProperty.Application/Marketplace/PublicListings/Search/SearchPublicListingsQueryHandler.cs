@@ -25,7 +25,9 @@ public sealed class SearchPublicListingsQueryHandler(IPublicListingReadRepositor
             query.MaxPrice,
             query.Currency,
             query.RentPeriod,
-            query.Sort);
+            query.Sort,
+            query.AvailableFrom,
+            query.AvailableTo);
 
         if (criteria.IsFailure)
         {

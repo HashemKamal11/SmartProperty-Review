@@ -20,6 +20,7 @@ public sealed class Country
         NameEn = LocationRules.RequireName(nameEn, nameof(nameEn));
         NameAr = LocationRules.RequireName(nameAr, nameof(nameAr));
         Code = CountryCodes.Normalize(code) ?? CountryCodes.FindByEnglishName(NameEn);
+        TimeZoneId = CountryTimeZones.FindByCountryCode(Code);
     }
 
     public Guid Id { get; private set; }
@@ -29,4 +30,7 @@ public sealed class Country
 
     /// <summary>The ISO 3166-1 alpha-2 code, or null when it is not known. A property cannot be placed in a country without one.</summary>
     public string? Code { get; private set; }
+
+    /// <summary>The single IANA time zone of the country, or null when it has several or none is recorded. Rentals need it.</summary>
+    public string? TimeZoneId { get; private set; }
 }

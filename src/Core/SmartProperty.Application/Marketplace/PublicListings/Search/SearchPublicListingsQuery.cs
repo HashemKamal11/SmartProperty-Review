@@ -21,4 +21,6 @@ public sealed record SearchPublicListingsQuery(
     RentPeriod? RentPeriod,
     PublicListingSortOrder? Sort,
     int? Page,
-    int? PageSize) : IQuery<PagedList<PublicListingSummary>>;
+    int? PageSize,
+    DateOnly? AvailableFrom = null,
+    DateOnly? AvailableTo = null) : IQuery<PagedList<PublicListingSummary>>;

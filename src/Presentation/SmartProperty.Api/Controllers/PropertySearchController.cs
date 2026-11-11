@@ -94,6 +94,7 @@ public sealed class PropertySearchController : ControllerBase
                     item.Details.TitleEn,
                     item.Details.DescriptionAr,
                     item.Details.DescriptionEn),
-                item.Property is null ? null : PropertiesController.ToResponse(item.Property))).ToArray()));
+                item.Property is null ? null : PropertiesController.ToResponse(item.Property),
+                item.Listing is null ? null : SmartProperty.Api.Contracts.Marketplace.Public.PublicListingMapper.ToSummaryResponse(item.Listing))).ToArray()));
     }
 }

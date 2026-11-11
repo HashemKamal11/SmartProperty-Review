@@ -12,10 +12,10 @@ internal static class UpdatePropertyCommandValidator
         UpdatePropertyCommand command,
         out PropertyType propertyType,
         out FinishingStatus? finishingStatus,
-        out PropertyListingInfo listing)
+        out PropertyPhysicalInfo physical)
     {
         finishingStatus = null;
-        listing = PropertyListingInfo.Empty;
+        physical = PropertyPhysicalInfo.Empty;
 
         if (!PropertyCommandSupport.TryParseName(command.Type, out propertyType))
         {
@@ -49,20 +49,14 @@ internal static class UpdatePropertyCommandValidator
             return UpdatePropertyErrors.ValidationFailed(specificationError);
         }
 
-        if (PropertyCommandSupport.ValidateListing(
-                command.TransactionType,
-                command.Price,
+        if (PropertyCommandSupport.ValidatePhysical(
                 command.AreaSqm,
                 command.Floor,
                 command.Furnished,
-                command.ListingStatus,
-                command.TitleAr,
-                command.TitleEn,
-                command.DescriptionAr,
-                command.DescriptionEn,
-                out listing) is { } listingError)
+                command.TimeZoneId,
+                out physical) is { } physicalError)
         {
-            return UpdatePropertyErrors.ValidationFailed(listingError);
+            return UpdatePropertyErrors.ValidationFailed(physicalError);
         }
 
         return null;

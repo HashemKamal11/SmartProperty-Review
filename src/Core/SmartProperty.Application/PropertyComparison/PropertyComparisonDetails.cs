@@ -7,26 +7,19 @@ namespace SmartProperty.Application.PropertyComparison;
 /// The user's comparison list with everything the comparison screen shows: each property in full, in the order it was
 /// added, and the smart-pick match for it when the AI search gave one.
 /// </summary>
-/// <param name="TransactionType">Sale or Rent for the whole list; null while it is empty. All items share it.</param>
 /// <param name="CanCompare">True when the list holds enough properties to show the comparison table.</param>
 public sealed record PropertyComparisonDetails(
     IReadOnlyList<PropertyComparisonItemDetails> Items,
     int MaxItems,
     int MinItemsToCompare,
-    bool CanCompare,
-    TransactionType? TransactionType)
+    bool CanCompare)
 {
     public static PropertyComparisonDetails Of(
         IReadOnlyList<PropertyComparisonItemDetails> items,
         int maxItems,
         int minItemsToCompare)
     {
-        return new PropertyComparisonDetails(
-            items,
-            maxItems,
-            minItemsToCompare,
-            items.Count >= minItemsToCompare,
-            items.Count == 0 ? null : items[0].Property.Listing?.TransactionType);
+        return new PropertyComparisonDetails(items, maxItems, minItemsToCompare, items.Count >= minItemsToCompare);
     }
 }
 
@@ -38,4 +31,5 @@ public sealed record PropertyComparisonItemDetails(
     DateTimeOffset AddedAt,
     PropertyDetails Property,
     decimal? MatchPercentage,
-    string? MatchDescription);
+    string? MatchDescription,
+    IReadOnlyList<SmartProperty.Application.Marketplace.PublicListings.PublicListingSummary>? Listings = null);

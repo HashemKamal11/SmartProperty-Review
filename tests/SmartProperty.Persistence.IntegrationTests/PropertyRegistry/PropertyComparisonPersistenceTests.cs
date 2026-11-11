@@ -26,7 +26,7 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
     public async Task APositionOutsideOneToThreeIsRefusedByTheDatabase()
     {
         var user = await SeedUserAsync();
-        var property = await SeedPropertyAsync(TransactionType.Sale);
+        var property = await SeedPropertyAsync();
 
         var exception = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
             $"INSERT INTO registry.property_comparison_items (user_id, property_id, position, added_at) "
@@ -39,8 +39,8 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
     public async Task TwoItemsCannotShareAPositionSoAFourthCannotFit()
     {
         var user = await SeedUserAsync();
-        var first = await SeedPropertyAsync(TransactionType.Sale);
-        var second = await SeedPropertyAsync(TransactionType.Sale);
+        var first = await SeedPropertyAsync();
+        var second = await SeedPropertyAsync();
 
         using var scope = Host.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IPropertyComparisonRepository>();
@@ -57,7 +57,7 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
     public async Task TheSamePropertyCannotBeOnAListTwice()
     {
         var user = await SeedUserAsync();
-        var property = await SeedPropertyAsync(TransactionType.Sale);
+        var property = await SeedPropertyAsync();
         await StoreAsync(new PropertyComparisonItem(user, property, 1, T0));
 
         using var scope = Host.CreateScope();
@@ -75,7 +75,7 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
     {
         var first = await SeedUserAsync();
         var second = await SeedUserAsync();
-        var property = await SeedPropertyAsync(TransactionType.Sale);
+        var property = await SeedPropertyAsync();
 
         await StoreAsync(new PropertyComparisonItem(first, property, 1, T0));
         await StoreAsync(new PropertyComparisonItem(second, property, 1, T0));
@@ -89,8 +89,8 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
     public async Task TheListIsReadInTheOrderAddedWithEachPropertyInFull()
     {
         var user = await SeedUserAsync();
-        var a = await SeedPropertyAsync(TransactionType.Sale, price: 4_850_000m);
-        var b = await SeedPropertyAsync(TransactionType.Sale, price: 1_380_000m);
+        var a = await SeedPropertyAsync(areaSqm: 485m);
+        var b = await SeedPropertyAsync(areaSqm: 138m);
         await StoreAsync(new PropertyComparisonItem(user, b, 1, T0));
         await StoreAsync(new PropertyComparisonItem(user, a, 2, T0.AddMinutes(1)));
 
@@ -98,8 +98,7 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
         var list = await scope.ServiceProvider.GetRequiredService<IPropertyComparisonRepository>().GetAsync(user);
 
         Assert.Equal([b, a], list.Items.Select(item => item.Property.Id));
-        Assert.Equal(1_380_000m, list.Items[0].Property.Listing!.Price);
-        Assert.Equal(TransactionType.Sale, list.TransactionType);
+        Assert.Equal(138m, list.Items[0].Property.Physical!.AreaSqm);
         Assert.True(list.CanCompare);
         Assert.Equal(3, list.MaxItems);
         Assert.Empty(scope.ServiceProvider.GetRequiredService<SmartProperty.Persistence.Context.ApplicationDbContext>()
@@ -111,8 +110,8 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
     {
         var user = await SeedUserAsync();
         var other = await SeedUserAsync();
-        var matched = await SeedPropertyAsync(TransactionType.Rent);
-        var unmatched = await SeedPropertyAsync(TransactionType.Rent);
+        var matched = await SeedPropertyAsync();
+        var unmatched = await SeedPropertyAsync();
         await StoreAsync(new PropertyComparisonItem(user, matched, 1, T0));
         await StoreAsync(new PropertyComparisonItem(user, unmatched, 2, T0.AddMinutes(1)));
         await StoreMatchAsync(user, matched, 70m, T0.AddHours(1));
@@ -132,7 +131,7 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
     public async Task AnArchivedPropertyStaysOnTheListAndIsShown()
     {
         var user = await SeedUserAsync();
-        var property = await SeedPropertyAsync(TransactionType.Sale, archive: true);
+        var property = await SeedPropertyAsync(archive: true);
         await StoreAsync(new PropertyComparisonItem(user, property, 1, T0));
 
         using var scope = Host.CreateScope();
@@ -151,7 +150,6 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
 
         Assert.Empty(list.Items);
         Assert.False(list.CanCompare);
-        Assert.Null(list.TransactionType);
     }
 
     [Fact]
@@ -159,8 +157,8 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
     {
         var user = await SeedUserAsync();
         var other = await SeedUserAsync();
-        var first = await SeedPropertyAsync(TransactionType.Sale);
-        var second = await SeedPropertyAsync(TransactionType.Sale);
+        var first = await SeedPropertyAsync();
+        var second = await SeedPropertyAsync();
         await StoreAsync(new PropertyComparisonItem(user, first, 1, T0));
         await StoreAsync(new PropertyComparisonItem(user, second, 2, T0));
         await StoreAsync(new PropertyComparisonItem(other, first, 1, T0));
@@ -202,14 +200,14 @@ public sealed class PropertyComparisonPersistenceTests(PostgreSqlFixture fixture
         return user.Id;
     }
 
-    private async Task<Guid> SeedPropertyAsync(TransactionType transactionType, decimal price = 1_000_000m, bool archive = false)
+    private async Task<Guid> SeedPropertyAsync(decimal areaSqm = 200m, bool archive = false)
     {
         var property = new Property(
             Guid.NewGuid(),
             PropertyType.Villa,
             new PropertyAddress("SA"),
             T0.AddDays(-10),
-            listing: new PropertyListingInfo(transactionType, price, 200m, titleEn: "A villa"));
+            physical: new PropertyPhysicalInfo(areaSqm));
 
         if (archive)
         {

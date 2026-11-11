@@ -82,16 +82,16 @@ public sealed class SubmitListingDraftCommandHandlerTests
     }
 
     [Fact]
-    public async Task AnUnavailableProviderFailsClosedWithTheGenericUnverifiedConflict()
+    public async Task AnUnavailableProviderFailsClosedWithTheClearUnavailableError()
     {
         var draft = _world.SeedDraft(evidenceCount: 1);
         _world.Evidence.OnAssess = _ => EvidenceAssessmentResult.Unavailable();
 
         var result = await Handler(_world).Handle(new SubmitListingDraftCommand(draft.Id, draft.Revision));
 
-        Assert.Same(WriteErrors.PrerequisitesUnverified, result.Error);
-        Assert.Equal("listing_submissions.prerequisites_unverified", result.Error!.Code);
-        Assert.Equal(ErrorType.Conflict, result.Error.Type);
+        Assert.Same(WriteErrors.EvidenceVerificationUnavailable, result.Error);
+        Assert.Equal("listing_submissions.evidence_verification_unavailable", result.Error!.Code);
+        Assert.Equal(ErrorType.ServiceUnavailable, result.Error.Type);
         AssertUnchanged(_world, draft);
     }
 
@@ -134,7 +134,7 @@ public sealed class SubmitListingDraftCommandHandlerTests
     }
 
     [Fact]
-    public async Task TheInternalVerificationCategoryStillDistinguishesAnUnavailableProviderFromAFailedOne()
+    public async Task AnUnavailableProviderIsClearWhileAFailedVerdictStaysGeneric()
     {
         var draft = _world.SeedDraft(evidenceCount: 1);
         var unavailable = new ScriptedEvidenceProvider { OnAssess = _ => EvidenceAssessmentResult.Unavailable() };
@@ -148,7 +148,8 @@ public sealed class SubmitListingDraftCommandHandlerTests
 
         Assert.Equal(EvidenceVerificationFailure.ProviderUnavailable, first.Failure);
         Assert.Equal(EvidenceVerificationFailure.AssessmentInvalidOrNotClean, second.Failure);
-        Assert.Same(first.Result.Error, second.Result.Error);
+        Assert.Same(WriteErrors.EvidenceVerificationUnavailable, first.Result.Error);
+        Assert.Same(WriteErrors.PrerequisitesUnverified, second.Result.Error);
     }
 
     [Fact]

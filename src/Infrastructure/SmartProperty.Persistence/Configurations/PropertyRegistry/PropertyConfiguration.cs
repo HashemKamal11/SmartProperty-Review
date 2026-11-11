@@ -34,18 +34,6 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
                 "bathrooms IS NULL OR bathrooms BETWEEN 0 AND 100");
 
             tableBuilder.HasCheckConstraint(
-                "ck_registry_properties_transaction_type",
-                "transaction_type IS NULL OR transaction_type IN ('Sale', 'Rent')");
-
-            tableBuilder.HasCheckConstraint(
-                "ck_registry_properties_listing_status",
-                "listing_status IN ('Available', 'Reserved', 'Sold', 'Rented')");
-
-            tableBuilder.HasCheckConstraint(
-                "ck_registry_properties_price_positive",
-                "price IS NULL OR price > 0");
-
-            tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_area_sqm_range",
                 "area_sqm IS NULL OR (area_sqm > 0 AND area_sqm <= 100000)");
 
@@ -56,10 +44,6 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
             tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_place",
                 "compound_id IS NULL OR area_id IS NOT NULL");
-
-            tableBuilder.HasCheckConstraint(
-                "ck_registry_properties_ai_sync_status",
-                "ai_sync_status IN ('NotSynced', 'Synced', 'Failed')");
 
             tableBuilder.HasCheckConstraint(
                 "ck_registry_properties_address_country_code",
@@ -164,52 +148,25 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
                     join.HasKey("property_id", "view_id");
                 });
 
-        // The market-facing facts are a value object with no identity, stored inline like the address.
-        builder.ComplexProperty(property => property.Listing, listing =>
+        // The physical facts are a value object with no identity, stored inline like the address. Commercial and
+        // advertisement data is not stored on the property: it belongs to the Marketplace listing.
+        builder.ComplexProperty(property => property.Physical, physical =>
         {
-            listing.IsRequired();
+            physical.IsRequired();
 
-            listing.Property(value => value.TransactionType)
-                .HasColumnName("transaction_type")
-                .HasConversion<string>()
-                .HasMaxLength(32);
-
-            listing.Property(value => value.Price)
-                .HasColumnName("price")
-                .HasPrecision(18, 2);
-
-            listing.Property(value => value.AreaSqm)
+            physical.Property(value => value.AreaSqm)
                 .HasColumnName("area_sqm")
                 .HasPrecision(12, 2);
 
-            listing.Property(value => value.Floor)
+            physical.Property(value => value.Floor)
                 .HasColumnName("floor");
 
-            listing.Property(value => value.Furnished)
+            physical.Property(value => value.TimeZoneId)
+                .HasColumnName("time_zone_id")
+                .HasMaxLength(PropertyPhysicalInfo.MaxTimeZoneIdLength);
+
+            physical.Property(value => value.Furnished)
                 .HasColumnName("furnished");
-
-            listing.Property(value => value.ListingStatus)
-                .HasColumnName("listing_status")
-                .HasConversion<string>()
-                .HasMaxLength(32)
-                .HasDefaultValue(ListingStatus.Available)
-                .IsRequired();
-
-            listing.Property(value => value.TitleAr)
-                .HasColumnName("title_ar")
-                .HasMaxLength(PropertyListingInfo.MaxTitleLength);
-
-            listing.Property(value => value.TitleEn)
-                .HasColumnName("title_en")
-                .HasMaxLength(PropertyListingInfo.MaxTitleLength);
-
-            listing.Property(value => value.DescriptionAr)
-                .HasColumnName("description_ar")
-                .HasMaxLength(PropertyListingInfo.MaxDescriptionLength);
-
-            listing.Property(value => value.DescriptionEn)
-                .HasColumnName("description_en")
-                .HasMaxLength(PropertyListingInfo.MaxDescriptionLength);
         });
 
         // The place: an area, and optionally a compound inside it. City and country are reached through the area.
@@ -239,21 +196,6 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(property => property.OwnerUserId);
-
-        // Bookkeeping about the copy held by the AI search service; it never moves updated_at.
-        builder.Property(property => property.AiSyncStatus)
-            .HasColumnName("ai_sync_status")
-            .HasConversion<string>()
-            .HasMaxLength(32)
-            .HasDefaultValue(AiSyncStatus.NotSynced)
-            .IsRequired();
-
-        builder.Property(property => property.AiSyncedAt)
-            .HasColumnName("ai_synced_at");
-
-        builder.Property(property => property.AiSyncError)
-            .HasColumnName("ai_sync_error")
-            .HasMaxLength(Property.MaxAiSyncErrorLength);
 
         builder.Property(property => property.CreatedAt)
             .HasColumnName("created_at")

@@ -23,8 +23,7 @@ internal static class ListingSubmissionSnapshotConverter
         ArgumentNullException.ThrowIfNull(value);
         object payload = value switch
         {
-            ListingSubmissionContent c => new { c.Country, c.Region, c.City, c.District, c.Title, c.Description,
-                PropertyType = (int)c.PropertyType, Purpose = (int)c.Purpose, c.Amount, c.Currency, RentPeriod = (int?)c.RentPeriod },
+            ListingSubmissionContent c => ContentPayload(c),
             ListingLegalAuthority a => new { a.PropertyId, Purpose = (int)a.Purpose, DeclaredOwner = OwnerData(a.DeclaredOwner),
                 a.ActingUserId, Representation = (int)a.Representation, a.WorkspaceId, a.ValidFrom, a.ValidUntil },
             ListingReviewContext r => new { r.ReviewerUserId, r.SubmitterUserId, DeclaredOwner = OwnerData(r.DeclaredOwner),
@@ -45,9 +44,7 @@ internal static class ListingSubmissionSnapshotConverter
         var p = root.GetProperty("Payload");
         object value;
         if (typeof(T) == typeof(ListingSubmissionContent))
-            value = new ListingSubmissionContent(Text(p,"Country"),Text(p,"Region"),Text(p,"City"),Text(p,"District"),Text(p,"Title"),Text(p,"Description"),
-                (PropertyType)p.GetProperty("PropertyType").GetInt32(),(ListingPurpose)p.GetProperty("Purpose").GetInt32(),p.GetProperty("Amount").GetDecimal(),Text(p,"Currency"),
-                p.GetProperty("RentPeriod").ValueKind == JsonValueKind.Null ? null : (RentPeriod)p.GetProperty("RentPeriod").GetInt32());
+            value = ReadContent(p);
         else if (typeof(T) == typeof(ListingLegalAuthority))
             value = new ListingLegalAuthority(Id(p,"PropertyId"),(ListingPurpose)p.GetProperty("Purpose").GetInt32(),Owner(p.GetProperty("DeclaredOwner")),
                 Id(p,"ActingUserId"),(ListingRepresentationKind)p.GetProperty("Representation").GetInt32(),OptionalId(p,"WorkspaceId"),
@@ -64,6 +61,70 @@ internal static class ListingSubmissionSnapshotConverter
         return (T)value;
     }
 
+
+    // The plain members are written as always. Pricing options and rental terms are additive: they are written only
+    // when present, so a Sale and a rental stored with one price keep exactly the snapshot they always had.
+    private static object ContentPayload(ListingSubmissionContent c)
+    {
+        if (c.PricingOptions.Count == 0 && c.RentalTerms is null)
+        {
+            return new { c.Country, c.Region, c.City, c.District, c.Title, c.Description,
+                PropertyType = (int)c.PropertyType, Purpose = (int)c.Purpose, c.Amount, c.Currency, RentPeriod = (int?)c.RentPeriod };
+        }
+
+        var terms = c.RentalTerms!;
+
+        return new { c.Country, c.Region, c.City, c.District, c.Title, c.Description,
+            PropertyType = (int)c.PropertyType, Purpose = (int)c.Purpose, c.Amount, c.Currency, RentPeriod = (int?)c.RentPeriod,
+            PricingOptions = c.PricingOptions.Select(o => new { Period = (int)o.Period, o.Amount, o.Currency }).ToArray(),
+            RentalTerms = new
+            {
+                terms.TimeZoneId,
+                CheckInTime = terms.CheckInTime.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+                CheckOutTime = terms.CheckOutTime.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+                terms.MinimumStayDays,
+                Windows = terms.Windows.Select(w => new
+                {
+                    StartDate = w.StartDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                    EndDate = w.EndDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                }).ToArray(),
+            },
+        };
+    }
+
+    private static ListingSubmissionContent ReadContent(JsonElement p)
+    {
+        RentPricingOption[]? options = null;
+        RentalTerms? terms = null;
+
+        if (p.TryGetProperty("PricingOptions", out var optionsElement) && optionsElement.ValueKind == JsonValueKind.Array)
+        {
+            options = optionsElement.EnumerateArray()
+                .Select(o => new RentPricingOption((RentPeriod)o.GetProperty("Period").GetInt32(), o.GetProperty("Amount").GetDecimal(), Text(o, "Currency")))
+                .ToArray();
+        }
+
+        if (p.TryGetProperty("RentalTerms", out var termsElement) && termsElement.ValueKind == JsonValueKind.Object)
+        {
+            terms = new RentalTerms(
+                Text(termsElement, "TimeZoneId"),
+                TimeOnly.ParseExact(Text(termsElement, "CheckInTime"), "HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+                TimeOnly.ParseExact(Text(termsElement, "CheckOutTime"), "HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+                termsElement.GetProperty("Windows").EnumerateArray().Select(w => new RentalWindow(
+                    DateOnly.ParseExact(Text(w, "StartDate"), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                    DateOnly.ParseExact(Text(w, "EndDate"), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))),
+                termsElement.GetProperty("MinimumStayDays").ValueKind == JsonValueKind.Null
+                    ? null
+                    : termsElement.GetProperty("MinimumStayDays").GetInt32());
+        }
+
+        return new ListingSubmissionContent(Text(p, "Country"), Text(p, "Region"), Text(p, "City"), Text(p, "District"),
+            Text(p, "Title"), Text(p, "Description"),
+            (PropertyType)p.GetProperty("PropertyType").GetInt32(), (ListingPurpose)p.GetProperty("Purpose").GetInt32(),
+            p.GetProperty("Amount").GetDecimal(), Text(p, "Currency"),
+            p.GetProperty("RentPeriod").ValueKind == JsonValueKind.Null ? null : (RentPeriod)p.GetProperty("RentPeriod").GetInt32(),
+            options, terms);
+    }
     private static object OwnerData(ListingOwnerIdentity o) => new { Kind = (int)o.Kind, o.LegalPartyReferenceId, o.LinkedUserId };
     private static object EvidenceData(ListingEvidenceReference e) => new { e.EvidenceId, e.VersionId, e.PropertyId, Purpose = (int)e.Purpose, e.Sha256 };
     private static ListingOwnerIdentity Owner(JsonElement p) => new((ListingOwnerKind)p.GetProperty("Kind").GetInt32(),Id(p,"LegalPartyReferenceId"),OptionalId(p,"LinkedUserId"));

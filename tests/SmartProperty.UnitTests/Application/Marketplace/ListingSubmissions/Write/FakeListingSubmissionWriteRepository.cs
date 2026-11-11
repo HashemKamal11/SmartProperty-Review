@@ -59,6 +59,21 @@ internal sealed class FakeListingSubmissionWriteRepository : IListingSubmissionW
         throw new NotSupportedException();
     }
 
+    public Task<ListingSubmission?> GetSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public Task<PropertyListing?> FindListingAsync(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
+    public Task<PropertyListing?> GetListingByIdAsync(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        throw new NotSupportedException();
+    }
+
     public Task AddListingAsync(PropertyListing listing, CancellationToken cancellationToken = default)
     {
         throw new NotSupportedException();

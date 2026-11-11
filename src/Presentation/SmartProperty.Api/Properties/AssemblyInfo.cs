@@ -6,3 +6,7 @@ using System.Runtime.CompilerServices;
 // issue real access tokens through them instead of re-implementing either, so they need friend access. Nothing
 // is made public for testing.
 [assembly: InternalsVisibleTo("SmartProperty.Api.IntegrationTests")]
+
+// The Development command-line tool (tools/SmartProperty.DevTools) must use the application's own password hasher and the
+// Development provisioning services, which are internal. It is not part of the production image: the Dockerfile copies src/ only.
+[assembly: InternalsVisibleTo("SmartProperty.DevTools")]

@@ -102,14 +102,22 @@ public sealed class SubmitterReadActivationTests
     }
 
     [Fact]
-    public async Task OnlyGetIsAcceptedOnBothRoutes()
+    public async Task OnlyTheApprovedVerbsAreAcceptedOnBothRoutes()
     {
         using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository(), mount: false);
         using var client = host.CreateClient();
 
-        foreach (var route in new[] { ListRoute, $"{ListRoute}/{Guid.NewGuid()}" })
+        // The list route reads (GET) and creates (POST); it never replaces, patches or deletes. The item route reads
+        // (GET), replaces (PUT) and discards (DELETE); it never creates or patches.
+        var notRouted = new Dictionary<string, HttpMethod[]>
         {
-            foreach (var method in new[] { HttpMethod.Post, HttpMethod.Put, HttpMethod.Patch, HttpMethod.Delete })
+            [ListRoute] = [HttpMethod.Put, HttpMethod.Patch, HttpMethod.Delete],
+            [$"{ListRoute}/{Guid.NewGuid()}"] = [HttpMethod.Post, HttpMethod.Patch],
+        };
+
+        foreach (var (route, methods) in notRouted)
+        {
+            foreach (var method in methods)
             {
                 using var response = await client.SendAsync(new HttpRequestMessage(method, route));
 
@@ -132,31 +140,11 @@ public sealed class SubmitterReadActivationTests
     // ----- the route inventory
 
     [Fact]
-    public void TheMarketplaceRoutesAreExactlyTheSixReadsAndAllOfThemAreGet()
+    public void TheMarketplaceRoutesAreExactlyTheApprovedInventory()
     {
         using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository(), mount: false);
 
-        var marketplace = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
-            .OfType<RouteEndpoint>()
-            .Where(endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).Contains("marketplace", StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-
-        Assert.Equal(
-            new[]
-            {
-                "api/admin/marketplace/listing-submissions",
-                "api/admin/marketplace/listing-submissions/{submissionId:guid}",
-                "api/marketplace/me/listing-submissions",
-                "api/marketplace/me/listing-submissions/{submissionId:guid}",
-                "api/public/marketplace/listings",
-                "api/public/marketplace/listings/{listingId:guid}",
-            },
-            marketplace.Select(endpoint => endpoint.RoutePattern.RawText!).Order(StringComparer.Ordinal).ToArray());
-        Assert.All(
-            marketplace,
-            endpoint => Assert.Equal(
-                new[] { "GET" },
-                endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.ToArray()));
+        Assert.Equal(MarketplaceRouteInventory.ApprovedOrdered, MarketplaceRouteInventory.Actual(host.Services));
     }
 
     // ----- the container
@@ -182,7 +170,7 @@ public sealed class SubmitterReadActivationTests
     // Every command in the Marketplace application namespace, found by reflection rather than by name, so a write that
     // is added later is covered too. The anchor proves the scan sees the four draft writes that exist today.
     [Fact]
-    public void NoMarketplaceCommandHasARegisteredHandler()
+    public void EveryMarketplaceCommandHasItsHandlerRegisteredAndTheTrustedSeamsFailClosed()
     {
         var commands = typeof(SmartProperty.Application.AssemblyMarker).Assembly.GetTypes()
             .Where(type => type is { IsClass: true, IsAbstract: false }
@@ -192,7 +180,13 @@ public sealed class SubmitterReadActivationTests
             .ToArray();
 
         Assert.Superset(
-            new HashSet<string> { "CreateListingDraftCommand", "UpdateListingDraftCommand", "SubmitListingDraftCommand", "DiscardListingDraftCommand" },
+            new HashSet<string>
+            {
+                "CreateListingDraftCommand", "CreatePropertyListingDraftsCommand", "UpdateListingDraftCommand", "SubmitListingDraftCommand",
+                "DiscardListingDraftCommand", "WithdrawListingCommand", "ApproveListingSubmissionCommand", "RejectListingSubmissionCommand",
+                "CreatePurchaseRequestCommand", "CreateRentalRequestCommand", "WithdrawRequestCommand", "RejectRequestCommand",
+                "AcceptRequestCommand", "ConfirmCommitmentStepCommand", "SetSigningWindowCommand",
+            },
             commands.Select(command => command.Type.Name).ToHashSet());
 
         using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository(), mount: false);
@@ -200,11 +194,20 @@ public sealed class SubmitterReadActivationTests
 
         foreach (var (type, handler) in commands)
         {
-            Assert.True(scope.ServiceProvider.GetService(handler!) is null, $"{type.Name} must have no registered handler.");
+            Assert.True(scope.ServiceProvider.GetService(handler!) is not null, $"{type.Name} must have a registered handler.");
         }
 
-        // The review decision stack is excluded by name as well, so its absence does not depend on its namespace.
-        AssertNotResolvable(scope.ServiceProvider, "SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer");
+        // The two trusted sources have no production implementation that can answer: evidence verification and reviewer
+        // independence are documented blockers, and the registered ones refuse. A fake that answers is for tests only.
+        Assert.Equal(
+            "UnavailableEvidenceAssessmentProvider",
+            scope.ServiceProvider.GetRequiredService<SmartProperty.Application.Abstractions.Marketplace.IEvidenceAssessmentProvider>().GetType().Name);
+        Assert.Equal(
+            "UnavailableReviewerIndependenceProvider",
+            scope.ServiceProvider.GetRequiredService<SmartProperty.Application.Abstractions.Marketplace.IReviewerIndependenceProvider>().GetType().Name);
+        Assert.Equal(
+            "PlatformReviewDecisionAuthorizer",
+            scope.ServiceProvider.GetRequiredService<SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer>().GetType().Name);
     }
 
     // ----- helpers

@@ -1,0 +1,32 @@
+# DEVELOPMENT DEMO OVERRIDE. Never use this against Staging or Production.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev-demo.yml up -d --build --no-deps api
+#
+# --build rebuilds smartproperty:local from the current source first (the api service declares the build in docker-compose.yml),
+# so the container never runs a stale image.
+#
+# What it changes on the `api` service only (the database service and its data are not touched, and no migration is run):
+#
+#   ASPNETCORE_ENVIRONMENT=Development   required for demo mode; the application refuses to start if DemoMode is enabled in
+#                                        any other environment.
+#   DemoMode__Enabled=true               turns on the simulated evidence assessment (it recognises only fixtures registered
+#                                        through POST /api/development/evidence) and the relationship-based reviewer
+#                                        independence check with simulated identity verification. Nothing else is simulated:
+#                                        ownership, grants, state transitions, overlap protection and auditing are unchanged.
+#   AiSearch__Enabled=false              the AI search service is not called, so demo listings are never sent to it.
+#   Smtp__Host=""                        no real email is sent. Verification codes are written to the container log instead
+#                                        (Development only): docker compose logs api | findstr /i "verification code"
+#
+# Phone verification is NOT changed here: ContactVerification__AutoVerifyPhone still comes from .env (currently true), which
+# marks a phone as verified at registration without any SMS. No SMS is sent or tested.
+#
+# To go back to the normal Staging container (rebuilds the same image, no override):  docker compose up -d --build --no-deps api
+services:
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      DemoMode__Enabled: "true"
+      # A sub-folder of the existing image volume, so it is writable by the non-root user and survives restarts.
+      DemoMode__EvidenceRootPath: /data/images/demo-evidence
+      AiSearch__Enabled: "false"
+      Smtp__Host: ""

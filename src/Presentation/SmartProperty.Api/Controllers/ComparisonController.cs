@@ -140,11 +140,11 @@ public sealed class ComparisonController : ControllerBase
                     item.AddedAt,
                     item.MatchPercentage,
                     item.MatchDescription,
-                    PropertiesController.ToResponse(item.Property)))
+                    PropertiesController.ToResponse(item.Property),
+                    item.Listings?.Select(SmartProperty.Api.Contracts.Marketplace.Public.PublicListingMapper.ToSummaryResponse).ToArray()))
                 .ToArray(),
             comparison.MaxItems,
             comparison.MinItemsToCompare,
-            comparison.CanCompare,
-            comparison.TransactionType?.ToString());
+            comparison.CanCompare);
     }
 }

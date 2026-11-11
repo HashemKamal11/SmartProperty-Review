@@ -19,6 +19,8 @@ public sealed class PublicListingContractPrivacyTests
     private static readonly Type[] PublicTypes =
     [
         typeof(PublicMoneyResponse),
+        typeof(PublicDateRangeResponse),
+        typeof(PublicRentalTermsResponse),
         typeof(PublicLocationResponse),
         typeof(PublicListingSummaryResponse),
         typeof(PublicListingDetailResponse),
@@ -138,7 +140,7 @@ public sealed class PublicListingContractPrivacyTests
     }
 
     [Fact]
-    public void TheDetailIsTheSummaryPlusTheDescription()
+    public void TheDetailIsTheSummaryPlusTheDescriptionTheTermsAndTheBlockedDates()
     {
         var summary = PropertiesOf(typeof(PublicListingSummaryResponse))
             .Select(property => (property.Name, property.PropertyType))
@@ -148,7 +150,9 @@ public sealed class PublicListingContractPrivacyTests
             .ToHashSet();
 
         Assert.True(summary.IsSubsetOf(detail));
-        Assert.Equal(new[] { "Description" }, detail.Except(summary).Select(member => member.Name).ToArray());
+        Assert.Equal(
+            new[] { "BlockedRanges", "Description", "RentalTerms" },
+            detail.Except(summary).Select(member => member.Name).Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
@@ -328,7 +332,13 @@ public sealed class PublicListingContractPrivacyTests
     {
         var type = Nullable.GetUnderlyingType(memberType) ?? memberType;
 
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
+        {
+            return PublicTypes.Contains(type.GetGenericArguments()[0]);
+        }
+
         return type == typeof(string)
+            || type == typeof(int)
             || type == typeof(Guid)
             || type == typeof(decimal)
             || type == typeof(DateTimeOffset)

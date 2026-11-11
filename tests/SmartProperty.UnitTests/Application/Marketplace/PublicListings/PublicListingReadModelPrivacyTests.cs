@@ -17,6 +17,8 @@ public sealed class PublicListingReadModelPrivacyTests
     private static readonly Type[] ReadModels =
     [
         typeof(PublicListingPrice),
+        typeof(PublicDateRange),
+        typeof(PublicRentalTerms),
         typeof(PublicListingLocation),
         typeof(PublicListingSummary),
         typeof(PublicListingDetail),
@@ -118,13 +120,15 @@ public sealed class PublicListingReadModelPrivacyTests
     }
 
     [Fact]
-    public void TheDetailIsTheSummaryPlusTheDescription()
+    public void TheDetailIsTheSummaryPlusTheDescriptionTheTermsAndTheBlockedDates()
     {
         var summary = PropertiesOf(typeof(PublicListingSummary)).Select(property => (property.Name, property.PropertyType)).ToHashSet();
         var detail = PropertiesOf(typeof(PublicListingDetail)).Select(property => (property.Name, property.PropertyType)).ToHashSet();
 
         Assert.True(summary.IsSubsetOf(detail));
-        Assert.Equal(new[] { "Description" }, detail.Except(summary).Select(member => member.Name).ToArray());
+        Assert.Equal(
+            new[] { "BlockedRanges", "Description", "RentalTerms" },
+            detail.Except(summary).Select(member => member.Name).Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
@@ -188,9 +192,9 @@ public sealed class PublicListingReadModelPrivacyTests
     }
 
     [Fact]
-    public void TheRentPeriodVocabularyIsExactlyMonthlyAndYearly()
+    public void TheRentPeriodVocabularyIsExactlyMonthlyYearlyDailyAndWeekly()
     {
-        Assert.Equal(new[] { "Monthly", "Yearly" }, Enum.GetNames<RentPeriod>());
+        Assert.Equal(new[] { "Monthly", "Yearly", "Daily", "Weekly" }, Enum.GetNames<RentPeriod>());
     }
 
     [Fact]
@@ -216,7 +220,11 @@ public sealed class PublicListingReadModelPrivacyTests
 
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
         {
-            return type.GetGenericArguments()[0] == typeof(PublicListingSummary);
+            var element = type.GetGenericArguments()[0];
+
+            return element == typeof(PublicListingSummary)
+                || element == typeof(PublicListingPrice)
+                || element == typeof(PublicDateRange);
         }
 
         return type == typeof(string)
@@ -224,6 +232,9 @@ public sealed class PublicListingReadModelPrivacyTests
             || type == typeof(decimal)
             || type == typeof(long)
             || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
+            || type == typeof(TimeOnly)
+            || type == typeof(int)
             || type == typeof(ListingPurpose)
             || type == typeof(PropertyType)
             || type == typeof(RentPeriod)

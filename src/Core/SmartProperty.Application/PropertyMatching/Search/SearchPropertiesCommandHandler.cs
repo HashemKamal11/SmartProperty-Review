@@ -14,7 +14,8 @@ public sealed class SearchPropertiesCommandHandler(
     IPropertyRepository propertyRepository,
     IPropertyMatchRepository propertyMatchRepository,
     IDateTimeProvider dateTimeProvider,
-    IUnitOfWork unitOfWork)
+    IUnitOfWork unitOfWork,
+    IPropertyListingsLookup listings)
     : ICommandHandler<SearchPropertiesCommand, PropertySearchResult>
 {
     /// <summary>A search shows the three best properties unless the caller asks for more.</summary>
@@ -59,17 +60,20 @@ public sealed class SearchPropertiesCommandHandler(
 
         var outcome = search.Value;
 
-        // The service may know many listings that are not ours. Its own reference (property_id) is never one of our ids;
-        // the id this platform sent when it added a listing comes back as external_id. Only a result whose external id
-        // is one of our property ids, and which still exists, is a property of this platform.
+        // The service holds advertisements. The id this platform sent when it added one, the external id, is the LISTING
+        // id; the service's own reference is never one of our ids. Only a result whose external id is a listing that is
+        // visible right now is ours, and it maps to the property it advertises. A stale record (a withdrawn, closed or
+        // unapproved listing, or one indexed before listings existed, whose external id was a property id) maps to
+        // nothing: it is shown as a result of the service, never matched to a property and never stored.
         var candidates = outcome.Items
             .Select(item => (Item: item, Id: Guid.TryParse(item.ExternalId, out var id) && id != Guid.Empty ? id : (Guid?)null))
             .ToList();
 
         var candidateIds = candidates.Where(c => c.Id is not null).Select(c => c.Id!.Value).Distinct().ToList();
-        var existing = candidateIds.Count == 0
-            ? new HashSet<Guid>()
-            : (await propertyRepository.GetExistingIdsAsync(candidateIds, cancellationToken)).ToHashSet();
+        var ours = candidateIds.Count == 0
+            ? new Dictionary<Guid, PropertyListingReference>()
+            : (await listings.GetByListingIdsAsync(candidateIds, cancellationToken)).ToDictionary(pair => pair.Key, pair => pair.Value);
+        var existing = ours.Values.Select(reference => reference.PropertyId).ToHashSet();
 
         // The property itself, in the shape GET /api/properties/{id} returns, for each result that is one of ours.
         var ownDetails = existing.Count == 0
@@ -87,13 +91,14 @@ public sealed class SearchPropertiesCommandHandler(
         {
             var percentage = ToPercentage(item.Score);
             var description = DescriptionOf(item);
-            var propertyId = id is { } candidate && existing.Contains(candidate) ? candidate : (Guid?)null;
+            var reference = id is { } candidate && ours.TryGetValue(candidate, out var found0) ? found0 : null;
+            var propertyId = reference?.PropertyId;
 
-            if (propertyId is { } ours && userId is { } owner)
+            if (propertyId is { } matched && userId is { } owner)
             {
                 await propertyMatchRepository.AddAsync(
                     new PropertyMatch(
-                        Guid.NewGuid(), owner, ours, percentage, description, query, createdAt),
+                        Guid.NewGuid(), owner, matched, percentage, description, query, createdAt),
                     cancellationToken);
             }
 
@@ -104,7 +109,8 @@ public sealed class SearchPropertiesCommandHandler(
                 percentage,
                 description,
                 item,
-                propertyId is { } found && ownDetails.TryGetValue(found, out var details) ? details : null));
+                propertyId is { } found && ownDetails.TryGetValue(found, out var details) ? details : null,
+                reference?.Listing));
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

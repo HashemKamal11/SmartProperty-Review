@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SmartProperty.DevTools</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The API project is a web project; its framework must be referenced here for the tool to run. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Same EF relational assembly as Persistence and the Migrator; Npgsql otherwise floors at 10.0.4. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Presentation\SmartProperty.Api\SmartProperty.Api.csproj" />
+  </ItemGroup>
+</Project>

@@ -713,23 +713,20 @@ public sealed class AdminListingSubmissionReviewEndpointTests
     }
 
     [Fact]
-    public void TheMountedHostExposesExactlyTheTwoGetRoutesUnderTheAdminMarketplacePath()
+    public void TheMountedHostExposesExactlyTheApprovedRoutesUnderTheAdminMarketplacePath()
     {
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository());
 
-        var endpoints = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
-            .OfType<RouteEndpoint>()
-            .Where(endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).StartsWith("api/admin/marketplace", StringComparison.OrdinalIgnoreCase))
+        var actual = MarketplaceRouteInventory.Actual(host.Services)
+            .Where(line => line.Contains(" api/admin/marketplace", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var approved = MarketplaceRouteInventory.ApprovedOrdered
+            .Where(line => line.Contains(" api/admin/marketplace", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        Assert.Equal(
-            new[] { "api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}" },
-            endpoints.Select(endpoint => endpoint.RoutePattern.RawText!).Order(StringComparer.Ordinal).ToArray());
-        Assert.All(
-            endpoints,
-            endpoint => Assert.Equal(
-                new[] { "GET" },
-                endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.ToArray()));
+        // The two review reads, the two decisions and the signing-window setting.
+        Assert.Equal(6, approved.Length);
+        Assert.Equal(approved, actual);
     }
 
     [Fact]
@@ -753,20 +750,15 @@ public sealed class AdminListingSubmissionReviewEndpointTests
     }
 
     [Fact]
-    public void TheProductionCompositionExposesExactlyTheTwoReadRoutesWithTheRealHandlersAndRepositoryAndNoDecisionService()
+    public void TheProductionCompositionExposesTheApprovedAdminRoutesWithTheRealHandlersAndRepository()
     {
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository(), mount: false);
 
-        var routes = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
-            .OfType<RouteEndpoint>()
-            .Select(endpoint => endpoint.RoutePattern.RawText ?? string.Empty)
-            .ToArray();
-
-        // The inventory is real: existing routes are visible to it, and the review reads are exactly the two GETs.
-        Assert.Contains(routes, route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(
-            new[] { "api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}" },
-            routes.Where(route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
+        // The inventory is real: existing routes are visible to it, and the whole marketplace surface is the approved one.
+        Assert.Contains(
+            host.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().Select(endpoint => endpoint.RoutePattern.RawText ?? string.Empty),
+            route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(MarketplaceRouteInventory.ApprovedOrdered, MarketplaceRouteInventory.Actual(host.Services));
 
         using var scope = host.Services.CreateScope();
         var provider = scope.ServiceProvider;
@@ -774,44 +766,19 @@ public sealed class AdminListingSubmissionReviewEndpointTests
         Assert.IsType<GetReviewSubmissionQueryHandler>(provider.GetRequiredService<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>>());
         Assert.IsType<PlatformReviewReadAuthorizer>(provider.GetRequiredService<IReviewReadAuthorizer>());
 
-        // Nothing that decides, writes, verifies or publishes is registered.
-        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer");
-        AssertNoCommandHandler(provider, "ApproveListingSubmissionCommand", "ApproveListingSubmissionResult");
-        AssertNoCommandHandler(provider, "RejectListingSubmissionCommand", "RejectListingSubmissionResult");
+        // Deciding is a separate authority from reading, with its own authorizer, and the decision handlers exist.
+        Assert.IsType<PlatformReviewDecisionAuthorizer>(provider.GetRequiredService<IReviewDecisionAuthorizer>());
+        Assert.NotNull(provider.GetRequiredService<ICommandHandler<
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ApproveListingSubmissionCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>>());
+        Assert.NotNull(provider.GetRequiredService<ICommandHandler<
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.RejectListingSubmissionCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>>());
 
         // The repository is the Persistence one, scoped, not the stub.
         var repository = provider.GetRequiredService<IReviewerListingSubmissionReadRepository>();
         Assert.Same(typeof(SmartProperty.Persistence.AssemblyMarker).Assembly, repository.GetType().Assembly);
         Assert.Equal("ReviewerListingSubmissionReadRepository", repository.GetType().Name);
-    }
-
-    // The decision stack is excluded from this build, so its types are named, not referenced. A named type that exists
-    // must not be resolvable; one that does not exist cannot be registered. The anchor proves the lookup searches the
-    // assembly that would define them, so an absence is real and not a lookup mistake.
-    private const string DecisionTypes = "SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decision.";
-
-    private static Type? ApplicationType(string fullName)
-    {
-        var assembly = typeof(IReviewReadAuthorizer).Assembly;
-        Assert.NotNull(assembly.GetType("SmartProperty.Application.Abstractions.Authorization.IReviewReadAuthorizer", throwOnError: false));
-        return assembly.GetType(fullName, throwOnError: false);
-    }
-
-    private static void AssertNotResolvable(IServiceProvider provider, string fullName)
-    {
-        if (ApplicationType(fullName) is { } type)
-        {
-            Assert.Null(provider.GetService(type));
-            Assert.Empty(provider.GetServices(type));
-        }
-    }
-
-    private static void AssertNoCommandHandler(IServiceProvider provider, string command, string result)
-    {
-        if (ApplicationType(DecisionTypes + command) is { } commandType && ApplicationType(DecisionTypes + result) is { } resultType)
-        {
-            Assert.Null(provider.GetService(typeof(ICommandHandler<,>).MakeGenericType(commandType, resultType)));
-        }
     }
 
     // ----- helpers

@@ -81,6 +81,27 @@ public sealed class PropertyListing
         UpdatedAt = withdrawnAt;
     }
 
+    /// <summary>
+    /// Takes a published advertisement off the marketplace because a request for the property was accepted. It is
+    /// the same state as a withdrawal, so the owner advertises again only by an explicit new submission that is
+    /// reviewed afresh. A listing that is not published is left exactly as it is, and a closure by a legacy
+    /// reservation is never touched.
+    /// </summary>
+    internal void CloseForAcceptance(DateTimeOffset closedAt)
+    {
+        if (PublicationStatus != ListingPublicationStatus.Published)
+        {
+            return;
+        }
+
+        ValidateTransitionTime(closedAt, nameof(closedAt));
+
+        PublicationStatus = ListingPublicationStatus.Withdrawn;
+        AvailabilityStatus = ListingAvailabilityStatus.Closed;
+        WithdrawnAt = closedAt;
+        UpdatedAt = closedAt;
+    }
+
     internal bool CanAcceptRequests =>
         PublicationStatus == ListingPublicationStatus.Published
         && AvailabilityStatus == ListingAvailabilityStatus.Open;

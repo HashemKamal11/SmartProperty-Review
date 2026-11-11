@@ -45,8 +45,9 @@ public sealed class AiSearchEndpointTests : IDisposable
     public async Task SearchWithoutSigningInIsAnsweredButStoresNothing()
     {
         var ours = await SeedPropertyAsync();
+        var listingOfOurs = await PublishedListingSeed.PublishAsync(_fixture, ours);
         _factory.AiGateway.SearchOutcome = new AiSearchOutcome(
-            "flat", "a flat", 1, [Item(ours.ToString(), "PF-OURS-1", 0.8, "وصف")]);
+            "flat", "a flat", 1, [Item(listingOfOurs.ToString(), "PF-OURS-1", 0.8, "وصف")]);
         await using var before = _fixture.CreateContext();
         var countBefore = await before.PropertyMatches.CountAsync();
         using var client = _factory.CreateClient();
@@ -65,11 +66,12 @@ public sealed class AiSearchEndpointTests : IDisposable
     public async Task EachOfOurResultsCarriesTheSamePropertyObjectGetByIdReturnsAndOthersCarryNone()
     {
         var ours = await SeedPropertyAsync();
+        var listingOfOurs = await PublishedListingSeed.PublishAsync(_fixture, ours);
         _factory.AiGateway.SearchOutcome = new AiSearchOutcome(
             "flat",
             "a flat",
             2,
-            [Item(ours.ToString(), "PF-OURS-1", 0.9, "وصف"), Item(null, "EGY-SALE-APT-007694", 0.4, "someone else's")]);
+            [Item(listingOfOurs.ToString(), "PF-OURS-1", 0.9, "وصف"), Item(null, "EGY-SALE-APT-007694", 0.4, "someone else's")]);
         using var client = _factory.CreateClient();
 
         using var search = await client.PostAsJsonAsync(SearchRoute, new PropertySearchRequest("flat"));
@@ -95,11 +97,12 @@ public sealed class AiSearchEndpointTests : IDisposable
     {
         var userId = await SeedUserAsync();
         var ours = await SeedPropertyAsync();
+        var listingOfOurs = await PublishedListingSeed.PublishAsync(_fixture, ours);
         _factory.AiGateway.SearchOutcome = new AiSearchOutcome(
             "flat",
             "a flat",
             52600,
-            [Item(ours.ToString(), "PF-OURS-1", 0.8765, "وصف عربي"), Item(null, "EGY-SALE-APT-007694", 0.4, "someone else's")]);
+            [Item(listingOfOurs.ToString(), "PF-OURS-1", 0.8765, "وصف عربي"), Item(null, "EGY-SALE-APT-007694", 0.4, "someone else's")]);
         using var client = _factory.CreateAuthenticatedClient(userId);
 
         using var response = await client.PostAsJsonAsync(SearchRoute, new PropertySearchRequest("  flat  "));
@@ -113,7 +116,7 @@ public sealed class AiSearchEndpointTests : IDisposable
 
         var first = body.Items[0];
         Assert.Equal(ours, first.PropertyId);
-        Assert.Equal(ours.ToString(), first.ExternalId);
+        Assert.Equal(listingOfOurs.ToString(), first.ExternalId);
         Assert.Equal("PF-OURS-1", first.AiPropertyId);
         Assert.Equal(87.65m, first.MatchPercentage);
         Assert.Equal("وصف عربي", first.Description);

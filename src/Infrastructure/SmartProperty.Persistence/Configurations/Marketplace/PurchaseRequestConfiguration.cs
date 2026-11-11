@@ -17,6 +17,9 @@ internal sealed class PurchaseRequestConfiguration : IEntityTypeConfiguration<Pu
                 "id <> '00000000-0000-0000-0000-000000000000'::uuid AND listing_id <> '00000000-0000-0000-0000-000000000000'::uuid AND property_id <> '00000000-0000-0000-0000-000000000000'::uuid AND buyer_user_id <> '00000000-0000-0000-0000-000000000000'::uuid");
             table.HasCheckConstraint("ck_marketplace_purchase_requests_state",
                 "listing_purpose = 'Sale' AND status IN ('Submitted', 'Accepted', 'Rejected', 'WithdrawnByRequester', 'ClosedListingUnavailable')");
+            table.HasCheckConstraint("ck_marketplace_purchase_requests_terms",
+                "(submission_id IS NULL AND offered_amount IS NULL AND currency IS NULL) "
+                + "OR (submission_id IS NOT NULL AND offered_amount > 0 AND currency ~ '^[A-Z]{3}$')");
             table.HasCheckConstraint("ck_marketplace_purchase_requests_history",
                 "updated_at >= submitted_at AND ((status = 'Submitted' AND decided_at IS NULL) OR (status <> 'Submitted' AND decided_at IS NOT NULL AND decided_at >= submitted_at AND decided_at = updated_at))");
         });
@@ -32,6 +35,16 @@ internal sealed class PurchaseRequestConfiguration : IEntityTypeConfiguration<Pu
         builder.Property(x => x.SubmittedAt).HasColumnName("submitted_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");
         builder.Property(x => x.DecidedAt).HasColumnName("decided_at");
+        builder.Property(x => x.SubmissionId).HasColumnName("submission_id");
+        builder.Property(x => x.OfferedAmount).HasColumnName("offered_amount").HasPrecision(18, 2);
+        builder.Property(x => x.Currency).HasColumnName("currency").HasMaxLength(3).IsFixedLength();
+        builder.Property(x => x.Message).HasColumnName("message").HasMaxLength(PurchaseRequest.MaxMessageLength);
+        builder.HasOne<ListingSubmission>().WithMany().HasForeignKey(x => x.SubmissionId)
+            .OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_marketplace_purchase_requests_submission");
+        // One open request per customer and listing; deciding or withdrawing it makes room for the next.
+        builder.HasIndex(x => new { x.ListingId, x.BuyerUserId }).IsUnique()
+            .HasFilter("status = 'Submitted'").HasDatabaseName("ux_marketplace_purchase_requests_open");
+        builder.HasIndex(x => new { x.BuyerUserId, x.SubmittedAt }).HasDatabaseName("ix_marketplace_purchase_requests_buyer");
         builder.HasOne<PropertyListing>().WithMany()
             .HasForeignKey(nameof(PurchaseRequest.ListingId), nameof(PurchaseRequest.PropertyId), PurposeProperty)
             .HasPrincipalKey(nameof(PropertyListing.Id), nameof(PropertyListing.PropertyId), nameof(PropertyListing.Purpose))

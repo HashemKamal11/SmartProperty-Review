@@ -33,6 +33,13 @@ internal static class WriteErrors
         "The submission prerequisites could not be verified.",
         ErrorType.Conflict);
 
+    // The trusted evidence source cannot answer, so the request can be neither accepted nor judged. Saying so is not a
+    // leak: it describes the platform's state, not the submitter's evidence, and the same request can succeed later.
+    public static readonly Error EvidenceVerificationUnavailable = new(
+        "listing_submissions.evidence_verification_unavailable",
+        "Evidence verification is not available right now, so this listing cannot be saved with evidence, submitted or published. Try again later.",
+        ErrorType.ServiceUnavailable);
+
     // Archived, reserved, or without the location a listing needs. One error for all of them, so it says nothing
     // about which; it is only ever given to a caller who has already been found eligible for the property.
     public static readonly Error PropertyUnavailable = new(
@@ -43,5 +50,17 @@ internal static class WriteErrors
     public static readonly Error PropertyChanged = new(
         "listing_submissions.property_changed",
         "The property changed since this draft was written.",
+        ErrorType.Conflict);
+
+    // Only ever given to a caller already found eligible for the property: the rental cannot be dated because the
+    // property's country has no recorded time zone. A guess could put every check-in an hour out.
+    public static readonly Error ListingNotPublished = new(
+        "listing_submissions.listing_not_published",
+        "The listing is not published and open.",
+        ErrorType.Conflict);
+
+    public static readonly Error RentalTimeZoneUnavailable = new(
+        "listing_submissions.rental_time_zone_unavailable",
+        "This property's location has no time zone on record, so a rental cannot be advertised for it yet.",
         ErrorType.Conflict);
 }

@@ -12,11 +12,10 @@ public sealed class Property
     {
         // The address is populated by the persistence layer after construction.
         Address = null!;
-        Listing = PropertyListingInfo.Empty;
+        Physical = PropertyPhysicalInfo.Empty;
     }
 
     public const int MaxRoomCount = 100;
-    public const int MaxAiSyncErrorLength = 1000;
     public static readonly DateOnly EarliestBuiltDate = new(1800, 1, 1);
 
     public Property(
@@ -30,7 +29,7 @@ public sealed class Property
         FinishingStatus? finishingStatus = null,
         IEnumerable<Amenity>? amenities = null,
         IEnumerable<PropertyView>? views = null,
-        PropertyListingInfo? listing = null,
+        PropertyPhysicalInfo? physical = null,
         Area? area = null,
         Compound? compound = null,
         Guid? ownerUserId = null)
@@ -64,8 +63,7 @@ public sealed class Property
         FinishingStatus = finishingStatus;
         _amenities.AddRange(DistinctById(amenities, amenity => amenity.Id));
         _views.AddRange(DistinctById(views, view => view.Id));
-        Listing = listing ?? PropertyListingInfo.Empty;
-        AiSyncStatus = AiSyncStatus.NotSynced;
+        Physical = physical ?? PropertyPhysicalInfo.Empty;
         SetPlace(area, compound);
         Status = PropertyStatus.Active;
         CreatedAt = createdAt;
@@ -101,8 +99,11 @@ public sealed class Property
     /// </summary>
     public IReadOnlyCollection<PropertyImage> Images => _images;
 
-    /// <summary>The market-facing facts: price, area, transaction type, presentation, and place ids.</summary>
-    public PropertyListingInfo Listing { get; private set; }
+    /// <summary>
+    /// The physical facts that have no field of their own: area, floor, and whether it is furnished. Commercial and
+    /// advertisement data lives in the Marketplace listing, never here.
+    /// </summary>
+    public PropertyPhysicalInfo Physical { get; private set; }
 
     /// <summary>The area the property is in, or null while its place is not chosen. City and country come from it.</summary>
     public Guid? AreaId { get; private set; }
@@ -113,14 +114,6 @@ public sealed class Property
     public Guid? CompoundId { get; private set; }
 
     public Compound? Compound { get; private set; }
-
-    /// <summary>Whether the AI search service holds this property. Bookkeeping: never changes <see cref="UpdatedAt"/>.</summary>
-    public AiSyncStatus AiSyncStatus { get; private set; }
-
-    public DateTimeOffset? AiSyncedAt { get; private set; }
-
-    /// <summary>Why the property is not synced (missing data, or the failure of the last attempt), or null.</summary>
-    public string? AiSyncError { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -162,7 +155,7 @@ public sealed class Property
         FinishingStatus? finishingStatus = null,
         IEnumerable<Amenity>? amenities = null,
         IEnumerable<PropertyView>? views = null,
-        PropertyListingInfo? listing = null,
+        PropertyPhysicalInfo? physical = null,
         Area? area = null,
         Compound? compound = null)
     {
@@ -190,7 +183,7 @@ public sealed class Property
             && FinishingStatus == finishingStatus
             && HasSameIds(_amenities, amenities, amenity => amenity.Id)
             && HasSameIds(_views, views, view => view.Id)
-            && Listing == (listing ?? PropertyListingInfo.Empty)
+            && Physical == (physical ?? PropertyPhysicalInfo.Empty)
             && AreaId == area?.Id
             && CompoundId == compound?.Id)
         {
@@ -207,64 +200,11 @@ public sealed class Property
         FinishingStatus = finishingStatus;
         ReplaceItems(_amenities, amenities, amenity => amenity.Id);
         ReplaceItems(_views, views, view => view.Id);
-        Listing = listing ?? PropertyListingInfo.Empty;
+        Physical = physical ?? PropertyPhysicalInfo.Empty;
         SetPlace(area, compound);
         UpdatedAt = updatedAt;
 
         return true;
-    }
-
-    /// <summary>
-    /// The facts the AI search service requires that this property does not have yet, by their API names. Empty
-    /// when the property can be sent.
-    /// </summary>
-    public IReadOnlyList<string> MissingForAiSync()
-    {
-        var missing = new List<string>();
-
-        if (Listing.TransactionType is null) { missing.Add("transactionType"); }
-        if (Listing.Price is null) { missing.Add("price"); }
-        if (Listing.AreaSqm is null) { missing.Add("areaSqm"); }
-        if (AreaId is null) { missing.Add("areaId"); }
-        if (Bedrooms is null) { missing.Add("bedrooms"); }
-        if (Bathrooms is null) { missing.Add("bathrooms"); }
-
-        return missing;
-    }
-
-    /// <summary>Records that the AI service now holds the property as last saved.</summary>
-    public void MarkAiSynced(DateTimeOffset at)
-    {
-        AiSyncStatus = AiSyncStatus.Synced;
-        AiSyncedAt = at;
-        AiSyncError = null;
-    }
-
-    /// <summary>Records that the AI service does not hold the property, with the reason when there is one.</summary>
-    public void MarkAiNotSynced(string? reason = null)
-    {
-        AiSyncStatus = AiSyncStatus.NotSynced;
-        AiSyncedAt = null;
-        AiSyncError = TrimError(reason);
-    }
-
-    /// <summary>Records that the last attempt to send the property failed.</summary>
-    public void MarkAiSyncFailed(string reason)
-    {
-        AiSyncStatus = AiSyncStatus.Failed;
-        AiSyncError = TrimError(reason);
-    }
-
-    private static string? TrimError(string? reason)
-    {
-        if (string.IsNullOrWhiteSpace(reason))
-        {
-            return null;
-        }
-
-        var trimmed = reason.Trim();
-
-        return trimmed.Length <= MaxAiSyncErrorLength ? trimmed : trimmed[..MaxAiSyncErrorLength];
     }
 
     private static void ValidatePlace(Area? area, Compound? compound)

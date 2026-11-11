@@ -14,14 +14,13 @@ public sealed record CreatePropertyRequest(
     string? FinishingStatus = null,
     IReadOnlyList<string>? AmenityCodes = null,
     IReadOnlyList<string>? ViewCodes = null,
-    string? TransactionType = null,
-    decimal? Price = null,
     decimal? AreaSqm = null,
     int? Floor = null,
     bool? Furnished = null,
-    string? ListingStatus = null,
-    string? TitleAr = null,
-    string? TitleEn = null,
-    string? DescriptionAr = null,
-    string? DescriptionEn = null,
-    Guid? CompoundId = null);
+    string? TimeZoneId = null,
+    Guid? CompoundId = null)
+{
+    /// <summary>Members the model did not bind. Only used to refuse the commercial fields that moved to listings.</summary>
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? UnmatchedMembers { get; init; }
+}

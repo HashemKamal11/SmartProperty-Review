@@ -56,6 +56,18 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
         await using (var context = CreateContext(templateConnectionString))
         {
             await context.Database.EnsureCreatedAsync();
+
+            // EnsureCreated builds only what the EF model can express. The commitment rules that PostgreSQL itself
+            // enforces (no overlapping rentals, a single active sale) are exclusion constraints that only the
+            // migration carries, so the template gets exactly the SQL that migration runs, read from the migration
+            // itself so the two cannot drift apart. Nothing else the migration does is replayed.
+            foreach (var operation in new SmartProperty.Persistence.Migrations.AddRequestDetailsAndCommitments()
+                .UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>()
+                .Where(sql => sql.Sql.Contains("btree_gist", StringComparison.Ordinal)
+                    || sql.Sql.Contains("EXCLUDE USING", StringComparison.Ordinal)))
+            {
+                await context.Database.ExecuteSqlRawAsync(operation.Sql);
+            }
         }
 
         // PostgreSQL refuses to use a template that any session is still connected to, and a pooled connection

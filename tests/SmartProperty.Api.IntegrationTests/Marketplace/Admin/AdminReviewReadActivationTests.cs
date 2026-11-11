@@ -71,19 +71,16 @@ public sealed class AdminReviewReadActivationTests
     [Theory]
     [InlineData("approve")]
     [InlineData("reject")]
-    public async Task ApproveAndRejectStayUnroutableEvenForACallerHoldingBothPermissions(string action)
+    public async Task TheReadPermissionAloneIsNotEnoughToDecide(string action)
     {
         using var host = ProductionHost();
         host.Permissions.AllowedPermissionCodes.Add(PermissionCodes.MarketplaceSubmissionsReviewRead);
-        host.Permissions.AllowedPermissionCodes.Add(PermissionCodes.MarketplaceSubmissionsReviewDecide);
         using var client = host.CreateClientFor(Reviewer);
         var route = $"{Route}/{Guid.NewGuid()}/{action}";
 
-        using var post = await client.PostAsync(route, new StringContent("""{"expectedVersion":1,"reason":"x"}""", Encoding.UTF8, new MediaTypeHeaderValue("application/json")));
-        using var get = await client.GetAsync(route);
+        using var post = await client.PostAsync(route, new StringContent("""{"reason":"x"}""", Encoding.UTF8, new MediaTypeHeaderValue("application/json")));
 
-        Assert.Equal(HttpStatusCode.NotFound, post.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, get.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, post.StatusCode);
     }
 
     [Theory]

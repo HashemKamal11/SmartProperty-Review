@@ -231,7 +231,7 @@ public sealed class UpdateListingDraftCommandHandlerTests
         var unavailableResult = await Handler(unavailable).Handle(new UpdateListingDraftCommand(unavailableDraft.Id, 1, WriteHandlerWorld.Input(ids)));
         var missingResult = await Handler(missing).Handle(new UpdateListingDraftCommand(missingDraft.Id, 1, WriteHandlerWorld.Input(ids)));
 
-        Assert.Same(WriteErrors.PrerequisitesUnverified, unavailableResult.Error);
+        Assert.Same(WriteErrors.EvidenceVerificationUnavailable, unavailableResult.Error);
         Assert.Equal(ErrorType.Validation, missingResult.Error!.Type);
         Assert.DoesNotContain("LockProperty", unavailable.Repository.Calls);
         Assert.DoesNotContain("LockProperty", missing.Repository.Calls);

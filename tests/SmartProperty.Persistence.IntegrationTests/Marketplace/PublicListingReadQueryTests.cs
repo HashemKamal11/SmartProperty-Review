@@ -46,7 +46,7 @@ public sealed class PublicListingReadQueryTests
         var criteria = Criteria() with { Purpose = ListingPurpose.Rent, Currency = "EGP", RentPeriod = RentPeriod.Monthly,
             CountryCode = "EG", Region = " Region ", City = "City", District = "District", MinPrice = 2m, MaxPrice = 100m, Sort = sort };
         var filtered = (IQueryable)type.GetMethod("Filter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(repository, [criteria])!;
-        var ordered = (IQueryable)type.GetMethod("Order", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [filtered, sort])!;
+        var ordered = (IQueryable)type.GetMethod("Order", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [filtered, sort, criteria.RentPeriod.HasValue])!;
         var skip = System.Linq.Expressions.Expression.Call(typeof(Queryable), nameof(Queryable.Skip), [ordered.ElementType], ordered.Expression, System.Linq.Expressions.Expression.Constant(10));
         var take = System.Linq.Expressions.Expression.Call(typeof(Queryable), nameof(Queryable.Take), [ordered.ElementType], skip, System.Linq.Expressions.Expression.Constant(5));
         var sql = ordered.Provider.CreateQuery(take).ToQueryString();
@@ -101,7 +101,7 @@ public sealed class PublicListingReadQueryTests
     public void SqlRowContainsOnlyExplicitPublicFields()
     {
         var type = typeof(ApplicationDbContext).Assembly.GetType("SmartProperty.Persistence.Repositories.Marketplace.PublicListingReadRow", true)!;
-        var expected = new[] { "ListingId", "Purpose", "Title", "Description", "Amount", "Currency", "RentPeriod", "PropertyType", "Country", "Region", "City", "District", "PublishedAt" };
+        var expected = new[] { "ListingId", "PropertyId", "Purpose", "Title", "Description", "Amount", "Currency", "RentPeriod", "PropertyType", "Country", "Region", "City", "District", "PublishedAt", "PeriodAmount", "PeriodCurrency", "PricingOptionsJson", "RentalTermsJson", "BlockedRangesText" };
         Assert.Equal(expected.Order(), type.GetProperties().Select(x => x.Name).Order());
     }
 }

@@ -23,7 +23,7 @@ public sealed record PropertySearchResult(
 /// <summary>
 /// One result. <paramref name="PropertyId"/> is set when the result is a property of this platform, and only
 /// those have a stored match; any other listing the AI service knows is returned for display with a null id.
-/// <paramref name="ExternalId"/> is the id this platform sent for the listing (the property id), null for a listing it did
+/// <paramref name="ExternalId"/> is the id this platform sent for the advertisement (the LISTING id), null for a listing it did
 /// not add; <paramref name="AiPropertyId"/> is the AI service's own reference, which is never one of our ids.
 /// </summary>
 /// <param name="MatchPercentage">The service's relevance score scaled to 0–100. A ranking signal, not a probability.</param>
@@ -34,4 +34,5 @@ public sealed record PropertySearchItem(
     decimal MatchPercentage,
     string Description,
     AiSearchItem Details,
-    PropertyDetails? Property = null);
+    PropertyDetails? Property = null,
+    SmartProperty.Application.Marketplace.PublicListings.PublicListingSummary? Listing = null);

@@ -317,36 +317,21 @@ public sealed class SubmitterSubmissionContractPrivacyTests
     }
 
     [Fact]
-    public void OnlyTheTwoSubmitterReadRoutesExistBesideTheReviewReads()
+    public void TheMarketplaceRoutesAreExactlyTheApprovedInventory()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
         {
-            // AddPersistence reads the connection string while Program is composed, so it is supplied as a host
-            // setting. Nothing opens a connection with it.
             builder.UseSetting("ConnectionStrings:Database", UnusedConnectionString);
         });
-        var endpoints = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
-            .OfType<RouteEndpoint>()
-            .ToArray();
-        var routes = endpoints
+        var routes = host.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
             .Select(endpoint => endpoint.RoutePattern.RawText ?? string.Empty)
             .ToArray();
 
         // The inventory is real: the existing administration and public routes are visible to it.
         Assert.Contains(routes, route => route.StartsWith("api/admin/workspace-access-requests", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(routes, route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
-
-        // The only listing-submissions routes are the two Platform Admin review reads and the two submitter reads,
-        // and every one of them accepts GET alone.
-        string[] reviewReads = ["api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}"];
-        string[] submitterReads = ["api/marketplace/me/listing-submissions", "api/marketplace/me/listing-submissions/{submissionId:guid}"];
-        Assert.Equal(submitterReads, routes.Where(route => route.Contains("marketplace/me", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
-        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase) && !reviewReads.Contains(route) && !submitterReads.Contains(route));
-        Assert.DoesNotContain(routes, route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase) && !reviewReads.Contains(route));
-        Assert.All(
-            endpoints.Where(endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).Contains("listing-submissions", StringComparison.OrdinalIgnoreCase)),
-            endpoint => Assert.Equal(new[] { "GET" }, endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.ToArray()));
+        Assert.Equal(MarketplaceRouteInventory.ApprovedOrdered, MarketplaceRouteInventory.Actual(host.Services));
     }
 
     [Fact]
@@ -370,7 +355,7 @@ public sealed class SubmitterSubmissionContractPrivacyTests
     }
 
     [Fact]
-    public void TheProductionContainerRegistersNeitherTheListingWriteHandlersNorTheirSeams()
+    public void TheProductionContainerRegistersTheListingWriteHandlersAndTheFailClosedSeams()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -380,21 +365,22 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         using var scope = host.Services.CreateScope();
         var provider = scope.ServiceProvider;
 
-        Assert.Null(provider.GetService<ICommandHandler<CreateListingDraftCommand, ListingDraftResult>>());
-        Assert.Null(provider.GetService<ICommandHandler<UpdateListingDraftCommand, ListingDraftResult>>());
-        Assert.Null(provider.GetService<ICommandHandler<DiscardListingDraftCommand, DiscardListingDraftResult>>());
-        Assert.Null(provider.GetService<ICommandHandler<SubmitListingDraftCommand, SubmitListingDraftResult>>());
-        Assert.Null(provider.GetService<IListingSubmissionWriteRepository>());
-        Assert.Null(provider.GetService<IEvidenceAssessmentProvider>());
-        Assert.Null(provider.GetService<IListingSubmissionAuditRecorder>());
-        Assert.Empty(host.Services.GetServices<CreateListingDraftCommandHandler>());
-        Assert.Empty(host.Services.GetServices<UpdateListingDraftCommandHandler>());
-        Assert.Empty(host.Services.GetServices<DiscardListingDraftCommandHandler>());
-        Assert.Empty(host.Services.GetServices<SubmitListingDraftCommandHandler>());
+        Assert.IsType<CreateListingDraftCommandHandler>(provider.GetRequiredService<ICommandHandler<CreateListingDraftCommand, ListingDraftResult>>());
+        Assert.IsType<UpdateListingDraftCommandHandler>(provider.GetRequiredService<ICommandHandler<UpdateListingDraftCommand, ListingDraftResult>>());
+        Assert.IsType<DiscardListingDraftCommandHandler>(provider.GetRequiredService<ICommandHandler<DiscardListingDraftCommand, DiscardListingDraftResult>>());
+        Assert.IsType<SubmitListingDraftCommandHandler>(provider.GetRequiredService<ICommandHandler<SubmitListingDraftCommand, SubmitListingDraftResult>>());
+
+        // The write repository and the audit recorder are the Persistence ones.
+        Assert.Same(typeof(SmartProperty.Persistence.AssemblyMarker).Assembly, provider.GetRequiredService<IListingSubmissionWriteRepository>().GetType().Assembly);
+        Assert.Same(typeof(SmartProperty.Persistence.AssemblyMarker).Assembly, provider.GetRequiredService<IListingSubmissionAuditRecorder>().GetType().Assembly);
+
+        // Evidence verification has no real provider yet, so the registered one can never answer. A listing can be
+        // drafted without evidence but cannot gain evidence, be submitted or be published until a trusted provider exists.
+        Assert.Equal("UnavailableEvidenceAssessmentProvider", provider.GetRequiredService<IEvidenceAssessmentProvider>().GetType().Name);
     }
 
     [Fact]
-    public void TheProductionContainerRegistersNeitherTheReviewDecisionHandlersNorTheirSeams()
+    public void TheProductionContainerRegistersTheReviewDecisionHandlersAndTheFailClosedSeams()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -404,45 +390,23 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         using var scope = host.Services.CreateScope();
         var provider = scope.ServiceProvider;
 
-        AssertNoCommandHandler(provider, "ApproveListingSubmissionCommand", "ApproveListingSubmissionResult");
-        AssertNoCommandHandler(provider, "RejectListingSubmissionCommand", "RejectListingSubmissionResult");
-        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Persistence.Repositories.IListingReviewWriteRepository");
-        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer");
-        AssertNotResolvable(host.Services, DecisionTypes + "ApproveListingSubmissionCommandHandler");
-        AssertNotResolvable(host.Services, DecisionTypes + "RejectListingSubmissionCommandHandler");
-    }
+        Assert.NotNull(provider.GetRequiredService<ICommandHandler<
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ApproveListingSubmissionCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>>());
+        Assert.NotNull(provider.GetRequiredService<ICommandHandler<
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.RejectListingSubmissionCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>>());
+        Assert.Equal(
+            "PlatformReviewDecisionAuthorizer",
+            provider.GetRequiredService<SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer>().GetType().Name);
 
-    // The decision stack is excluded from this build, so its types are named, not referenced. A named type that exists
-    // must not be resolvable; one that does not exist cannot be registered. The anchor proves the lookup searches the
-    // assembly that would define them, so an absence is real and not a lookup mistake.
-    private const string DecisionTypes = "SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decision.";
-
-    private static Type? ApplicationType(string fullName)
-    {
-        var assembly = typeof(ICommandHandler<,>).Assembly;
-        Assert.NotNull(assembly.GetType("SmartProperty.Application.Abstractions.Authorization.IReviewReadAuthorizer", throwOnError: false));
-        return assembly.GetType(fullName, throwOnError: false);
-    }
-
-    private static void AssertNotResolvable(IServiceProvider provider, string fullName)
-    {
-        if (ApplicationType(fullName) is { } type)
-        {
-            Assert.Null(provider.GetService(type));
-            Assert.Empty(provider.GetServices(type));
-        }
-    }
-
-    private static void AssertNoCommandHandler(IServiceProvider provider, string command, string result)
-    {
-        if (ApplicationType(DecisionTypes + command) is { } commandType && ApplicationType(DecisionTypes + result) is { } resultType)
-        {
-            Assert.Null(provider.GetService(typeof(ICommandHandler<,>).MakeGenericType(commandType, resultType)));
-        }
+        // Reviewer independence has no real provider yet: the registered one establishes nothing, so every decision is
+        // refused as unverifiable until a verified registry of identities and legal parties replaces it.
+        Assert.Equal("UnavailableReviewerIndependenceProvider", provider.GetRequiredService<IReviewerIndependenceProvider>().GetType().Name);
     }
 
     [Fact]
-    public void NoProductionRouteAcceptsAMarketplaceWrite()
+    public void EveryMarketplaceWriteRouteRequiresAuthentication()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -452,31 +416,53 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         var endpoints = host.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>().ToArray();
         var writeVerbs = new[] { "POST", "PUT", "PATCH", "DELETE" };
 
-        var writeRoutes = endpoints
+        var writeEndpoints = endpoints
             .Where(endpoint => (endpoint.Metadata.GetMetadata<HttpMethodMetadata>()?.HttpMethods ?? [])
                 .Any(method => writeVerbs.Contains(method, StringComparer.OrdinalIgnoreCase)))
-            .Select(endpoint => endpoint.RoutePattern.RawText ?? string.Empty)
+            .ToArray();
+        var marketplaceWrites = writeEndpoints
+            .Where(endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).Contains("marketplace", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        // The inventory is real: existing write routes (administration, authentication) are visible to it.
-        Assert.NotEmpty(writeRoutes);
-        Assert.DoesNotContain(writeRoutes, route => route.Contains("marketplace", StringComparison.OrdinalIgnoreCase)
-            || route.Contains("listing", StringComparison.OrdinalIgnoreCase)
-            || route.Contains("submission", StringComparison.OrdinalIgnoreCase));
+        // The inventory is real: existing write routes (administration, authentication) are visible to it, and the
+        // marketplace has write routes of its own.
+        Assert.NotEmpty(writeEndpoints.Except(marketplaceWrites));
+        Assert.NotEmpty(marketplaceWrites);
+
+        // None of them is reachable anonymously, and none is a public route.
+        Assert.All(marketplaceWrites, endpoint =>
+        {
+            Assert.NotEmpty(endpoint.Metadata.GetOrderedMetadata<Microsoft.AspNetCore.Authorization.IAuthorizeData>());
+            Assert.Null(endpoint.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAllowAnonymous>());
+            Assert.DoesNotContain("/public/", endpoint.RoutePattern.RawText!, StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     [Fact]
-    public void NoControllerReferencesTheListingWriteCommandsOrHandlers()
+    public void OnlyTheApprovedControllersReferenceTheMarketplaceWriteCommands()
     {
-        var writeNamespace = typeof(CreateListingDraftCommand).Namespace!;
-        var writeRoot = writeNamespace[..writeNamespace.LastIndexOf('.')];
+        var draftNamespace = typeof(CreateListingDraftCommand).Namespace!;
+        var writeNamespaces = new[]
+        {
+            draftNamespace[..draftNamespace.LastIndexOf('.')],
+            "SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide",
+            "SmartProperty.Application.Marketplace.Requests.Create",
+            "SmartProperty.Application.Marketplace.Requests.Decide",
+            "SmartProperty.Application.Marketplace.Requests.Settings",
+        };
+        var approved = new[]
+        {
+            "OwnerListingsController", "AdminListingSubmissionDecisionsController", "MarketplaceRequestsController",
+            "OwnerRequestsController", "MarketplaceCommitmentsController", "AdminMarketplaceSettingsController",
+        };
         var controllers = typeof(Program).Assembly.GetTypes()
             .Where(type => typeof(ControllerBase).IsAssignableFrom(type) && !type.IsAbstract)
             .ToArray();
 
         Assert.NotEmpty(controllers);
+        Assert.All(approved, name => Assert.Contains(controllers, controller => controller.Name == name));
 
-        foreach (var controller in controllers)
+        foreach (var controller in controllers.Where(controller => !approved.Contains(controller.Name)))
         {
             var referenced = controller
                 .GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -486,7 +472,8 @@ public sealed class SubmitterSubmissionContractPrivacyTests
                 .SelectMany(Flatten)
                 .ToArray();
 
-            Assert.DoesNotContain(referenced, type => type.Namespace is { } ns && ns.StartsWith(writeRoot, StringComparison.Ordinal));
+            Assert.DoesNotContain(referenced, type => type.Namespace is { } ns
+                && writeNamespaces.Any(root => ns.StartsWith(root, StringComparison.Ordinal)));
         }
     }
 

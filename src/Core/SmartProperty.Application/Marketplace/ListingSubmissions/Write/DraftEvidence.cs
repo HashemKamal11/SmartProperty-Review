@@ -11,8 +11,8 @@ namespace SmartProperty.Application.Marketplace.ListingSubmissions.Write;
 /// A draft may name no evidence, and then the provider is not asked at all. Otherwise the provider decides what each id
 /// means for this user, property and purpose, and the answer is used only if it covers exactly the ids asked for.
 /// An id the provider omitted, an extra reference, or one for another property or purpose is the same generic
-/// validation failure, so nothing says which ids exist for whom. A provider that cannot answer is the temporary
-/// generic <see cref="WriteErrors.PrerequisitesUnverified"/>, and a provider that throws propagates untouched.
+/// validation failure, so nothing says which ids exist for whom. A provider that cannot answer is the
+/// clear <see cref="WriteErrors.EvidenceVerificationUnavailable"/>, and a provider that throws propagates untouched.
 /// </remarks>
 internal static class DraftEvidence
 {
@@ -39,7 +39,7 @@ internal static class DraftEvidence
 
         if (!resolution.IsAvailable)
         {
-            return Result<IReadOnlyList<ListingEvidenceReference>>.Failure(WriteErrors.PrerequisitesUnverified);
+            return Result<IReadOnlyList<ListingEvidenceReference>>.Failure(WriteErrors.EvidenceVerificationUnavailable);
         }
 
         var references = resolution.References!;

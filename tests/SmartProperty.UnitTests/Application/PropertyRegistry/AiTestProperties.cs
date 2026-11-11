@@ -3,7 +3,7 @@ using SmartProperty.Domain.PropertyRegistry;
 
 namespace SmartProperty.UnitTests.Application.PropertyRegistry;
 
-/// <summary>Properties shaped for the AI sync tests.</summary>
+/// <summary>Complete and bare properties shared by the property tests.</summary>
 internal static class AiTestProperties
 {
     public static readonly DateTimeOffset CreatedAt = new(2026, 11, 2, 9, 0, 0, TimeSpan.Zero);
@@ -24,7 +24,7 @@ internal static class AiTestProperties
     public static readonly Compound GardenResidence = new(Guid.NewGuid(), 7, Helwan, "Garden Residence", "جاردن ريزيدنس");
     public static readonly Area Maadi = new(Guid.NewGuid(), 13, Cairo, "Maadi", "المعادي");
 
-    /// <summary>A property that has everything the AI service requires.</summary>
+    /// <summary>A property with every physical fact and a place.</summary>
     public static Property Complete(
         IEnumerable<Amenity>? amenities = null,
         IEnumerable<PropertyView>? views = null,
@@ -41,22 +41,12 @@ internal static class AiTestProperties
             finishingStatus: finishing,
             amenities: amenities,
             views: views,
-            listing: new PropertyListingInfo(
-                TransactionType.Sale,
-                6_250_000.50m,
-                210.5m,
-                floor: 2,
-                furnished: true,
-                listingStatus: ListingStatus.Reserved,
-                titleAr: "عنوان",
-                titleEn: "Title",
-                descriptionAr: "وصف",
-                descriptionEn: "Description"),
+            physical: new PropertyPhysicalInfo(210.5m, floor: 2, furnished: true),
             area: Helwan,
             compound: inCompound ? GardenResidence : null);
     }
 
-    /// <summary>A property with no market facts at all.</summary>
+    /// <summary>A property with nothing but its type and country.</summary>
     public static Property Bare()
     {
         return new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt);

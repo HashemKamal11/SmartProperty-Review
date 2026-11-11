@@ -284,7 +284,7 @@ public sealed class AdminReviewReadEndToEndTests : IDisposable
     [Theory]
     [InlineData("approve")]
     [InlineData("reject")]
-    public async Task ApproveAndRejectStayUnroutableEvenWithBothPermissionsHeld(string action)
+    public async Task ADecisionIsRefusedAsUnverifiableWhileNoReviewerIndependenceProviderExists(string action)
     {
         var user = await CreateActiveUserAsync();
         await _scenario.GrantPlatformPermissionAsync(user, PermissionCodes.MarketplaceSubmissionsReviewRead);
@@ -294,12 +294,33 @@ public sealed class AdminReviewReadEndToEndTests : IDisposable
 
         using var response = await client.PostAsync(
             $"{Route}/{pending.Id}/{action}",
-            new StringContent("""{"expectedVersion":1,"reason":"x"}""", Encoding.UTF8, new MediaTypeHeaderValue("application/json")));
+            new StringContent("""{"reason":"x"}""", Encoding.UTF8, new MediaTypeHeaderValue("application/json")));
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         using var after = await client.GetAsync($"{Route}/{pending.Id}");
         using var afterBody = JsonDocument.Parse(await after.Content.ReadAsStringAsync());
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // The permission is held and the submission exists, but the production reviewer-independence provider can
+        // establish nothing, so no decision is taken and nothing changes. This is a documented production blocker.
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("listing_submissions.independence_unverifiable", body.RootElement.GetProperty("code").GetString());
         Assert.Equal("PendingReview", afterBody.RootElement.GetProperty("status").GetString());
+    }
+
+    [Theory]
+    [InlineData("approve")]
+    [InlineData("reject")]
+    public async Task HoldingOnlyTheReadPermissionDoesNotAllowADecision(string action)
+    {
+        var user = await CreateActiveUserAsync();
+        await _scenario.GrantPlatformPermissionAsync(user, PermissionCodes.MarketplaceSubmissionsReviewRead);
+        var pending = await SeedAsync(State.Pending);
+        using var client = Authenticated(user);
+
+        using var response = await client.PostAsync(
+            $"{Route}/{pending.Id}/{action}",
+            new StringContent("""{"reason":"x"}""", Encoding.UTF8, new MediaTypeHeaderValue("application/json")));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     // ----- helpers

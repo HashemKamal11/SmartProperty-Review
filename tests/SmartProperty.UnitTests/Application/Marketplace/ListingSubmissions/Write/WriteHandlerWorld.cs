@@ -252,6 +252,27 @@ internal sealed class InMemoryWriteRepository : IListingSubmissionWriteRepositor
         return Task.FromResult(listing);
     }
 
+    public Task<ListingSubmission?> GetSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default)
+    {
+        Calls.Add("GetSubmission");
+
+        return Task.FromResult(_submissions.FirstOrDefault(submission => submission.Id == submissionId));
+    }
+
+    public Task<PropertyListing?> FindListingAsync(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        Calls.Add("FindListing");
+
+        return Task.FromResult(Listing is not null && Listing.Id == listingId ? Listing : null);
+    }
+
+    public Task<PropertyListing?> GetListingByIdAsync(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        Calls.Add("GetListingById");
+
+        return Task.FromResult(Listing is not null && Listing.Id == listingId ? Listing : null);
+    }
+
     public Task AddListingAsync(PropertyListing listing, CancellationToken cancellationToken = default)
     {
         Calls.Add("AddListing");

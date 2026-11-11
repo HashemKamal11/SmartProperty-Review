@@ -28,6 +28,51 @@ public sealed class PurchaseRequest
         UpdatedAt = submittedAt;
     }
 
+    public const int MaxMessageLength = 1000;
+
+    /// <summary>
+    /// A purchase request made against the approved version of a Sale listing, with the price offered.
+    /// </summary>
+    /// <remarks>
+    /// The version is recorded so the request keeps meaning what it meant when it was made: a listing that is
+    /// edited and approved again afterwards does not silently change the request. The offer is in the listing's own
+    /// currency.
+    /// </remarks>
+    public PurchaseRequest(
+        Guid id,
+        PropertyListing listing,
+        Guid buyerUserId,
+        DateTimeOffset submittedAt,
+        Guid submissionId,
+        decimal offeredAmount,
+        string currency,
+        string? message)
+        : this(id, listing, buyerUserId, submittedAt)
+    {
+        ValidateRequiredId(submissionId, nameof(submissionId));
+        RequestTerms.ValidateMoney(offeredAmount, currency);
+        RequestTerms.ValidateMessage(message, MaxMessageLength);
+
+        if (listing.PublishedSubmissionId != submissionId)
+        {
+            throw new ArgumentException("The request must be made against the listing's current approved version.", nameof(submissionId));
+        }
+
+        SubmissionId = submissionId;
+        OfferedAmount = offeredAmount;
+        Currency = currency;
+        Message = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
+    }
+
+    /// <summary>The approved version this request was made against. Null only for a request that predates versions.</summary>
+    public Guid? SubmissionId { get; private set; }
+
+    public decimal? OfferedAmount { get; private set; }
+
+    public string? Currency { get; private set; }
+
+    public string? Message { get; private set; }
+
     public Guid Id { get; private set; }
     public Guid ListingId { get; private set; }
     public Guid PropertyId { get; private set; }

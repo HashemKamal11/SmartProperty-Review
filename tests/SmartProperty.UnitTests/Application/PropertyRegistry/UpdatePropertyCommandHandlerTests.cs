@@ -17,7 +17,6 @@ public sealed class UpdatePropertyCommandHandlerTests
     private readonly FakeAmenityRepository _amenities = new();
     private readonly FakeViewRepository _views = new();
     private readonly FakeLocationRepository _locations = new();
-    private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeDateTimeProvider _clock = new(UpdatedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly Area _olaya;
@@ -523,7 +522,7 @@ public sealed class UpdatePropertyCommandHandlerTests
 
     private UpdatePropertyCommandHandler CreateHandler()
     {
-        return new UpdatePropertyCommandHandler(_properties, _amenities, _views, _locations, _ai, _clock, _unitOfWork);
+        return new UpdatePropertyCommandHandler(_properties, _amenities, _views, _locations, _clock, _unitOfWork);
     }
 
     private static decimal? Parse(string? value)

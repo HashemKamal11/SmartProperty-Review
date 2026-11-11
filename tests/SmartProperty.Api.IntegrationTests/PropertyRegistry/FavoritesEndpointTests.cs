@@ -191,7 +191,6 @@ public sealed class FavoritesEndpointTests : IDisposable
         Assert.True(page.Items[0].FavoritedAt >= page.Items[1].FavoritedAt);
         Assert.Equal("Apartment", page.Items[0].Property.Type);
         Assert.Equal("Active", page.Items[0].Property.Status);
-        Assert.NotNull(page.Items[0].Property.AiSync);
         Assert.NotNull(page.Items[0].Property.Amenities);
     }
 

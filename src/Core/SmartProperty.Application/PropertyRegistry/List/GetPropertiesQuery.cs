@@ -31,8 +31,6 @@ namespace SmartProperty.Application.PropertyRegistry.List;
 /// </param>
 /// <param name="District">Restrict to one district name (case-insensitive). Null or whitespace means any.</param>
 /// <param name="AreaId">Restrict to one registry area. Null means any.</param>
-/// <param name="MinPrice">Inclusive lower bound on the listing price. Must not be negative.</param>
-/// <param name="MaxPrice">Inclusive upper bound on the listing price. Must not be below <paramref name="MinPrice"/>.</param>
 /// <param name="MinBedrooms">Inclusive lower bound on bedrooms (use it alone for "5+").</param>
 /// <param name="MaxBedrooms">Inclusive upper bound on bedrooms (equal to <paramref name="MinBedrooms"/> for an exact count).</param>
 /// <param name="MinMatchPercentage">
@@ -40,10 +38,9 @@ namespace SmartProperty.Application.PropertyRegistry.List;
 /// <paramref name="MatchUserId"/>.
 /// </param>
 /// <param name="MatchUserId">The signed-in user, or null for an anonymous caller.</param>
-/// <param name="ListingStatus">Restrict to one listing status (available, reserved, sold, rented). Null means any.</param>
 /// <param name="Search">
 /// Free text, at most 100 characters. Split on whitespace into at most 5 distinct terms; every term must match the
-/// title, description, city, region, district, address line or area name.
+/// city, region, district, address line or area name.
 /// </param>
 /// <param name="Sort">Null means <see cref="PropertyListSortOrder.Relevance"/>.</param>
 public sealed record GetPropertiesQuery(
@@ -54,12 +51,9 @@ public sealed record GetPropertiesQuery(
     int? PageSize,
     string? District = null,
     Guid? AreaId = null,
-    decimal? MinPrice = null,
-    decimal? MaxPrice = null,
     int? MinBedrooms = null,
     int? MaxBedrooms = null,
     decimal? MinMatchPercentage = null,
     Guid? MatchUserId = null,
-    ListingStatus? ListingStatus = null,
     string? Search = null,
     PropertyListSortOrder? Sort = null) : IQuery<PagedList<PropertyDetails>>;

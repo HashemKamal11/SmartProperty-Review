@@ -619,47 +619,49 @@ public sealed class SubmitterListingSubmissionsEndpointTests
     // ----- routing and production reachability
 
     [Fact]
-    public async Task OnlyGetIsAllowedOnBothRoutes()
+    public async Task OnlyTheApprovedVerbsAreAllowedOnBothRoutes()
     {
         var id = Guid.NewGuid();
         using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
         host.Stub.Add(Me, Pending(id));
         using var client = host.CreateClientFor(Me);
 
-        foreach (var method in new[] { HttpMethod.Post, HttpMethod.Put, HttpMethod.Delete, HttpMethod.Patch })
+        // The list route reads and creates; the item route reads, replaces and discards. Nothing else is routed.
+        foreach (var method in new[] { HttpMethod.Put, HttpMethod.Delete, HttpMethod.Patch })
         {
             using var list = await client.SendAsync(new HttpRequestMessage(method, ListRoute));
-            using var detail = await client.SendAsync(new HttpRequestMessage(method, $"{ListRoute}/{id}"));
 
             Assert.Equal(HttpStatusCode.MethodNotAllowed, list.StatusCode);
+        }
+
+        foreach (var method in new[] { HttpMethod.Post, HttpMethod.Patch })
+        {
+            using var detail = await client.SendAsync(new HttpRequestMessage(method, $"{ListRoute}/{id}"));
+
             Assert.Equal(HttpStatusCode.MethodNotAllowed, detail.StatusCode);
         }
     }
 
     [Fact]
-    public void TheMountedHostExposesExactlyTheTwoGetRoutesUnderTheSubmitterPath()
+    public void TheMountedHostExposesExactlyTheApprovedRoutesUnderTheAdvertiserPath()
     {
         using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository());
 
-        var endpoints = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
-            .OfType<RouteEndpoint>()
-            .Where(endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).StartsWith("api/marketplace/me", StringComparison.OrdinalIgnoreCase))
+        var actual = MarketplaceRouteInventory.Actual(host.Services)
+            .Where(line => line.Contains(" api/marketplace/me", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var approved = MarketplaceRouteInventory.ApprovedOrdered
+            .Where(line => line.Contains(" api/marketplace/me", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        Assert.Equal(
-            new[] { "api/marketplace/me/listing-submissions", "api/marketplace/me/listing-submissions/{submissionId:guid}" },
-            endpoints.Select(endpoint => endpoint.RoutePattern.RawText!).Order(StringComparer.Ordinal).ToArray());
-        Assert.All(
-            endpoints,
-            endpoint => Assert.Equal(
-                new[] { "GET" },
-                endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.ToArray()));
+        Assert.NotEmpty(approved);
+        Assert.Equal(approved, actual);
     }
 
     // The production composition is used untouched, with a connection string that points nowhere, so only an anonymous
     // request is sent: it is answered by authentication before any handler, repository or database is reached.
     [Fact]
-    public async Task TheProductionCompositionExposesExactlyTheTwoSubmitterGetRoutes()
+    public async Task TheProductionCompositionExposesExactlyTheApprovedRoutesAndAnAnonymousCallerIsRefused()
     {
         using var host = new SubmitterApiTestHost(new StubSubmitterListingSubmissionReadRepository(), mount: false);
         using var client = host.CreateClient();
@@ -667,24 +669,16 @@ public sealed class SubmitterListingSubmissionsEndpointTests
         var endpoints = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
             .ToArray();
-        var submitter = endpoints
-            .Where(endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).StartsWith("api/marketplace/me", StringComparison.OrdinalIgnoreCase))
-            .ToArray();
         using var list = await client.GetAsync(ListRoute);
         using var detail = await client.GetAsync($"{ListRoute}/{Guid.NewGuid()}");
+        using var create = await client.PostAsync(ListRoute, new StringContent("{}", System.Text.Encoding.UTF8, "application/json"));
 
         // The inventory is real: existing routes are visible to it.
         Assert.Contains(endpoints, endpoint => (endpoint.RoutePattern.RawText ?? string.Empty).StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(
-            new[] { "api/marketplace/me/listing-submissions", "api/marketplace/me/listing-submissions/{submissionId:guid}" },
-            submitter.Select(endpoint => endpoint.RoutePattern.RawText!).Order(StringComparer.Ordinal).ToArray());
-        Assert.All(
-            submitter,
-            endpoint => Assert.Equal(
-                new[] { "GET" },
-                endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.ToArray()));
+        Assert.Equal(MarketplaceRouteInventory.ApprovedOrdered, MarketplaceRouteInventory.Actual(host.Services));
         await AssertUnauthorizedAsync(list);
         await AssertUnauthorizedAsync(detail);
+        await AssertUnauthorizedAsync(create);
         Assert.Equal(0, host.Stub.ListCallCount);
         Assert.Equal(0, host.Stub.GetCallCount);
     }

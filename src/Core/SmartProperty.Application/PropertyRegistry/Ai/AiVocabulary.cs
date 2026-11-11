@@ -1,3 +1,4 @@
+using SmartProperty.Domain.Marketplace;
 using SmartProperty.Domain.PropertyRegistry;
 
 namespace SmartProperty.Application.PropertyRegistry.Ai;
@@ -31,15 +32,12 @@ public static class AiVocabulary
         };
     }
 
-    public static string ToAi(TransactionType type)
+    /// <summary>The AI service names the two purposes Sale and Rent, like this platform.</summary>
+    public static string ToAi(ListingPurpose purpose)
     {
-        return Named(type);
+        return Named(purpose);
     }
 
-    public static string ToAi(ListingStatus status)
-    {
-        return Named(status);
-    }
 
     private static string Named<TEnum>(TEnum value)
         where TEnum : struct, Enum

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SmartProperty.Application.Abstractions.Authorization;
+using SmartProperty.Application.Abstractions.Marketplace;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Persistence.Authorization;
@@ -52,9 +53,18 @@ public static class DependencyInjection
         services.AddScoped<IPropertyComparisonRepository, PropertyComparisonRepository>();
         services.AddScoped<IPropertyImageRepository, PropertyImageRepository>();
         services.AddScoped<IPropertyMatchRepository, PropertyMatchRepository>();
-        services.AddScoped<IPublicListingReadRepository, PublicListingReadRepository>();
+        services.AddScoped<PublicListingReadRepository>();
+        services.AddScoped<IPublicListingReadRepository>(provider => provider.GetRequiredService<PublicListingReadRepository>());
+        services.AddScoped<IPropertyListingsLookup>(provider => provider.GetRequiredService<PublicListingReadRepository>());
         services.AddScoped<IReviewerListingSubmissionReadRepository, ReviewerListingSubmissionReadRepository>();
         services.AddScoped<ISubmitterListingSubmissionReadRepository, SubmitterListingSubmissionReadRepository>();
+        // One instance serves both roles, so a discard's audit row joins the same unit of work as the draft it removes.
+        services.AddScoped<ListingSubmissionWriteRepository>();
+        services.AddScoped<IListingSubmissionWriteRepository>(provider => provider.GetRequiredService<ListingSubmissionWriteRepository>());
+        services.AddScoped<IMarketplaceRequestWriteRepository>(provider => provider.GetRequiredService<ListingSubmissionWriteRepository>());
+        services.AddScoped<IMarketplaceRequestReadRepository, MarketplaceRequestReadRepository>();
+        services.AddScoped<IMarketplaceSettingsRepository, MarketplaceSettingsRepository>();
+        services.AddScoped<IListingSubmissionAuditRecorder>(provider => provider.GetRequiredService<ListingSubmissionWriteRepository>());
         services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();
         services.AddScoped<IWorkspaceMembershipRepository, WorkspaceMembershipRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();

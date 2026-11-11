@@ -42,21 +42,23 @@ public sealed class AiSearchIntegrationMigrationTests(PostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task ExistingPropertiesStartAvailableNotSyncedAndWithoutMarketFacts()
+    public async Task ExistingPropertiesWithNoMarketFactsHaveNothingToArchiveAndNoPlace()
     {
         await MigrateToAsync(Previous);
         var id = await InsertOldPropertyAsync("Unit", "FullyFinished");
 
         await MigrateToLatestAsync();
 
+        // The commercial columns the AI migration added have since moved to listings. A property that stated nothing
+        // commercial has nothing to archive, and its physical facts are still unstated.
         var row = await QuerySingleAsync(
             $"""
-            SELECT listing_status, ai_sync_status, ai_synced_at IS NULL, ai_sync_error IS NULL,
-                   price IS NULL, area_sqm IS NULL, transaction_type IS NULL, area_id IS NULL
-            FROM registry.properties WHERE id = '{id}';
+            SELECT area_sqm IS NULL, area_id IS NULL,
+                   (SELECT count(*) FROM registry.legacy_property_commercial WHERE property_id = p.id)
+            FROM registry.properties p WHERE id = '{id}';
             """);
 
-        Assert.Equal(["Available", "NotSynced", true, true, true, true, true, true], row);
+        Assert.Equal([true, true, 0L], row);
     }
 
     [Fact]

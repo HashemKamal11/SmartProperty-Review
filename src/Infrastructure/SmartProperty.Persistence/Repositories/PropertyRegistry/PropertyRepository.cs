@@ -148,20 +148,11 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
             filtered = filtered.Where(property => property.Address.CountryCode == countryCode);
         }
 
-        if (filter.ListingStatus is { } listingStatus)
-        {
-            filtered = filtered.Where(property => property.Listing.ListingStatus == listingStatus);
-        }
-
         foreach (var term in filter.SearchTerms ?? [])
         {
             var pattern = LikePattern(term);
             filtered = filtered.Where(property =>
-                EF.Functions.ILike(property.Listing.TitleAr ?? "", pattern, LikeEscape)
-                || EF.Functions.ILike(property.Listing.TitleEn ?? "", pattern, LikeEscape)
-                || EF.Functions.ILike(property.Listing.DescriptionAr ?? "", pattern, LikeEscape)
-                || EF.Functions.ILike(property.Listing.DescriptionEn ?? "", pattern, LikeEscape)
-                || EF.Functions.ILike(property.Address.City ?? "", pattern, LikeEscape)
+                EF.Functions.ILike(property.Address.City ?? "", pattern, LikeEscape)
                 || EF.Functions.ILike(property.Address.Region ?? "", pattern, LikeEscape)
                 || EF.Functions.ILike(property.Address.District ?? "", pattern, LikeEscape)
                 || EF.Functions.ILike(property.Address.AddressLine ?? "", pattern, LikeEscape)
@@ -180,16 +171,6 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
         if (filter.AreaId is { } areaId)
         {
             filtered = filtered.Where(property => property.AreaId == areaId);
-        }
-
-        if (filter.MinPrice is { } minPrice)
-        {
-            filtered = filtered.Where(property => property.Listing.Price >= minPrice);
-        }
-
-        if (filter.MaxPrice is { } maxPrice)
-        {
-            filtered = filtered.Where(property => property.Listing.Price <= maxPrice);
         }
 
         if (filter.MinBedrooms is { } minBedrooms)
@@ -247,8 +228,8 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
 
     /// <summary>
     /// Every order ends newest first and then id descending, so paging is stable. Relevance ranks by the match
-    /// user's latest stored percentage (no match last), then by where the whole search phrase appears — title,
-    /// then location, then description — and degrades to newest first when neither signal exists.
+    /// user's latest stored percentage (no match last), then by where the whole search phrase appears — location,
+    /// then address line — and degrades to newest first when neither signal exists.
     /// </summary>
     private IOrderedQueryable<Property> Order(IQueryable<Property> filtered, PropertyListFilter filter)
     {
@@ -257,18 +238,6 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
 
         switch (filter.Sort)
         {
-            case PropertyListSortOrder.PriceAsc:
-                ordered = filtered
-                    .OrderBy(property => property.Listing.Price == null)
-                    .ThenBy(property => property.Listing.Price);
-                break;
-
-            case PropertyListSortOrder.PriceDesc:
-                ordered = filtered
-                    .OrderBy(property => property.Listing.Price == null)
-                    .ThenByDescending(property => property.Listing.Price);
-                break;
-
             case PropertyListSortOrder.Relevance when filter.MatchUserId is { } userId:
                 ordered = filtered.OrderByDescending(property => dbContext.PropertyMatches
                     .Where(match => match.UserId == userId && match.PropertyId == property.Id)
@@ -302,19 +271,15 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
 
     private static System.Linq.Expressions.Expression<Func<Property, int>> TextRank(string phrase)
     {
+        // Location first, then the street address line.
         return property =>
-            EF.Functions.ILike(property.Listing.TitleAr ?? "", phrase, LikeEscape)
-            || EF.Functions.ILike(property.Listing.TitleEn ?? "", phrase, LikeEscape)
-                ? 3
-                : EF.Functions.ILike(property.Address.District ?? "", phrase, LikeEscape)
-                  || EF.Functions.ILike(property.Address.City ?? "", phrase, LikeEscape)
-                  || EF.Functions.ILike(property.Address.Region ?? "", phrase, LikeEscape)
-                  || EF.Functions.ILike(property.Address.AddressLine ?? "", phrase, LikeEscape)
-                    ? 2
-                    : EF.Functions.ILike(property.Listing.DescriptionAr ?? "", phrase, LikeEscape)
-                      || EF.Functions.ILike(property.Listing.DescriptionEn ?? "", phrase, LikeEscape)
-                        ? 1
-                        : 0;
+            EF.Functions.ILike(property.Address.District ?? "", phrase, LikeEscape)
+            || EF.Functions.ILike(property.Address.City ?? "", phrase, LikeEscape)
+            || EF.Functions.ILike(property.Address.Region ?? "", phrase, LikeEscape)
+                ? 2
+                : EF.Functions.ILike(property.Address.AddressLine ?? "", phrase, LikeEscape)
+                    ? 1
+                    : 0;
     }
 
     private const string LikeEscape = "\\";

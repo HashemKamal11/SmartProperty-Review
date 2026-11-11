@@ -192,21 +192,19 @@ public sealed class GetPropertiesQueryHandlerTests
     }
 
     [Fact]
-    public async Task MultipleTypesDistrictAreaPriceAndBedroomsAreForwardedNormalized()
+    public async Task MultipleTypesDistrictAreaAndBedroomsAreForwardedNormalized()
     {
         var areaId = Guid.NewGuid();
 
         var result = await Handle(new GetPropertiesQuery(
             [PropertyType.Villa, PropertyType.Apartment, PropertyType.Villa], null, null, null, null,
-            District: "  Hittin ", AreaId: areaId, MinPrice: 1000m, MaxPrice: 3200000m, MinBedrooms: 4, MaxBedrooms: 4));
+            District: "  Hittin ", AreaId: areaId, MinBedrooms: 4, MaxBedrooms: 4));
 
         Assert.True(result.IsSuccess);
         var filter = _properties.LastSearchFilter!;
         Assert.Equal([PropertyType.Villa, PropertyType.Apartment], filter.Types);
         Assert.Equal("Hittin", filter.District);
         Assert.Equal(areaId, filter.AreaId);
-        Assert.Equal(1000m, filter.MinPrice);
-        Assert.Equal(3200000m, filter.MaxPrice);
         Assert.Equal(4, filter.MinBedrooms);
         Assert.Equal(4, filter.MaxBedrooms);
         Assert.Null(filter.MatchUserId);
@@ -220,19 +218,15 @@ public sealed class GetPropertiesQueryHandlerTests
         var filter = _properties.LastSearchFilter!;
         Assert.Equal(["villa", "Hittin"], filter.SearchTerms);
         Assert.Equal(PropertyListSortOrder.Relevance, filter.Sort);
-        Assert.Null(filter.ListingStatus);
     }
 
     [Theory]
     [InlineData(PropertyListSortOrder.Newest)]
-    [InlineData(PropertyListSortOrder.PriceAsc)]
-    [InlineData(PropertyListSortOrder.PriceDesc)]
-    public async Task TheSortOrderAndListingStatusAreForwarded(PropertyListSortOrder sort)
+    public async Task TheSortOrderIsForwarded(PropertyListSortOrder sort)
     {
-        await Handle(new GetPropertiesQuery(null, null, null, null, null, ListingStatus: ListingStatus.Sold, Sort: sort));
+        await Handle(new GetPropertiesQuery(null, null, null, null, null, Sort: sort));
 
         Assert.Equal(sort, _properties.LastSearchFilter!.Sort);
-        Assert.Equal(ListingStatus.Sold, _properties.LastSearchFilter.ListingStatus);
     }
 
     [Fact]
@@ -255,13 +249,11 @@ public sealed class GetPropertiesQueryHandlerTests
     }
 
     [Fact]
-    public async Task AnUnsupportedSortOrAListingStatusIsAValidationFailure()
+    public async Task AnUnsupportedSortIsAValidationFailure()
     {
         var sort = await Handle(new GetPropertiesQuery(null, null, null, null, null, Sort: (PropertyListSortOrder)99));
-        var listing = await Handle(new GetPropertiesQuery(null, null, null, null, null, ListingStatus: (ListingStatus)99));
 
         Assert.True(sort.IsFailure);
-        Assert.True(listing.IsFailure);
         Assert.Equal(0, _properties.ListCallCount);
     }
 
@@ -281,18 +273,6 @@ public sealed class GetPropertiesQueryHandlerTests
     public async Task TheMatchFilterWithoutASignedInUserIsAValidationFailure()
     {
         var result = await Handle(new GetPropertiesQuery(null, null, null, null, null, MinMatchPercentage: 85m));
-
-        Assert.True(result.IsFailure);
-        Assert.Equal(0, _properties.ListCallCount);
-    }
-
-    [Theory]
-    [InlineData(-1, null)]
-    [InlineData(null, -1)]
-    [InlineData(2000, 1000)]
-    public async Task ANegativeOrInvertedPriceRangeIsAValidationFailure(int? min, int? max)
-    {
-        var result = await Handle(new GetPropertiesQuery(null, null, null, null, null, MinPrice: min, MaxPrice: max));
 
         Assert.True(result.IsFailure);
         Assert.Equal(0, _properties.ListCallCount);

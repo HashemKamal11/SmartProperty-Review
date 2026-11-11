@@ -53,7 +53,10 @@ public sealed class FavoritesController : ControllerBase
 
         var favorites = result.Value;
         var items = favorites.Items
-            .Select(favorite => new FavoriteResponse(favorite.FavoritedAt, PropertiesController.ToResponse(favorite.Property)))
+            .Select(favorite => new FavoriteResponse(
+                favorite.FavoritedAt,
+                PropertiesController.ToResponse(favorite.Property),
+                favorite.Listings?.Select(SmartProperty.Api.Contracts.Marketplace.Public.PublicListingMapper.ToSummaryResponse).ToArray()))
             .ToArray();
 
         return Ok(PagedResponse<FavoriteResponse>.FromPagedList(

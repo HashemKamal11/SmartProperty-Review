@@ -11,53 +11,62 @@ using Xunit;
 namespace SmartProperty.Persistence.IntegrationTests.PropertyRegistry;
 
 /// <summary>
-/// Proves the market-facing listing facts, the views, and the AI sync state of a property survive real PostgreSQL,
-/// that the database refuses what the domain would, and that the read models project them in one query.
+/// Proves the physical facts, the views and the place of a property survive real PostgreSQL, that the database
+/// refuses what the domain would, that the read models project them in one query, and that no commercial or
+/// advertisement column remains on the property.
 /// </summary>
 public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
     private static readonly DateTimeOffset CreatedAt = TestClock.DefaultNow;
 
-    // ---- listing facts
+    // ---- physical facts
 
     [Fact]
-    public async Task EveryListingFactRoundTrips()
+    public async Task EveryPhysicalFactRoundTrips()
     {
         var property = new Property(
             Guid.NewGuid(),
             PropertyType.StandaloneVilla,
             new PropertyAddress("EG"),
             CreatedAt,
-            listing: new PropertyListingInfo(
-                TransactionType.Rent, 85000.55m, 240.75m, 12, true, ListingStatus.Rented,
-                "عنوان", "Title", "وصف طويل", "A long description"));
+            physical: new PropertyPhysicalInfo(240.75m, 12, true, "Africa/Cairo"));
 
         await SaveAsync(property);
 
-        var listing = (await ReloadAsync(property.Id)).Listing;
-        Assert.Equal(TransactionType.Rent, listing.TransactionType);
-        Assert.Equal(85000.55m, listing.Price);
-        Assert.Equal(240.75m, listing.AreaSqm);
-        Assert.Equal(12, listing.Floor);
-        Assert.True(listing.Furnished);
-        Assert.Equal(ListingStatus.Rented, listing.ListingStatus);
-        Assert.Equal("عنوان", listing.TitleAr);
-        Assert.Equal("Title", listing.TitleEn);
-        Assert.Equal("وصف طويل", listing.DescriptionAr);
-        Assert.Equal("A long description", listing.DescriptionEn);
+        var physical = (await ReloadAsync(property.Id)).Physical;
+        Assert.Equal(240.75m, physical.AreaSqm);
+        Assert.Equal(12, physical.Floor);
+        Assert.True(physical.Furnished);
+        Assert.Equal("Africa/Cairo", physical.TimeZoneId);
     }
 
     [Fact]
-    public async Task AnEmptyListingIsStoredAsNullsAndAvailable()
+    public async Task EmptyPhysicalFactsAreStoredAsNulls()
     {
         var property = new Property(Guid.NewGuid(), PropertyType.Land, new PropertyAddress("EG"), CreatedAt);
 
         await SaveAsync(property);
 
-        Assert.Equal(PropertyListingInfo.Empty, (await ReloadAsync(property.Id)).Listing);
-        Assert.Equal("Available", await ReadColumnAsync(property.Id, "listing_status"));
-        Assert.Null(await ReadColumnAsync(property.Id, "price"));
-        Assert.Null(await ReadColumnAsync(property.Id, "transaction_type"));
+        Assert.Equal(PropertyPhysicalInfo.Empty, (await ReloadAsync(property.Id)).Physical);
+        Assert.Null(await ReadColumnAsync(property.Id, "area_sqm"));
+        Assert.Null(await ReadColumnAsync(property.Id, "floor"));
+        Assert.Null(await ReadColumnAsync(property.Id, "furnished"));
+    }
+
+    [Fact]
+    public async Task NoCommercialOrAdvertisementColumnRemainsOnTheProperty()
+    {
+        var columns = await ReadColumnNamesAsync("registry", "properties");
+
+        string[] removed =
+        [
+            "transaction_type", "price", "listing_status", "title_ar", "title_en",
+            "description_ar", "description_en", "ai_sync_status", "ai_synced_at", "ai_sync_error",
+        ];
+        Assert.Empty(removed.Intersect(columns));
+        Assert.Contains("area_sqm", columns);
+        Assert.Contains("floor", columns);
+        Assert.Contains("furnished", columns);
     }
 
     [Theory]
@@ -83,23 +92,19 @@ public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) :
     {
         var property = new Property(
             Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
-            finishingStatus: FinishingStatus.CoreAndShell,
-            listing: new PropertyListingInfo(TransactionType.Sale, listingStatus: ListingStatus.Sold));
+            finishingStatus: FinishingStatus.CoreAndShell);
 
         await SaveAsync(property);
 
         Assert.Equal("CoreAndShell", await ReadColumnAsync(property.Id, "finishing_status"));
-        Assert.Equal("Sale", await ReadColumnAsync(property.Id, "transaction_type"));
-        Assert.Equal("Sold", await ReadColumnAsync(property.Id, "listing_status"));
-        Assert.Equal("NotSynced", await ReadColumnAsync(property.Id, "ai_sync_status"));
     }
 
     [Fact]
-    public async Task UpdatingTheListingPersistsTheChange()
+    public async Task UpdatingThePhysicalFactsPersistsTheChange()
     {
         var property = new Property(
             Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
-            listing: new PropertyListingInfo(TransactionType.Sale, 100m, 50m));
+            physical: new PropertyPhysicalInfo(50m, 1, false));
         await SaveAsync(property);
 
         await using (var updating = Host.CreateVerificationContext())
@@ -110,32 +115,31 @@ public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) :
                 PropertyType.Apartment,
                 new PropertyAddress("EG"),
                 CreatedAt.AddHours(1),
-                listing: new PropertyListingInfo(TransactionType.Rent, 9000m, 55m));
+                physical: new PropertyPhysicalInfo(55m, 2, true));
             await updating.SaveChangesAsync();
         }
 
-        var listing = (await ReloadAsync(property.Id)).Listing;
-        Assert.Equal(TransactionType.Rent, listing.TransactionType);
-        Assert.Equal(9000m, listing.Price);
+        var physical = (await ReloadAsync(property.Id)).Physical;
+        Assert.Equal(55m, physical.AreaSqm);
+        Assert.Equal(2, physical.Floor);
+        Assert.True(physical.Furnished);
     }
 
     [Fact]
-    public async Task APriceKeepsTwoDecimalPlaces()
+    public async Task AnAreaKeepsTwoDecimalPlaces()
     {
         var property = new Property(
             Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt,
-            listing: new PropertyListingInfo(price: 1234567890123.45m));
+            physical: new PropertyPhysicalInfo(areaSqm: 98765.43m));
 
         await SaveAsync(property);
 
-        Assert.Equal(1234567890123.45m, (await ReloadAsync(property.Id)).Listing.Price);
+        Assert.Equal(98765.43m, (await ReloadAsync(property.Id)).Physical.AreaSqm);
     }
 
     // ---- constraints, written with plain SQL around the domain
 
     [Theory]
-    [InlineData("price", "0", "ck_registry_properties_price_positive")]
-    [InlineData("price", "-1", "ck_registry_properties_price_positive")]
     [InlineData("area_sqm", "0", "ck_registry_properties_area_sqm_range")]
     [InlineData("area_sqm", "100000.01", "ck_registry_properties_area_sqm_range")]
     [InlineData("floor", "-6", "ck_registry_properties_floor_range")]
@@ -149,7 +153,6 @@ public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) :
     }
 
     [Theory]
-    [InlineData("price", "0.01")]
     [InlineData("area_sqm", "100000")]
     [InlineData("floor", "-5")]
     [InlineData("floor", "300")]
@@ -159,10 +162,6 @@ public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) :
     }
 
     [Theory]
-    [InlineData("transaction_type", "Buy", "ck_registry_properties_transaction_type")]
-    [InlineData("transaction_type", "sale", "ck_registry_properties_transaction_type")]
-    [InlineData("listing_status", "Gone", "ck_registry_properties_listing_status")]
-    [InlineData("ai_sync_status", "Pending", "ck_registry_properties_ai_sync_status")]
     [InlineData("finishing_status", "Furnished", "ck_registry_properties_finishing_status")]
     public async Task UnsupportedNamesAreRefusedByTheDatabase(string column, string value, string constraint)
     {
@@ -174,23 +173,22 @@ public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) :
     }
 
     [Theory]
-    [InlineData("transaction_type", "Sale")]
-    [InlineData("transaction_type", "Rent")]
-    [InlineData("listing_status", "Reserved")]
-    [InlineData("ai_sync_status", "Failed")]
     [InlineData("finishing_status", "CoreAndShell")]
     public async Task SupportedNamesAreAcceptedByTheDatabase(string column, string value)
     {
         await InsertAsync(extraColumn: column, extraValue: value, extraIsText: true);
     }
 
-    [Fact]
-    public async Task ARowWrittenWithoutTheNewColumnsGetsTheDatabaseDefaults()
+    [Theory]
+    [InlineData("price")]
+    [InlineData("transaction_type")]
+    [InlineData("listing_status")]
+    public async Task TheDatabaseNoLongerAcceptsCommercialColumns(string column)
     {
-        var id = await InsertAsync();
+        var exception = await Assert.ThrowsAsync<PostgresException>(
+            () => InsertAsync(extraColumn: column, extraValue: "1"));
 
-        Assert.Equal("Available", await ReadColumnAsync(id, "listing_status"));
-        Assert.Equal("NotSynced", await ReadColumnAsync(id, "ai_sync_status"));
+        Assert.Equal(PostgresErrorCodes.UndefinedColumn, exception.SqlState);
     }
 
     // ---- views
@@ -301,64 +299,16 @@ public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) :
         Assert.Equal(PostgresErrorCodes.ForeignKeyViolation, exception.SqlState);
     }
 
-    // ---- AI sync state
-
-    [Fact]
-    public async Task TheSyncStateRoundTripsAndNeverMovesTheUpdatedInstant()
-    {
-        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt);
-        await SaveAsync(property);
-
-        await using (var updating = Host.CreateVerificationContext())
-        {
-            var tracked = await updating.Properties.Include(p => p.Views).Include(p => p.Amenities)
-                .SingleAsync(p => p.Id == property.Id);
-            tracked.MarkAiSynced(CreatedAt.AddMinutes(5));
-            await updating.SaveChangesAsync();
-        }
-
-        var synced = await ReloadAsync(property.Id);
-        Assert.Equal(AiSyncStatus.Synced, synced.AiSyncStatus);
-        Assert.Equal(CreatedAt.AddMinutes(5), synced.AiSyncedAt);
-        Assert.Null(synced.AiSyncError);
-        Assert.Equal(CreatedAt, synced.UpdatedAt);
-        Assert.Equal("Synced", await ReadColumnAsync(property.Id, "ai_sync_status"));
-
-        await using (var failing = Host.CreateVerificationContext())
-        {
-            var tracked = await failing.Properties.Include(p => p.Views).Include(p => p.Amenities)
-                .SingleAsync(p => p.Id == property.Id);
-            tracked.MarkAiSyncFailed("the service timed out");
-            await failing.SaveChangesAsync();
-        }
-
-        var failed = await ReloadAsync(property.Id);
-        Assert.Equal(AiSyncStatus.Failed, failed.AiSyncStatus);
-        Assert.Equal("the service timed out", failed.AiSyncError);
-    }
-
-    [Fact]
-    public async Task ALongSyncErrorFitsTheColumn()
-    {
-        var property = new Property(Guid.NewGuid(), PropertyType.Apartment, new PropertyAddress("EG"), CreatedAt);
-        property.MarkAiSyncFailed(new string('e', Property.MaxAiSyncErrorLength + 400));
-
-        await SaveAsync(property);
-
-        Assert.Equal(Property.MaxAiSyncErrorLength, (await ReloadAsync(property.Id)).AiSyncError!.Length);
-    }
-
     // ---- read models
 
     [Fact]
-    public async Task GetDetailsByIdProjectsTheListingViewsAndSyncStateInOneCommand()
+    public async Task GetDetailsByIdProjectsThePhysicalFactsAndViewsInOneCommand()
     {
         await SeedViewsAsync();
         var property = new Property(
             Guid.NewGuid(), PropertyType.Penthouse, new PropertyAddress("EG"), CreatedAt,
             views: await LoadViewsAsync("Sea", "City"),
-            listing: new PropertyListingInfo(TransactionType.Sale, 5_000_000m, 300m, 20, false));
-        property.MarkAiSyncFailed("it broke");
+            physical: new PropertyPhysicalInfo(300m, 20, false));
         await SaveAsync(property);
 
         using var scope = Host.CreateScope();
@@ -372,13 +322,9 @@ public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) :
         Assert.Equal(PropertyType.Penthouse, details.Type);
         Assert.Equal(["City", "Sea"], details.Views!.Select(v => v.Code));
         Assert.Equal("مدينة", details.Views![0].NameAr);
-        Assert.Equal(TransactionType.Sale, details.Listing!.TransactionType);
-        Assert.Equal(5_000_000m, details.Listing.Price);
-        Assert.Equal(20, details.Listing.Floor);
-        Assert.False(details.Listing.Furnished);
-        Assert.Equal(ListingStatus.Available, details.Listing.ListingStatus);
-        Assert.Equal(AiSyncStatus.Failed, details.AiSync!.Status);
-        Assert.Equal("it broke", details.AiSync.Error);
+        Assert.Equal(300m, details.Physical!.AreaSqm);
+        Assert.Equal(20, details.Physical.Floor);
+        Assert.False(details.Physical.Furnished);
     }
 
     [Fact]
@@ -760,6 +706,27 @@ public sealed class PropertyListingPersistenceTests(PostgreSqlFixture fixture) :
         }
 
         return codes.ToArray();
+    }
+
+    private async Task<string[]> ReadColumnNamesAsync(string schema, string table)
+    {
+        await using var connection = new NpgsqlConnection(Host.ConnectionString);
+        await connection.OpenAsync();
+
+        await using var command = new NpgsqlCommand(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = @schema AND table_name = @table;",
+            connection);
+        command.Parameters.AddWithValue("schema", schema);
+        command.Parameters.AddWithValue("table", table);
+
+        var names = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            names.Add(reader.GetString(0));
+        }
+
+        return names.ToArray();
     }
 
     // The column name is always a literal from this class, never input.

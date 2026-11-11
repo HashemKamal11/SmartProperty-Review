@@ -18,4 +18,5 @@ public sealed record PublicListingSummary(
     PublicListingPrice Price,
     PropertyType PropertyType,
     PublicListingLocation Location,
-    DateTimeOffset PublishedAt);
+    DateTimeOffset PublishedAt,
+    IReadOnlyList<PublicListingPrice>? PricingOptions = null);

@@ -5,6 +5,8 @@ using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Marketplace.Authority;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.CreateBoth;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Discard;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Submit;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Update;
@@ -26,6 +28,8 @@ public sealed class WriteContractPrivacyTests
         typeof(UpdateListingDraftCommand),
         typeof(DiscardListingDraftCommand),
         typeof(SubmitListingDraftCommand),
+        typeof(CreatePropertyListingDraftsCommand),
+        typeof(WithdrawListingCommand),
     ];
 
     // Words that would mean a request is supplying who acts, what is verified, or what was found. Matched
@@ -70,7 +74,7 @@ public sealed class WriteContractPrivacyTests
         Assert.Equal(new[] { "SubmissionId", "ExpectedRevision" }, ParametersOf(typeof(DiscardListingDraftCommand)));
         Assert.Equal(new[] { "SubmissionId", "ExpectedRevision" }, ParametersOf(typeof(SubmitListingDraftCommand)));
         Assert.Equal(
-            new[] { "Title", "Description", "Amount", "Currency", "RentPeriod", "EvidenceIds" },
+            new[] { "Title", "Description", "Amount", "Currency", "RentPeriod", "EvidenceIds", "PricingOptions", "RentalTerms" },
             ParametersOf(typeof(ListingDraftContentInput)));
     }
 
@@ -99,6 +103,34 @@ public sealed class WriteContractPrivacyTests
         Assert.DoesNotContain(types, type => (Nullable.GetUnderlyingType(type) ?? type) == typeof(bool));
     }
 
+
+    [Fact]
+    public void TheRentalInputsCarryOnlyWhatAnOwnerStatesAndNeverATimeZoneOrAVerdict()
+    {
+        Assert.Equal(new[] { "Period", "Amount", "Currency" }, ParametersOf(typeof(RentPricingOptionInput)));
+        Assert.Equal(new[] { "StartDate", "EndDate" }, ParametersOf(typeof(RentalWindowInput)));
+        // The time zone is the property's own, taken from its country, so a request has nowhere to put one.
+        Assert.Equal(
+            new[] { "CheckInTime", "CheckOutTime", "Windows", "MinimumStayDays" },
+            ParametersOf(typeof(RentalTermsInput)));
+
+        foreach (var type in new[] { typeof(RentPricingOptionInput), typeof(RentalWindowInput), typeof(RentalTermsInput) })
+        {
+            foreach (var name in ParametersOf(type))
+            {
+                foreach (var fragment in ForbiddenRequestFragments)
+                {
+                    Assert.False(
+                        name.Contains(fragment, StringComparison.OrdinalIgnoreCase),
+                        $"The request parameter '{name}' contains '{fragment}'.");
+                }
+            }
+
+            Assert.DoesNotContain(
+                type.GetConstructors().Single().GetParameters().Select(parameter => parameter.ParameterType),
+                parameterType => (Nullable.GetUnderlyingType(parameterType) ?? parameterType) == typeof(bool));
+        }
+    }
     [Fact]
     public void EveryCommandIsACommandOfItsResultAndNothingMore()
     {
@@ -119,7 +151,7 @@ public sealed class WriteContractPrivacyTests
     // ----- nothing is wired up
 
     [Fact]
-    public void ExactlyTheFourApprovedWriteHandlersExistAndEachHandlesItsOwnCommand()
+    public void ExactlyTheApprovedWriteHandlersExistAndEachHandlesItsOwnCommand()
     {
         var expected = new Dictionary<Type, (Type Handler, Type Result)>
         {
@@ -127,6 +159,8 @@ public sealed class WriteContractPrivacyTests
             [typeof(UpdateListingDraftCommand)] = (typeof(UpdateListingDraftCommandHandler), typeof(ListingDraftResult)),
             [typeof(DiscardListingDraftCommand)] = (typeof(DiscardListingDraftCommandHandler), typeof(DiscardListingDraftResult)),
             [typeof(SubmitListingDraftCommand)] = (typeof(SubmitListingDraftCommandHandler), typeof(SubmitListingDraftResult)),
+            [typeof(CreatePropertyListingDraftsCommand)] = (typeof(CreatePropertyListingDraftsCommandHandler), typeof(PropertyListingDraftsResult)),
+            [typeof(WithdrawListingCommand)] = (typeof(WithdrawListingCommandHandler), typeof(WithdrawListingResult)),
         };
         var applicationTypes = typeof(ICommand<>).Assembly.GetTypes().Where(type => !type.IsInterface && !type.IsAbstract).ToArray();
 
@@ -171,6 +205,8 @@ public sealed class WriteContractPrivacyTests
             [typeof(UpdateListingDraftCommandHandler)] = [.. common, "IEvidenceAssessmentProvider", "IDateTimeProvider"],
             [typeof(SubmitListingDraftCommandHandler)] = [.. common, "IEvidenceAssessmentProvider", "IDateTimeProvider"],
             [typeof(DiscardListingDraftCommandHandler)] = [.. common, "IListingSubmissionAuditRecorder", "IDateTimeProvider"],
+            [typeof(CreatePropertyListingDraftsCommandHandler)] = [.. common, "IEvidenceAssessmentProvider", "IDateTimeProvider"],
+            [typeof(WithdrawListingCommandHandler)] = [.. common, "IDateTimeProvider", "IListingSearchIndexer"],
         };
 
         foreach (var (handler, dependencies) in expected)
@@ -211,8 +247,8 @@ public sealed class WriteContractPrivacyTests
         Assert.Equal(
             new[]
             {
-                "AddListingAsync", "AddSubmissionAsync", "CanRemoveListingAfterDraftAsync", "GetGrantForSharedLockAsync",
-                "GetLatestSubmissionAsync", "GetListingAsync", "GetOwnSubmissionAsync", "LockPropertyAsync",
+                "AddListingAsync", "AddSubmissionAsync", "CanRemoveListingAfterDraftAsync", "FindListingAsync", "GetGrantForSharedLockAsync",
+                "GetLatestSubmissionAsync", "GetListingAsync", "GetListingByIdAsync", "GetOwnSubmissionAsync", "GetSubmissionAsync", "LockPropertyAsync",
                 "RemoveDraftAsync", "RemoveListingAsync", "SaveChangesAsync",
             },
             names);
@@ -380,16 +416,22 @@ public sealed class WriteContractPrivacyTests
             Assert.Equal("A concurrent listing write took precedence.", exception.Message);
         }
 
-        Assert.Equal(new[] { "ListingSlot", "SubmissionVersion", "StaleRevision" }, Enum.GetNames<ListingWriteConflictKind>());
+        Assert.Equal(
+            new[] { "ListingSlot", "SubmissionVersion", "StaleRevision", "RequestAlreadyOpen", "DatesUnavailable", "PropertyAlreadyCommitted" },
+            Enum.GetNames<ListingWriteConflictKind>());
     }
 
     [Fact]
-    public void TheConflictKindsKeepTheirNumericValuesAndTheStaleRevisionIsTheThird()
+    public void TheConflictKindsKeepTheirNumericValues()
     {
         Assert.Equal(1, (int)ListingWriteConflictKind.ListingSlot);
         Assert.Equal(2, (int)ListingWriteConflictKind.SubmissionVersion);
         Assert.Equal(3, (int)ListingWriteConflictKind.StaleRevision);
-        Assert.Equal(new[] { 1, 2, 3 }, Enum.GetValues<ListingWriteConflictKind>().Select(kind => (int)kind).ToArray());
+        Assert.Equal(3, (int)ListingWriteConflictKind.StaleRevision);
+        Assert.Equal(4, (int)ListingWriteConflictKind.RequestAlreadyOpen);
+        Assert.Equal(5, (int)ListingWriteConflictKind.DatesUnavailable);
+        Assert.Equal(6, (int)ListingWriteConflictKind.PropertyAlreadyCommitted);
+        Assert.Equal(new[] { 1, 2, 3, 4, 5, 6 }, Enum.GetValues<ListingWriteConflictKind>().Select(kind => (int)kind).ToArray());
     }
 
     [Fact]

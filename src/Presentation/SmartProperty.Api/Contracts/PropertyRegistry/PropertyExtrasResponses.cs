@@ -5,19 +5,14 @@ namespace SmartProperty.Api.Contracts.PropertyRegistry;
 public sealed record ViewResponse(string Code, string NameAr, string NameEn);
 
 /// <summary>
-/// The market-facing facts of a property. Where it is lives in <c>place</c>.
+/// The physical facts of a property that have no field of their own. Where it is lives in <c>place</c>. How it is
+/// advertised (sale, rent, prices, promotional text) is not part of a property: see the marketplace listings.
 /// </summary>
-public sealed record PropertyListingResponse(
-    string? TransactionType,
-    decimal? Price,
+public sealed record PropertyPhysicalResponse(
     decimal? AreaSqm,
     int? Floor,
     bool? Furnished,
-    string ListingStatus,
-    string? TitleAr,
-    string? TitleEn,
-    string? DescriptionAr,
-    string? DescriptionEn);
+    string? TimeZoneId = null);
 
 /// <summary>
 /// Where a property is. Choose it with <c>areaId</c> (and <c>compoundId</c>) from <c>GET /api/locations</c>; the
@@ -30,9 +25,3 @@ public sealed record PropertyPlaceResponse(
     PlaceResponseItem? Compound);
 
 public sealed record PlaceResponseItem(Guid Id, string NameEn, string NameAr);
-
-/// <summary>
-/// Whether the AI search service holds the property. <c>status</c> is <c>Synced</c>, <c>NotSynced</c>, or
-/// <c>Failed</c>; <c>error</c> says what is missing or what went wrong.
-/// </summary>
-public sealed record AiSyncResponse(string Status, DateTimeOffset? SyncedAt, string? Error);

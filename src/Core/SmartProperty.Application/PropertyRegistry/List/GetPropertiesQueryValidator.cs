@@ -47,11 +47,6 @@ internal static class GetPropertiesQueryValidator
             }
         }
 
-        if (query.ListingStatus is { } listingStatus && !Enum.IsDefined(listingStatus))
-        {
-            return GetPropertiesErrors.ValidationFailed("The listing status is not supported.");
-        }
-
         if (query.Sort is { } sort && !Enum.IsDefined(sort))
         {
             return GetPropertiesErrors.ValidationFailed("The sort order is not supported.");
@@ -80,16 +75,6 @@ internal static class GetPropertiesQueryValidator
         if (query.AreaId == Guid.Empty)
         {
             return GetPropertiesErrors.ValidationFailed("Area id must not be empty.");
-        }
-
-        if (query.MinPrice < 0m || query.MaxPrice < 0m)
-        {
-            return GetPropertiesErrors.ValidationFailed("Prices must not be negative.");
-        }
-
-        if (query.MinPrice is { } minPrice && query.MaxPrice is { } maxPrice && minPrice > maxPrice)
-        {
-            return GetPropertiesErrors.ValidationFailed("The minimum price must not exceed the maximum price.");
         }
 
         if (query.MinBedrooms is < 0 or > Property.MaxRoomCount || query.MaxBedrooms is < 0 or > Property.MaxRoomCount)
@@ -122,13 +107,10 @@ internal static class GetPropertiesQueryValidator
             countryCode,
             district,
             query.AreaId,
-            query.MinPrice,
-            query.MaxPrice,
             query.MinBedrooms,
             query.MaxBedrooms,
             query.MinMatchPercentage,
             query.MatchUserId is { } userId && userId != Guid.Empty ? userId : null,
-            query.ListingStatus,
             searchTerms,
             query.Sort ?? PropertyListSortOrder.Relevance);
 

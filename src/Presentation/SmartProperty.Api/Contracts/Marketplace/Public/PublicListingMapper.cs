@@ -33,7 +33,8 @@ internal static class PublicListingMapper
             ToPrice(listing.Price, listing.Purpose),
             ToPropertyType(listing.PropertyType),
             ToLocation(listing.Location),
-            RequirePublishedAt(listing.PublishedAt));
+            RequirePublishedAt(listing.PublishedAt),
+            ToOptions(listing.PricingOptions));
     }
 
     public static PublicListingDetailResponse ToDetailResponse(PublicListingDetail listing)
@@ -48,7 +49,51 @@ internal static class PublicListingMapper
             ToPrice(listing.Price, listing.Purpose),
             ToPropertyType(listing.PropertyType),
             ToLocation(listing.Location),
-            RequirePublishedAt(listing.PublishedAt));
+            RequirePublishedAt(listing.PublishedAt),
+            ToOptions(listing.PricingOptions),
+            ToTerms(listing.RentalTerms),
+            ToBlocked(listing.BlockedRanges));
+    }
+
+    private static IReadOnlyList<PublicMoneyResponse>? ToOptions(IReadOnlyList<PublicListingPrice>? options)
+    {
+        if (options is null)
+        {
+            return null;
+        }
+
+        return options
+            .Select(option => new PublicMoneyResponse(
+                option.Amount,
+                RequireText(option.Currency, "currency"),
+                ToRentPeriod(option.RentPeriod ?? throw Invalid("a pricing option without a period"))))
+            .ToArray();
+    }
+
+    private static PublicRentalTermsResponse? ToTerms(PublicRentalTerms? terms)
+    {
+        if (terms is null)
+        {
+            return null;
+        }
+
+        return new PublicRentalTermsResponse(
+            RequireText(terms.TimeZoneId, "time zone"),
+            terms.CheckInTime.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            terms.CheckOutTime.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            terms.MinimumStayDays,
+            ToRanges(terms.Windows) ?? throw Invalid("rental terms without availability windows"));
+    }
+
+    private static IReadOnlyList<PublicDateRangeResponse>? ToBlocked(IReadOnlyList<PublicDateRange>? ranges) => ToRanges(ranges);
+
+    private static IReadOnlyList<PublicDateRangeResponse>? ToRanges(IReadOnlyList<PublicDateRange>? ranges)
+    {
+        return ranges?
+            .Select(range => new PublicDateRangeResponse(
+                range.Start.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+                range.End.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)))
+            .ToArray();
     }
 
     private static string ToPurpose(ListingPurpose purpose)

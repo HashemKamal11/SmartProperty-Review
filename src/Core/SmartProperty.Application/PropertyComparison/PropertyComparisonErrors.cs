@@ -23,16 +23,6 @@ internal static class PropertyComparisonErrors
         "The comparison already holds the most properties it can. Remove one to add another.",
         ErrorType.Conflict);
 
-    public static readonly Error NotForSaleOrRent = new(
-        "comparison.property_not_listed",
-        "A property can be compared only once it is listed for sale or for rent.",
-        ErrorType.Conflict);
-
-    public static readonly Error TransactionTypeMismatch = new(
-        "comparison.transaction_type_mismatch",
-        "Only properties for sale can be compared with each other, and likewise those for rent.",
-        ErrorType.Conflict);
-
     public static readonly Error ConcurrentChange = new(
         "comparison.concurrent_change",
         "The comparison was changed by another request. Try again.",

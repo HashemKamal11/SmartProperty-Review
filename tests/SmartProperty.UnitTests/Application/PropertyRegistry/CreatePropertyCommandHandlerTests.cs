@@ -16,7 +16,6 @@ public sealed class CreatePropertyCommandHandlerTests
     private readonly FakeAmenityRepository _amenities = new();
     private readonly FakeViewRepository _views = new();
     private readonly FakeLocationRepository _locations = new();
-    private readonly FakePropertyAiSynchronizer _ai = new();
     private readonly FakeDateTimeProvider _clock = new(CreatedAt);
     private readonly FakeUnitOfWork _unitOfWork = new();
     private readonly Area _olaya;
@@ -201,7 +200,6 @@ public sealed class CreatePropertyCommandHandlerTests
             _amenities,
             _views,
             _locations,
-            _ai,
             _clock,
             _unitOfWork);
     }

@@ -31,7 +31,9 @@ internal static class PublicListingSearchFilterValidator
         decimal? maxPrice,
         string? currency,
         RentPeriod? rentPeriod,
-        PublicListingSortOrder? sort)
+        PublicListingSortOrder? sort,
+        DateOnly? availableFrom = null,
+        DateOnly? availableTo = null)
     {
         if (purpose is { } listingPurpose && !Enum.IsDefined(listingPurpose))
         {
@@ -103,6 +105,32 @@ internal static class PublicListingSearchFilterValidator
             return Fail("A rent period is required when filtering or sorting Rent listings by price.");
         }
 
+        // Availability is a stay: both dates, the start before the end, for a Rent search, and not longer than a rental
+        // may be. A Sale has no dates, so asking for them with another purpose is a mistake, not a filter that matches
+        // nothing.
+        if (availableFrom is not null || availableTo is not null)
+        {
+            if (availableFrom is null || availableTo is null)
+            {
+                return Fail("Availability needs both a start date and an end date.");
+            }
+
+            if (availableTo <= availableFrom)
+            {
+                return Fail("The availability end date must be after the start date.");
+            }
+
+            if (availableTo.Value.DayNumber - availableFrom.Value.DayNumber > 3650)
+            {
+                return Fail("The availability period is longer than a rental can be.");
+            }
+
+            if (purpose != ListingPurpose.Rent)
+            {
+                return Fail("Availability dates are valid only for Rent listings.");
+            }
+        }
+
         return Result<PublicListingSearchCriteria>.Success(new PublicListingSearchCriteria(
             purpose,
             propertyType,
@@ -114,7 +142,9 @@ internal static class PublicListingSearchFilterValidator
             maxPrice,
             normalizedCurrency?.ToUpperInvariant(),
             rentPeriod,
-            sortOrder));
+            sortOrder,
+            availableFrom,
+            availableTo));
     }
 
     private static string? Normalize(string? value)

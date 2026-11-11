@@ -24,4 +24,5 @@ public sealed record PublicListingSummaryResponse(
     PublicMoneyResponse Price,
     string PropertyType,
     PublicLocationResponse Location,
-    DateTimeOffset PublishedAt);
+    DateTimeOffset PublishedAt,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PublicMoneyResponse>? PricingOptions = null);

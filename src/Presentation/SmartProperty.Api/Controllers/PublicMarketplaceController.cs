@@ -62,7 +62,9 @@ public sealed class PublicMarketplaceController : ControllerBase
         [FromQuery] RentPeriod? rentPeriod = null,
         [FromQuery] PublicListingSortOrder? sort = null,
         [FromQuery] int? page = null,
-        [FromQuery] int? pageSize = null)
+        [FromQuery] int? pageSize = null,
+        [FromQuery] DateOnly? availableFrom = null,
+        [FromQuery] DateOnly? availableTo = null)
     {
         var query = new SearchPublicListingsQuery(
             purpose,
@@ -77,7 +79,9 @@ public sealed class PublicMarketplaceController : ControllerBase
             rentPeriod,
             sort,
             page,
-            pageSize);
+            pageSize,
+            availableFrom,
+            availableTo);
 
         var result = await handler.Handle(query, cancellationToken);
 

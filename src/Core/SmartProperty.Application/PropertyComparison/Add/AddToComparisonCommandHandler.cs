@@ -67,25 +67,11 @@ public sealed class AddToComparisonCommandHandler(
             return Failure(PropertyComparisonErrors.PropertyArchived);
         }
 
-        if (property.Listing?.TransactionType is not { } transactionType)
-        {
-            return Failure(PropertyComparisonErrors.NotForSaleOrRent);
-        }
-
+        // The comparison holds physical properties. Whether and how a property is currently advertised is a listing
+        // fact, so it neither gates nor splits the list.
         if (items.Count >= PropertyComparisonItem.MaxItems)
         {
             return Failure(PropertyComparisonErrors.LimitReached);
-        }
-
-        // Prices of a sale and of a rent cannot be set side by side, so a list holds one kind only.
-        if (items.Count > 0)
-        {
-            var current = await comparisonRepository.GetAsync(command.UserId, cancellationToken);
-
-            if (current.TransactionType != transactionType)
-            {
-                return Failure(PropertyComparisonErrors.TransactionTypeMismatch);
-            }
         }
 
         // The first free position. Two requests racing for the same one collide on the unique position, and the loser

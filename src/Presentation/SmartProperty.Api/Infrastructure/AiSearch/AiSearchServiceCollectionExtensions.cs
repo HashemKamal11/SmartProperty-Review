@@ -30,6 +30,10 @@ internal static class AiSearchServiceCollectionExtensions
             }
         });
 
+        // Advertisements are indexed after the marketplace commits, best effort. The handlers depend on this interface
+        // optionally, so a host without the AI service (or a test) simply does not index.
+        services.AddScoped<IListingSearchIndexer, AiListingIndexer>();
+
         return services;
     }
 }

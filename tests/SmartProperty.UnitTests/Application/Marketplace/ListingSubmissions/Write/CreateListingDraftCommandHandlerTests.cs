@@ -215,14 +215,14 @@ public sealed class CreateListingDraftCommandHandlerTests
     }
 
     [Fact]
-    public async Task AnUnavailableEvidenceProviderIsTheGenericUnverifiedConflictAndNothingIsLocked()
+    public async Task AnUnavailableEvidenceProviderIsTheClearUnavailableErrorAndNothingIsLocked()
     {
         _world.Evidence.OnResolve = _ => EvidenceResolution.Unavailable();
 
         var result = await Handler(_world).Handle(
             new CreateListingDraftCommand(PropertyId, ListingPurpose.Sale, WriteHandlerWorld.Input([Guid.NewGuid()])));
 
-        Assert.Same(WriteErrors.PrerequisitesUnverified, result.Error);
+        Assert.Same(WriteErrors.EvidenceVerificationUnavailable, result.Error);
         Assert.Empty(_world.Repository.Calls);
         AssertNothingChanged(_world);
     }

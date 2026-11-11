@@ -37,9 +37,6 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             "address_line|text|YES",
             "address_postal_code|text|YES",
             "address_region|text|YES",
-            "ai_sync_error|character varying(1000)|YES",
-            "ai_sync_status|character varying(32)|NO",
-            "ai_synced_at|timestamp with time zone|YES",
             "area_id|uuid|YES",
             "area_sqm|numeric(12,2)|YES",
             "bathrooms|integer|YES",
@@ -47,21 +44,15 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
             "built_date|date|YES",
             "compound_id|uuid|YES",
             "created_at|timestamp with time zone|NO",
-            "description_ar|character varying(10000)|YES",
-            "description_en|character varying(10000)|YES",
             "finishing_status|character varying(32)|YES",
             "floor|integer|YES",
             "furnished|boolean|YES",
             "id|uuid|NO",
             "latitude|numeric|YES",
-            "listing_status|character varying(32)|NO",
             "longitude|numeric|YES",
             "owner_user_id|uuid|YES",
-            "price|numeric(18,2)|YES",
             "status|character varying(32)|NO",
-            "title_ar|character varying(300)|YES",
-            "title_en|character varying(300)|YES",
-            "transaction_type|character varying(32)|YES",
+            "time_zone_id|character varying(64)|YES",
             "type|character varying(32)|NO",
             "updated_at|timestamp with time zone|NO"
         ];
@@ -115,19 +106,15 @@ public sealed class PropertySchemaTests(PostgreSqlFixture fixture) : DatabaseTes
         string[] expected =
         [
             "ck_registry_properties_address_country_code",
-            "ck_registry_properties_ai_sync_status",
             "ck_registry_properties_area_sqm_range",
             "ck_registry_properties_bathrooms_range",
             "ck_registry_properties_bedrooms_range",
             "ck_registry_properties_finishing_status",
             "ck_registry_properties_floor_range",
             "ck_registry_properties_latitude_range",
-            "ck_registry_properties_listing_status",
             "ck_registry_properties_longitude_range",
             "ck_registry_properties_place",
-            "ck_registry_properties_price_positive",
             "ck_registry_properties_status",
-            "ck_registry_properties_transaction_type",
             "ck_registry_properties_type"
         ];
 

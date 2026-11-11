@@ -15,6 +15,7 @@ public sealed class SearchPropertiesCommandHandlerTests
     private readonly FakePropertyRepository _properties = new();
     private readonly FakePropertyMatchRepository _matches = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly FakePropertyListingsLookup _listings = new();
     private readonly Guid _userId = Guid.NewGuid();
 
     [Fact]
@@ -25,9 +26,9 @@ public sealed class SearchPropertiesCommandHandlerTests
         _properties.ExistingIds.Add(ours);
         _properties.ExistingIds.Add(alsoOurs);
         _gateway.SearchOutcome = Outcome(
-            Item(ours.ToString(), 0.91, descriptionAr: "وصف عربي", descriptionEn: "English"),
+            Item(Ours(ours), 0.91, descriptionAr: "وصف عربي", descriptionEn: "English"),
             Item(null, 0.80, descriptionEn: "someone else's", aiId: "EGY-SALE-APT-007694"),
-            Item(alsoOurs.ToString(), 0.5, titleEn: "Only a title"));
+            Item(Ours(alsoOurs), 0.5, titleEn: "Only a title"));
 
         var result = await CreateHandler().Handle(new SearchPropertiesCommand(_userId, "  3 bed flat  "));
 
@@ -84,13 +85,14 @@ public sealed class SearchPropertiesCommandHandlerTests
     {
         var ours = Guid.NewGuid();
         _properties.ExistingIds.Add(ours);
-        _gateway.SearchOutcome = Outcome(Item(ours.ToString(), 0.5, descriptionAr: "وصف", aiId: "PF-123"));
+        _gateway.SearchOutcome = Outcome(Item(Ours(ours), 0.5, descriptionAr: "وصف", aiId: "PF-123"));
 
         var result = await CreateHandler().Handle(new SearchPropertiesCommand(_userId, "flat"));
 
         var item = Assert.Single(result.Value.Items);
         Assert.Equal(ours, item.PropertyId);
-        Assert.Equal(ours.ToString(), item.ExternalId);
+        Assert.Equal(_listings.ByProperty[ours].Single().ListingId.ToString(), item.ExternalId);
+        Assert.Equal(_listings.ByProperty[ours].Single(), item.Listing);
         Assert.Equal("PF-123", item.AiPropertyId);
     }
 
@@ -109,7 +111,7 @@ public sealed class SearchPropertiesCommandHandlerTests
             Bedrooms: 5);
         _properties.Details[ours] = stored;
         _gateway.SearchOutcome = Outcome(
-            Item(ours.ToString(), 0.96, descriptionAr: "وصف"),
+            Item(Ours(ours), 0.96, descriptionAr: "وصف"),
             Item(null, 0.8, descriptionEn: "someone else's", aiId: "PF-9"));
 
         var result = await CreateHandler().Handle(new SearchPropertiesCommand(_userId, "villa"));
@@ -130,7 +132,7 @@ public sealed class SearchPropertiesCommandHandlerTests
             new PropertyAddressDetails("SA", null, null, null, null, null, null, null),
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow);
-        _gateway.SearchOutcome = Outcome(Item(ours.ToString(), 0.7, descriptionAr: "وصف"));
+        _gateway.SearchOutcome = Outcome(Item(Ours(ours), 0.7, descriptionAr: "وصف"));
 
         var result = await CreateHandler().Handle(new SearchPropertiesCommand(null, "flat"));
 
@@ -228,7 +230,7 @@ public sealed class SearchPropertiesCommandHandlerTests
     {
         var ours = Guid.NewGuid();
         _properties.ExistingIds.Add(ours);
-        _gateway.SearchOutcome = Outcome(Item(ours.ToString(), 0.9, descriptionEn: "mine"));
+        _gateway.SearchOutcome = Outcome(Item(Ours(ours), 0.9, descriptionEn: "mine"));
 
         var result = await CreateHandler().Handle(new SearchPropertiesCommand(emptyId ? Guid.Empty : null, "flat"));
 
@@ -287,7 +289,7 @@ public sealed class SearchPropertiesCommandHandlerTests
     {
         var ours = Guid.NewGuid();
         _properties.ExistingIds.Add(ours);
-        _gateway.SearchOutcome = Outcome(Item(ours.ToString(), 0.4));
+        _gateway.SearchOutcome = Outcome(Item(Ours(ours), 0.4));
 
         var result = await CreateHandler().Handle(new SearchPropertiesCommand(_userId, "flat"));
 
@@ -295,10 +297,36 @@ public sealed class SearchPropertiesCommandHandlerTests
         Assert.Equal("(no description)", Assert.Single(_matches.Added).Description);
     }
 
+    // The external id of one of our results is the id of a visible LISTING of the property, never the property id.
+    private string Ours(Guid propertyId)
+    {
+        return _listings.Show(propertyId).ToString();
+    }
+
+    [Fact]
+    public async Task ARecordWhoseExternalIdIsAPropertyIdOrAnInvisibleListingMapsToNothing()
+    {
+        var property = Guid.NewGuid();
+        _properties.ExistingIds.Add(property);
+        _listings.Show(property);
+        _gateway.SearchOutcome = Outcome(
+            Item(property.ToString(), 0.9, descriptionAr: "قديم"),
+            Item(Guid.NewGuid().ToString(), 0.8, descriptionAr: "غير ظاهر"));
+
+        var result = await CreateHandler().Handle(new SearchPropertiesCommand(_userId, "flat"));
+
+        Assert.All(result.Value.Items, item =>
+        {
+            Assert.Null(item.PropertyId);
+            Assert.Null(item.Listing);
+        });
+        Assert.Empty(_matches.Added);
+    }
+
     private SearchPropertiesCommandHandler CreateHandler()
     {
         return new SearchPropertiesCommandHandler(
-            _gateway, _properties, _matches, new FakeDateTimeProvider(Now), _unitOfWork);
+            _gateway, _properties, _matches, new FakeDateTimeProvider(Now), _unitOfWork, _listings);
     }
 
     private static AiSearchOutcome Outcome(params AiSearchItem[] items)

@@ -150,4 +150,13 @@ public static class PermissionCodes
     public const string OwnerVerificationReview = "owner.verification.review";
 
     public const string OwnerVerificationReviewDescription = "Review, approve or reject owner verification profiles.";
+
+    /// <summary>
+    /// Change the administrator-controlled marketplace settings, today the signing window of accepted requests.
+    /// Platform-scoped. Definition-only like the authority codes: the platform administrator bootstrap does not create
+    /// or assign it yet, so an administrator must be given it explicitly until that is added.
+    /// </summary>
+    public const string MarketplaceSettingsManage = "marketplace.settings.manage";
+
+    public const string MarketplaceSettingsManageDescription = "Change the administrator-controlled marketplace settings.";
 }

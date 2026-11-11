@@ -15,8 +15,7 @@ public sealed record CreatePropertyResult(
     FinishingStatus? FinishingStatus = null,
     IReadOnlyList<AmenityDetails>? Amenities = null,
     IReadOnlyList<ViewDetails>? Views = null,
-    PropertyListingDetails? Listing = null,
-    AiSyncDetails? AiSync = null,
+    PropertyPhysicalDetails? Physical = null,
     PropertyPlaceDetails? Place = null);
 
 public sealed record CreatePropertyAddressResult(

@@ -48,22 +48,6 @@ public sealed class PropertySearchFilterRepositoryTests(PostgreSqlFixture fixtur
     }
 
     [Fact]
-    public async Task PriceRangeIsInclusiveAndExcludesUnpricedProperties()
-    {
-        var cheap = NewProperty(PropertyType.Villa, 1, price: 1000m);
-        var low = NewProperty(PropertyType.Villa, 2, price: 2000m);
-        var high = NewProperty(PropertyType.Villa, 3, price: 3000m);
-        var expensive = NewProperty(PropertyType.Villa, 4, price: 9000m);
-        var unpriced = NewProperty(PropertyType.Villa, 5);
-        await SeedAsync(cheap, low, high, expensive, unpriced);
-
-        var page = await SearchAsync(new PropertyListFilter(MinPrice: 2000m, MaxPrice: 3000m));
-
-        Assert.Equal(2, page.TotalCount);
-        Assert.Equal([high.Id, low.Id], page.Items.Select(item => item.Id));
-    }
-
-    [Fact]
     public async Task BedroomsSupportAnExactCountAndAFiveOrMoreRange()
     {
         var three = NewProperty(PropertyType.Villa, 1, bedrooms: 3);
@@ -126,18 +110,15 @@ public sealed class PropertySearchFilterRepositoryTests(PostgreSqlFixture fixtur
     [Fact]
     public async Task FiltersCombineWithAnd()
     {
-        var match = NewProperty(PropertyType.Villa, 1, district: "Hittin", price: 2500m, bedrooms: 4);
-        var wrongType = NewProperty(PropertyType.Apartment, 2, district: "Hittin", price: 2500m, bedrooms: 4);
-        var wrongDistrict = NewProperty(PropertyType.Villa, 3, district: "Olaya", price: 2500m, bedrooms: 4);
-        var wrongPrice = NewProperty(PropertyType.Villa, 4, district: "Hittin", price: 9000m, bedrooms: 4);
-        var wrongBedrooms = NewProperty(PropertyType.Villa, 5, district: "Hittin", price: 2500m, bedrooms: 2);
-        await SeedAsync(match, wrongType, wrongDistrict, wrongPrice, wrongBedrooms);
+        var match = NewProperty(PropertyType.Villa, 1, district: "Hittin", bedrooms: 4);
+        var wrongType = NewProperty(PropertyType.Apartment, 2, district: "Hittin", bedrooms: 4);
+        var wrongDistrict = NewProperty(PropertyType.Villa, 3, district: "Olaya", bedrooms: 4);
+        var wrongBedrooms = NewProperty(PropertyType.Villa, 5, district: "Hittin", bedrooms: 2);
+        await SeedAsync(match, wrongType, wrongDistrict, wrongBedrooms);
 
         var page = await SearchAsync(new PropertyListFilter(
             Types: [PropertyType.Villa],
             District: "Hittin",
-            MinPrice: 2000m,
-            MaxPrice: 3000m,
             MinBedrooms: 4,
             MaxBedrooms: 4));
 
@@ -154,29 +135,28 @@ public sealed class PropertySearchFilterRepositoryTests(PostgreSqlFixture fixtur
     }
 
     [Fact]
-    public async Task TextSearchRequiresEveryTermAcrossTitleDescriptionAndLocation()
+    public async Task TextSearchRequiresEveryTermAcrossLocationAndAddress()
     {
-        var titled = NewProperty(PropertyType.Villa, 1, district: "Hittin", title: "Luxury villa");
-        var described = NewProperty(PropertyType.Villa, 2, district: "Olaya", description: "A quiet villa near the park");
-        var wrongDistrict = NewProperty(PropertyType.Villa, 3, district: "Olaya", title: "Luxury villa");
-        var unrelated = NewProperty(PropertyType.Apartment, 4, district: "Hittin", title: "Small flat");
-        await SeedAsync(titled, described, wrongDistrict, unrelated);
+        var both = NewProperty(PropertyType.Villa, 1, district: "Hittin", addressLine: "12 Garden Street");
+        var wrongDistrict = NewProperty(PropertyType.Villa, 2, district: "Olaya", addressLine: "12 Garden Street");
+        var unrelated = NewProperty(PropertyType.Apartment, 3, district: "Hittin", addressLine: "5 Palm Road");
+        await SeedAsync(both, wrongDistrict, unrelated);
 
-        var page = await SearchAsync(new PropertyListFilter(SearchTerms: ["villa", "hittin"]));
+        var page = await SearchAsync(new PropertyListFilter(SearchTerms: ["garden", "hittin"]));
 
-        Assert.Equal([titled.Id], page.Items.Select(item => item.Id));
+        Assert.Equal([both.Id], page.Items.Select(item => item.Id));
         Assert.Equal(1, page.TotalCount);
 
-        var byDescription = await SearchAsync(new PropertyListFilter(SearchTerms: ["QUIET"]));
+        var byAddress = await SearchAsync(new PropertyListFilter(SearchTerms: ["PALM"]));
 
-        Assert.Equal([described.Id], byDescription.Items.Select(item => item.Id));
+        Assert.Equal([unrelated.Id], byAddress.Items.Select(item => item.Id));
     }
 
     [Fact]
     public async Task TextSearchTreatsWildcardsAsPlainText()
     {
-        var percent = NewProperty(PropertyType.Villa, 1, title: "100% finished villa");
-        var other = NewProperty(PropertyType.Villa, 2, title: "Plain villa");
+        var percent = NewProperty(PropertyType.Villa, 1, addressLine: "100% Corniche Road");
+        var other = NewProperty(PropertyType.Villa, 2, addressLine: "Plain Road");
         await SeedAsync(percent, other);
 
         Assert.Equal([percent.Id], (await SearchAsync(new PropertyListFilter(SearchTerms: ["100%"]))).Items.Select(i => i.Id));
@@ -185,35 +165,18 @@ public sealed class PropertySearchFilterRepositoryTests(PostgreSqlFixture fixtur
     }
 
     [Fact]
-    public async Task ListingStatusFiltersAvailableSoldAndRented()
+    public async Task NewestIsTheDefaultOrderWhenThereIsNoSignal()
     {
-        var available = NewProperty(PropertyType.Villa, 1, listingStatus: ListingStatus.Available);
-        var sold = NewProperty(PropertyType.Villa, 2, listingStatus: ListingStatus.Sold);
-        var rented = NewProperty(PropertyType.Villa, 3, listingStatus: ListingStatus.Rented);
-        await SeedAsync(available, sold, rented);
+        var oldest = NewProperty(PropertyType.Villa, 1);
+        var middle = NewProperty(PropertyType.Villa, 2);
+        var newest = NewProperty(PropertyType.Villa, 3);
+        await SeedAsync(oldest, middle, newest);
 
-        Assert.Equal([sold.Id], (await SearchAsync(new PropertyListFilter(ListingStatus: ListingStatus.Sold))).Items.Select(i => i.Id));
-        Assert.Equal([available.Id], (await SearchAsync(new PropertyListFilter(ListingStatus: ListingStatus.Available))).Items.Select(i => i.Id));
-    }
-
-    [Fact]
-    public async Task PriceSortsPutUnpricedPropertiesLastAndNewestIsTheDefaultFallback()
-    {
-        var cheap = NewProperty(PropertyType.Villa, 1, price: 1000m);
-        var mid = NewProperty(PropertyType.Villa, 2, price: 2000m);
-        var dear = NewProperty(PropertyType.Villa, 3, price: 3000m);
-        var unpriced = NewProperty(PropertyType.Villa, 4);
-        await SeedAsync(cheap, mid, dear, unpriced);
-
-        var asc = await SearchAsync(new PropertyListFilter(Sort: PropertyListSortOrder.PriceAsc));
-        var desc = await SearchAsync(new PropertyListFilter(Sort: PropertyListSortOrder.PriceDesc));
-        var newest = await SearchAsync(new PropertyListFilter(Sort: PropertyListSortOrder.Newest));
+        var byNewest = await SearchAsync(new PropertyListFilter(Sort: PropertyListSortOrder.Newest));
         var relevanceWithoutSignals = await SearchAsync(new PropertyListFilter());
 
-        Assert.Equal([cheap.Id, mid.Id, dear.Id, unpriced.Id], asc.Items.Select(i => i.Id));
-        Assert.Equal([dear.Id, mid.Id, cheap.Id, unpriced.Id], desc.Items.Select(i => i.Id));
-        Assert.Equal([unpriced.Id, dear.Id, mid.Id, cheap.Id], newest.Items.Select(i => i.Id));
-        Assert.Equal(newest.Items.Select(i => i.Id), relevanceWithoutSignals.Items.Select(i => i.Id));
+        Assert.Equal([newest.Id, middle.Id, oldest.Id], byNewest.Items.Select(i => i.Id));
+        Assert.Equal(byNewest.Items.Select(i => i.Id), relevanceWithoutSignals.Items.Select(i => i.Id));
     }
 
     [Fact]
@@ -234,43 +197,31 @@ public sealed class PropertySearchFilterRepositoryTests(PostgreSqlFixture fixtur
     }
 
     [Fact]
-    public async Task RelevanceRanksATitleHitAboveALocationHitAboveADescriptionHit()
+    public async Task RelevanceRanksALocationHitAboveAnAddressLineHit()
     {
-        var description = NewProperty(PropertyType.Villa, 3, description: "Close to Hittin park");
-        var location = NewProperty(PropertyType.Villa, 2, district: "Hittin");
-        var title = NewProperty(PropertyType.Villa, 1, title: "Hittin villa");
-        await SeedAsync(description, location, title);
+        var address = NewProperty(PropertyType.Villa, 2, addressLine: "Close to Hittin park");
+        var location = NewProperty(PropertyType.Villa, 1, district: "Hittin");
+        await SeedAsync(address, location);
 
         var page = await SearchAsync(new PropertyListFilter(SearchTerms: ["hittin"]));
 
-        Assert.Equal([title.Id, location.Id, description.Id], page.Items.Select(i => i.Id));
+        // The address line is the newer property, so only the location rank can put the older one first.
+        Assert.Equal([location.Id, address.Id], page.Items.Select(i => i.Id));
     }
 
     private static Property NewProperty(
         PropertyType type,
         int minutesAfterBase,
         string? district = null,
-        decimal? price = null,
         int? bedrooms = null,
-        string? title = null,
-        string? description = null,
-        ListingStatus? listingStatus = null)
+        string? addressLine = null)
     {
-        var hasListing = price is not null || title is not null || description is not null || listingStatus is not null;
-
         return new Property(
             Guid.NewGuid(),
             type,
-            new PropertyAddress("SA", district: district),
+            new PropertyAddress("SA", district: district, addressLine: addressLine),
             BaseTime.AddMinutes(minutesAfterBase),
-            bedrooms: bedrooms,
-            listing: hasListing
-                ? new PropertyListingInfo(
-                    price: price,
-                    listingStatus: listingStatus ?? ListingStatus.Available,
-                    titleEn: title,
-                    descriptionEn: description)
-                : null);
+            bedrooms: bedrooms);
     }
 
     private async Task SeedAsync(params Property[] properties)

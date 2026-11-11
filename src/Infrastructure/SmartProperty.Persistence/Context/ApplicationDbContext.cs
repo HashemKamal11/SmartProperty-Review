@@ -47,6 +47,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<PurchaseRequest> PurchaseRequests => Set<PurchaseRequest>();
     public DbSet<RentalRequest> RentalRequests => Set<RentalRequest>();
     public DbSet<PropertyMarketplaceReservation> PropertyMarketplaceReservations => Set<PropertyMarketplaceReservation>();
+    public DbSet<PropertyCommitment> PropertyCommitments => Set<PropertyCommitment>();
+    public DbSet<MarketplaceSettings> MarketplaceSettings => Set<MarketplaceSettings>();
+    public DbSet<PropertyAuthorityGrant> PropertyAuthorityGrants => Set<PropertyAuthorityGrant>();
 
     public override int SaveChanges() => SaveChanges(true);
 
@@ -86,14 +89,14 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                     ValidateIds(request.Id, request.ListingId, request.PropertyId, request.BuyerUserId);
                     if (!Enum.IsDefined(request.Status))
                         throw new InvalidOperationException("Invalid purchase request status.");
-                    ValidateImmutable(entry, nameof(request.Id), nameof(request.ListingId), nameof(request.PropertyId), nameof(request.BuyerUserId), nameof(request.SubmittedAt));
+                    ValidateImmutable(entry, nameof(request.Id), nameof(request.ListingId), nameof(request.PropertyId), nameof(request.BuyerUserId), nameof(request.SubmittedAt), nameof(request.SubmissionId), nameof(request.OfferedAmount), nameof(request.Currency), nameof(request.Message));
                     PlanValue(entry, PurchaseRequestConfiguration.PurposeProperty, ListingPurpose.Sale, assignments);
                     break;
                 case RentalRequest request:
                     ValidateIds(request.Id, request.ListingId, request.PropertyId, request.RenterUserId);
                     if (!Enum.IsDefined(request.Status))
                         throw new InvalidOperationException("Invalid rental request status.");
-                    ValidateImmutable(entry, nameof(request.Id), nameof(request.ListingId), nameof(request.PropertyId), nameof(request.RenterUserId), nameof(request.SubmittedAt));
+                    ValidateImmutable(entry, nameof(request.Id), nameof(request.ListingId), nameof(request.PropertyId), nameof(request.RenterUserId), nameof(request.SubmittedAt), nameof(request.SubmissionId), nameof(request.PricingPeriod), nameof(request.Amount), nameof(request.Currency), nameof(request.StartDate), nameof(request.EndDate), nameof(request.CheckInTime), nameof(request.CheckOutTime), nameof(request.TimeZoneId), nameof(request.Message));
                     PlanValue(entry, RentalRequestConfiguration.PurposeProperty, ListingPurpose.Rent, assignments);
                     break;
                 case PropertyMarketplaceReservation reservation:
@@ -144,16 +147,30 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             throw new InvalidOperationException("Marketplace foreign keys contradict the declared identity or purpose.");
     }
 
+    private static bool IsNeverSubmitted(ListingSubmission submission) =>
+        submission.Status == ListingSubmissionStatus.Draft && submission.SubmittedAt is null
+        && submission.ReviewDecision is null && submission.SubmittedAssessments.Count == 0;
+
     // EF save-boundary protection only: direct SQL/bulk updates require later database enforcement.
     private void ValidateMarketplaceHistory()
     {
         ChangeTracker.DetectChanges();
-        foreach (var entry in ChangeTracker.Entries().ToArray())
+        var entries = ChangeTracker.Entries().ToArray();
+        foreach (var entry in entries)
         {
-            if (entry.Entity is ListingDraftDiscardAudit)
+            if (entry.Entity is ListingDraftDiscardAudit audit)
             {
                 if (entry.State == EntityState.Added)
-                    throw new InvalidOperationException("Discard audit insertion requires the grant-checked atomic discard coordinator, which is not yet available.");
+                {
+                    // An audit row is only ever written together with the removal of the exact draft it describes.
+                    var paired = entries.Any(other => other.State == EntityState.Deleted
+                        && other.Entity is ListingSubmission removed
+                        && removed.Id == audit.SubmissionId
+                        && removed.PropertyId == audit.PropertyId
+                        && IsNeverSubmitted(removed));
+                    if (!paired)
+                        throw new InvalidOperationException("A discard audit is written only together with the removal of the exact never-submitted draft it describes.");
+                }
                 if (entry.State is EntityState.Modified or EntityState.Deleted)
                     throw new InvalidOperationException("Draft discard audit history is append-only.");
             }
@@ -161,7 +178,15 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                 throw new InvalidOperationException("Historical review decisions are immutable.");
             if (entry.Entity is ListingSubmission)
             {
-                if (entry.State == EntityState.Deleted) throw new InvalidOperationException("Submission history cannot be deleted.");
+                if (entry.State == EntityState.Deleted)
+                {
+                    var removed = (ListingSubmission)entry.Entity;
+                    if (!IsNeverSubmitted(removed)) throw new InvalidOperationException("Submission history cannot be deleted.");
+                    var audited = entries.Any(other => other.State == EntityState.Added
+                        && other.Entity is ListingDraftDiscardAudit written && written.SubmissionId == removed.Id);
+                    if (!audited)
+                        throw new InvalidOperationException("A draft can be deleted only together with its discard audit record.");
+                }
                 if (entry.State == EntityState.Modified)
                 {
                     foreach (var name in new[] { "Id", "ListingId", "PropertyId", "Purpose", "Version", "PredecessorId", "CreatedAt", "Authority" })
@@ -183,6 +208,33 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                     if (wasDraft && (entry.Property("SubmittedAssessments").IsModified || entry.Property("SubmittedAt").IsModified)
                         && !Equals(entry.Property("Status").CurrentValue, ListingSubmissionStatus.PendingReview))
                         throw new InvalidOperationException("Assessment assignment requires the submission transition.");
+                }
+            }
+            if (entry.Entity is PropertyAuthorityGrant)
+            {
+                if (entry.State == EntityState.Deleted)
+                    throw new InvalidOperationException("Authority grant history cannot be deleted.");
+                if (entry.State == EntityState.Modified)
+                {
+                    // Only the revocation (and the version it bumps) may change; the subject and provenance never do.
+                    foreach (var name in new[] { "Id", "PropertyId", "Purpose", "GranteeUserId", "Authority", "Issuer", "IssuedByUserId",
+                                 "LegalReviewReferenceId", "LegalReviewer", "LegalReviewedByUserId", "LegalReviewedAt", "IssuedAt" })
+                        if (entry.Property(name).IsModified) throw new InvalidOperationException("Authority grants are immutable except for revocation.");
+                    if (entry.Property("RevokedAt").OriginalValue is not null)
+                        throw new InvalidOperationException("Revocation is permanent.");
+                }
+            }
+            if (entry.Entity is PropertyCommitment)
+            {
+                if (entry.State == EntityState.Deleted)
+                    throw new InvalidOperationException("Commitments are history and cannot be deleted.");
+                if (entry.State == EntityState.Modified)
+                {
+                    // Only the progress of the commitment changes; what was agreed, and with whom, never does.
+                    foreach (var name in new[] { "Id", "PropertyId", "Kind", "ListingId", "SubmissionId", "PurchaseRequestId", "RentalRequestId",
+                                 "CustomerUserId", "OwnerUserId", "PricingPeriod", "Amount", "Currency", "StartDate", "EndDate",
+                                 "CheckInTime", "CheckOutTime", "TimeZoneId", "AcceptedAt", "SigningDeadline" })
+                        if (entry.Property(name).IsModified) throw new InvalidOperationException("The terms of a commitment cannot be changed.");
                 }
             }
             if (entry.Entity is PropertyListing && entry.State == EntityState.Modified

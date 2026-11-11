@@ -70,6 +70,23 @@ public interface IListingSubmissionWriteRepository
         Guid actingUserId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Any submission by id, for review and withdrawal. Before the property is locked it is read without tracking and
+    /// only names the property to lock; after, it is locked and tracked and is the one every decision uses.
+    /// </summary>
+    Task<ListingSubmission?> GetSubmissionAsync(Guid submissionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A listing by id, read without tracking and without a lock, only to learn which property and purpose to lock.
+    /// </summary>
+    Task<PropertyListing?> FindListingAsync(Guid listingId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A listing by id, locked and tracked. The property lock and the grant read for the listing's purpose must
+    /// already be held.
+    /// </summary>
+    Task<PropertyListing?> GetListingByIdAsync(Guid listingId, CancellationToken cancellationToken = default);
+
     Task AddSubmissionAsync(ListingSubmission submission, CancellationToken cancellationToken = default);
 
     /// <summary>Removes a draft that was never submitted. History and every submitted version are untouched.</summary>

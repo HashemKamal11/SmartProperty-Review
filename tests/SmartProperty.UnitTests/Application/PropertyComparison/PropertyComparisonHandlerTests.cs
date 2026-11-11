@@ -47,7 +47,7 @@ public sealed class PropertyComparisonHandlerTests
     [Fact]
     public async Task AddingAnActivePropertyPutsItInTheFirstPositionAndCommitsOnce()
     {
-        var propertyId = SeedProperty(TransactionType.Sale);
+        var propertyId = SeedProperty();
 
         var result = await AddAsync(propertyId);
 
@@ -64,15 +64,14 @@ public sealed class PropertyComparisonHandlerTests
     [Fact]
     public async Task TwoPropertiesCanBeComparedAndThreeFillTheList()
     {
-        var first = await AddAsync(SeedProperty(TransactionType.Sale));
-        var second = await AddAsync(SeedProperty(TransactionType.Sale));
-        var third = await AddAsync(SeedProperty(TransactionType.Sale));
+        var first = await AddAsync(SeedProperty());
+        var second = await AddAsync(SeedProperty());
+        var third = await AddAsync(SeedProperty());
 
         Assert.False(first.Value.Comparison.CanCompare);
         Assert.True(second.Value.Comparison.CanCompare);
         Assert.True(third.Value.Comparison.CanCompare);
         Assert.Equal([1, 2, 3], _comparison.Stored.Select(item => item.Position));
-        Assert.Equal(TransactionType.Sale, third.Value.Comparison.TransactionType);
         Assert.Equal(3, third.Value.Comparison.MaxItems);
     }
 
@@ -81,10 +80,10 @@ public sealed class PropertyComparisonHandlerTests
     {
         for (var index = 0; index < 3; index++)
         {
-            await AddAsync(SeedProperty(TransactionType.Rent));
+            await AddAsync(SeedProperty());
         }
 
-        var result = await AddAsync(SeedProperty(TransactionType.Rent));
+        var result = await AddAsync(SeedProperty());
 
         Assert.Equal("comparison.limit_reached", result.Error!.Code);
         Assert.Equal(ErrorType.Conflict, result.Error.Type);
@@ -92,43 +91,22 @@ public sealed class PropertyComparisonHandlerTests
     }
 
     [Fact]
-    public async Task ASaleAndARentCannotShareAList()
+    public async Task AnyActivePropertyCanBeComparedWhateverItsAdvertisement()
     {
-        await AddAsync(SeedProperty(TransactionType.Sale));
+        // A comparison holds physical properties. Sale or rent is a listing fact and neither gates nor splits the list.
+        var first = await AddAsync(SeedProperty());
+        var second = await AddAsync(SeedProperty());
 
-        var result = await AddAsync(SeedProperty(TransactionType.Rent));
-
-        Assert.Equal("comparison.transaction_type_mismatch", result.Error!.Code);
-        Assert.Single(_comparison.Stored);
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(2, _comparison.Stored.Count);
     }
 
-    [Fact]
-    public async Task OnceTheListIsEmptyAgainTheOtherKindIsAllowed()
-    {
-        var sale = SeedProperty(TransactionType.Sale);
-        await AddAsync(sale);
-        await new RemoveFromComparisonCommandHandler(_comparison, _unitOfWork)
-            .Handle(new RemoveFromComparisonCommand(_userId, sale));
-
-        var result = await AddAsync(SeedProperty(TransactionType.Rent));
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(TransactionType.Rent, result.Value.Comparison.TransactionType);
-    }
-
-    [Fact]
-    public async Task APropertyForNeitherSaleNorRentCannotBeCompared()
-    {
-        var result = await AddAsync(SeedProperty(transactionType: null));
-
-        Assert.Equal("comparison.property_not_listed", result.Error!.Code);
-        Assert.Empty(_comparison.Stored);
-    }
 
     [Fact]
     public async Task AddingTheSamePropertyAgainChangesNothing()
     {
-        var propertyId = SeedProperty(TransactionType.Sale);
+        var propertyId = SeedProperty();
         await AddAsync(propertyId);
 
         var again = await AddAsync(propertyId);
@@ -145,7 +123,7 @@ public sealed class PropertyComparisonHandlerTests
         var ids = new List<Guid>();
         for (var index = 0; index < 3; index++)
         {
-            ids.Add(SeedProperty(TransactionType.Sale));
+            ids.Add(SeedProperty());
             await AddAsync(ids[^1]);
         }
 
@@ -158,7 +136,7 @@ public sealed class PropertyComparisonHandlerTests
     [Fact]
     public async Task AnUnknownOrArchivedPropertyIsRefused()
     {
-        var archived = SeedProperty(TransactionType.Sale, PropertyStatus.Archived);
+        var archived = SeedProperty(PropertyStatus.Archived);
 
         var unknown = await AddAsync(Guid.NewGuid());
         var empty = await AddAsync(Guid.Empty);
@@ -175,7 +153,7 @@ public sealed class PropertyComparisonHandlerTests
     {
         var handler = AddHandler();
 
-        var result = await handler.Handle(new AddToComparisonCommand(Guid.NewGuid(), SeedProperty(TransactionType.Sale)));
+        var result = await handler.Handle(new AddToComparisonCommand(Guid.NewGuid(), SeedProperty()));
 
         Assert.Equal("users.not_found", result.Error!.Code);
     }
@@ -183,13 +161,13 @@ public sealed class PropertyComparisonHandlerTests
     [Fact]
     public async Task ARemovedPositionIsReusedBeforeTheNextOne()
     {
-        var first = SeedProperty(TransactionType.Sale);
+        var first = SeedProperty();
         await AddAsync(first);
-        await AddAsync(SeedProperty(TransactionType.Sale));
+        await AddAsync(SeedProperty());
         await new RemoveFromComparisonCommandHandler(_comparison, _unitOfWork)
             .Handle(new RemoveFromComparisonCommand(_userId, first));
 
-        await AddAsync(SeedProperty(TransactionType.Sale));
+        await AddAsync(SeedProperty());
 
         Assert.Equal([1, 2], _comparison.Stored.Select(item => item.Position).Order());
     }
@@ -203,7 +181,7 @@ public sealed class PropertyComparisonHandlerTests
             PersistenceConstraint.PropertyComparisonPosition,
             new InvalidOperationException("Simulated concurrent add."));
 
-        var result = await AddAsync(SeedProperty(TransactionType.Sale));
+        var result = await AddAsync(SeedProperty());
 
         Assert.Equal("comparison.concurrent_change", result.Error!.Code);
         Assert.Equal(1, _unitOfWork.DiscardTrackedChangesCallCount);
@@ -216,7 +194,7 @@ public sealed class PropertyComparisonHandlerTests
             PersistenceConstraint.PropertyComparisonItem,
             new InvalidOperationException("Simulated concurrent add."));
 
-        var result = await AddAsync(SeedProperty(TransactionType.Sale));
+        var result = await AddAsync(SeedProperty());
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.Created);
@@ -227,7 +205,7 @@ public sealed class PropertyComparisonHandlerTests
     [Fact]
     public async Task RemovingTakesItOffAndRemovingAgainIsFine()
     {
-        var propertyId = SeedProperty(TransactionType.Sale);
+        var propertyId = SeedProperty();
         await AddAsync(propertyId);
         var handler = new RemoveFromComparisonCommandHandler(_comparison, _unitOfWork);
 
@@ -245,7 +223,7 @@ public sealed class PropertyComparisonHandlerTests
     public async Task ClearingEmptiesTheListOfThisUserOnly()
     {
         var other = Guid.NewGuid();
-        var mine = SeedProperty(TransactionType.Sale);
+        var mine = SeedProperty();
         await AddAsync(mine);
         _comparison.Stored.Add(new PropertyComparisonItem(other, mine, 1, Now));
 
@@ -259,8 +237,8 @@ public sealed class PropertyComparisonHandlerTests
     [Fact]
     public async Task TheListCarriesTheMatchWhenThereIsOneAndNullWhenThereIsNot()
     {
-        var matched = SeedProperty(TransactionType.Sale);
-        var unmatched = SeedProperty(TransactionType.Sale);
+        var matched = SeedProperty();
+        var unmatched = SeedProperty();
         _comparison.Matches[matched] = 94m;
         await AddAsync(matched);
         await AddAsync(unmatched);
@@ -279,7 +257,6 @@ public sealed class PropertyComparisonHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value.Items);
         Assert.False(result.Value.CanCompare);
-        Assert.Null(result.Value.TransactionType);
     }
 
     [Fact]
@@ -309,13 +286,9 @@ public sealed class PropertyComparisonHandlerTests
         return AddHandler().Handle(new AddToComparisonCommand(_userId, propertyId));
     }
 
-    private Guid SeedProperty(TransactionType? transactionType, PropertyStatus status = PropertyStatus.Active)
+    private Guid SeedProperty(PropertyStatus status = PropertyStatus.Active)
     {
         var id = Guid.NewGuid();
-        var listing = transactionType is null
-            ? null
-            : new PropertyListingDetails(
-                transactionType, 1_000_000m, 120m, 3, true, ListingStatus.Available, null, "A villa", null, null);
 
         _properties.Details[id] = new PropertyDetails(
             id,
@@ -324,7 +297,7 @@ public sealed class PropertyComparisonHandlerTests
             new PropertyAddressDetails("SA", "Riyadh", null, "Al Malqa", null, null, null, null),
             Now.AddDays(-30),
             Now.AddDays(-30),
-            Listing: listing);
+            Physical: new PropertyPhysicalDetails(120m, 3, true));
         // The comparison reads the same property read model through its own repository.
         _comparison.Details[id] = _properties.Details[id];
 

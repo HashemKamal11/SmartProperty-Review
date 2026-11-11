@@ -27,4 +27,6 @@ public sealed record PublicListingSearchCriteria(
     decimal? MaxPrice,
     string? Currency,
     RentPeriod? RentPeriod,
-    PublicListingSortOrder Sort);
+    PublicListingSortOrder Sort,
+    DateOnly? AvailableFrom = null,
+    DateOnly? AvailableTo = null);

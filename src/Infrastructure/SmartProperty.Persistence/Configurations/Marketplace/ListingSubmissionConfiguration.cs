@@ -17,6 +17,18 @@ internal sealed class ListingSubmissionConfiguration : IEntityTypeConfiguration<
             t.HasCheckConstraint("ck_marketplace_submissions_content", $"COALESCE((content_snapshot->>'FormatVersion' = '1' AND {required} AND jsonb_typeof(content_snapshot->'Payload'->'Amount') = 'number' AND content_snapshot->'Payload'->>'PropertyType' IN ('1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16') AND ((purpose = 'Sale' AND content_snapshot->'Payload'->>'Purpose' = '1' AND content_snapshot->'Payload'->'RentPeriod' = 'null'::jsonb) OR (purpose = 'Rent' AND content_snapshot->'Payload'->>'Purpose' = '2' AND content_snapshot->'Payload'->>'RentPeriod' IN ('1','2','3','4')))), false)");
             t.HasCheckConstraint("ck_marketplace_submissions_evidence", "COALESCE((jsonb_typeof(evidence_snapshot->'Payload') = 'array' AND (status = 'Draft' OR jsonb_array_length(evidence_snapshot->'Payload') > 0) AND evidence_snapshot->>'FormatVersion' = '1' AND authority_snapshot->>'FormatVersion' = '1' AND submitted_assessments_snapshot->>'FormatVersion' = '1'), false)");
             t.HasCheckConstraint("ck_marketplace_submissions_revision", "revision > 0");
+            // Rental pricing options and terms are additive members of the content. Absent means a Sale or a rental
+            // stored with one price; present means a rental with one to four options and its terms with at least one
+            // window. Per-element rules live in the Domain: a CHECK cannot look inside an array.
+            t.HasCheckConstraint("ck_marketplace_submissions_rent_terms",
+                "COALESCE(("
+                + "(NOT jsonb_exists(content_snapshot->'Payload','PricingOptions') AND NOT jsonb_exists(content_snapshot->'Payload','RentalTerms'))"
+                + " OR (purpose = 'Rent'"
+                + " AND jsonb_typeof(content_snapshot->'Payload'->'PricingOptions') = 'array'"
+                + " AND jsonb_array_length(content_snapshot->'Payload'->'PricingOptions') BETWEEN 1 AND 4"
+                + " AND jsonb_typeof(content_snapshot->'Payload'->'RentalTerms') = 'object'"
+                + " AND jsonb_typeof(content_snapshot->'Payload'->'RentalTerms'->'Windows') = 'array'"
+                + " AND jsonb_array_length(content_snapshot->'Payload'->'RentalTerms'->'Windows') >= 1)), false)");
         });
         b.HasKey(x => x.Id).HasName("pk_marketplace_submissions");
         b.HasAlternateKey(x => new { x.Id, x.ListingId, x.PropertyId, x.Purpose }).HasName("ak_marketplace_submissions_identity");

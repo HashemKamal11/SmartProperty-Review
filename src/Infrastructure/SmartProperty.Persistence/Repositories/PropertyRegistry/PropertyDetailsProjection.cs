@@ -40,18 +40,11 @@ internal static class PropertyDetailsProjection
                 .OrderBy(view => view.SortOrder)
                 .Select(view => new ViewDetails(view.Code, view.NameAr, view.NameEn))
                 .ToList(),
-            new PropertyListingDetails(
-                property.Listing.TransactionType,
-                property.Listing.Price,
-                property.Listing.AreaSqm,
-                property.Listing.Floor,
-                property.Listing.Furnished,
-                property.Listing.ListingStatus,
-                property.Listing.TitleAr,
-                property.Listing.TitleEn,
-                property.Listing.DescriptionAr,
-                property.Listing.DescriptionEn),
-            new AiSyncDetails(property.AiSyncStatus, property.AiSyncedAt, property.AiSyncError),
+            new PropertyPhysicalDetails(
+                property.Physical.AreaSqm,
+                property.Physical.Floor,
+                property.Physical.Furnished,
+                property.Physical.TimeZoneId),
             property.Area == null
                 ? null
                 : new PropertyPlaceDetails(

@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Marketplace.PublicListings;
@@ -8,40 +10,80 @@ using SmartProperty.Persistence.Context;
 
 namespace SmartProperty.Persistence.Repositories.Marketplace;
 
-internal sealed class PublicListingReadRepository(ApplicationDbContext context) : IPublicListingReadRepository
+internal sealed class PublicListingReadRepository(ApplicationDbContext context) : IPublicListingReadRepository, IPropertyListingsLookup
 {
-    // Fixed composable SQL. All caller values enter through parameterized LINQ predicates.
-    // Value-converted Domain snapshots cannot safely be traversed through ordinary EF LINQ.
-    private const string VisibleSql = """
-        SELECT l.id AS "ListingId",
-               (s.content_snapshot->'Payload'->>'Purpose')::integer AS "Purpose",
-               s.content_snapshot->'Payload'->>'Title' AS "Title",
-               s.content_snapshot->'Payload'->>'Description' AS "Description",
-               (s.content_snapshot->'Payload'->>'Amount')::numeric AS "Amount",
-               s.content_snapshot->'Payload'->>'Currency' AS "Currency",
-               (s.content_snapshot->'Payload'->>'RentPeriod')::integer AS "RentPeriod",
-               (s.content_snapshot->'Payload'->>'PropertyType')::integer AS "PropertyType",
-               s.content_snapshot->'Payload'->>'Country' AS "Country",
-               s.content_snapshot->'Payload'->>'Region' AS "Region",
-               s.content_snapshot->'Payload'->>'City' AS "City",
-               s.content_snapshot->'Payload'->>'District' AS "District",
-               l.published_at AS "PublishedAt"
-        FROM marketplace.listings AS l
-        JOIN marketplace.submissions AS s
-          ON s.id = l.published_submission_id AND s.listing_id = l.id
-         AND s.property_id = l.property_id AND s.purpose = l.purpose
-        JOIN registry.properties AS p ON p.id = l.property_id
-        WHERE l.publication_status = 'Published' AND l.availability_status = 'Open'
-          AND NOT l.closed_by_reservation AND l.published_at IS NOT NULL
-          AND p.status = 'Active' AND s.status = 'Approved'
-          AND s.content_snapshot->>'FormatVersion' = '1'
-          AND EXISTS (SELECT 1 FROM marketplace.review_decisions AS d
-                      WHERE d.submission_id = s.id AND d.approved)
-          AND NOT EXISTS (SELECT 1 FROM marketplace.property_reservations AS r
-                          WHERE r.property_id = l.property_id)
-        """;
-
-    private IQueryable<PublicListingReadRow> Visible() => context.Database.SqlQueryRaw<PublicListingReadRow>(VisibleSql);
+    // Fixed composable SQL. Every caller value enters through a parameter (the requested pricing period and the
+    // requested stay) or through parameterized LINQ predicates; nothing is concatenated into the text.
+    // Value-converted Domain snapshots cannot safely be traversed through ordinary EF LINQ, so the few members that
+    // are public are projected here by name.
+    //
+    // Visibility. A listing is shown only while it is published and open, its approved version is the one it
+    // publishes, its property is active and not held by a legacy reservation. Closing a listing (a withdrawal, or the
+    // acceptance of a request) takes it out of this query at once. Dates held by a commitment are reported as blocked,
+    // and an unsigned commitment past its signing deadline no longer holds anything, whether or not it was stored as
+    // expired yet.
+    private IQueryable<PublicListingReadRow> Visible(int? period, DateOnly? availableFrom, DateOnly? availableTo) =>
+        context.Database.SqlQuery<PublicListingReadRow>(
+            $"""
+            SELECT l.id AS "ListingId",
+                   l.property_id AS "PropertyId",
+                   (s.content_snapshot->'Payload'->>'Purpose')::integer AS "Purpose",
+                   s.content_snapshot->'Payload'->>'Title' AS "Title",
+                   s.content_snapshot->'Payload'->>'Description' AS "Description",
+                   (s.content_snapshot->'Payload'->>'Amount')::numeric AS "Amount",
+                   s.content_snapshot->'Payload'->>'Currency' AS "Currency",
+                   (s.content_snapshot->'Payload'->>'RentPeriod')::integer AS "RentPeriod",
+                   (s.content_snapshot->'Payload'->>'PropertyType')::integer AS "PropertyType",
+                   s.content_snapshot->'Payload'->>'Country' AS "Country",
+                   s.content_snapshot->'Payload'->>'Region' AS "Region",
+                   s.content_snapshot->'Payload'->>'City' AS "City",
+                   s.content_snapshot->'Payload'->>'District' AS "District",
+                   l.published_at AS "PublishedAt",
+                   CASE WHEN {period}::integer IS NULL THEN NULL ELSE COALESCE(
+                       (SELECT (o->>'Amount')::numeric
+                          FROM jsonb_array_elements(COALESCE(s.content_snapshot->'Payload'->'PricingOptions', '[]'::jsonb)) AS o
+                         WHERE (o->>'Period')::integer = {period}::integer LIMIT 1),
+                       CASE WHEN jsonb_typeof(s.content_snapshot->'Payload'->'PricingOptions') IS DISTINCT FROM 'array'
+                                 AND (s.content_snapshot->'Payload'->>'RentPeriod')::integer = {period}::integer
+                            THEN (s.content_snapshot->'Payload'->>'Amount')::numeric END) END AS "PeriodAmount",
+                   CASE WHEN {period}::integer IS NULL THEN NULL ELSE COALESCE(
+                       (SELECT o->>'Currency'
+                          FROM jsonb_array_elements(COALESCE(s.content_snapshot->'Payload'->'PricingOptions', '[]'::jsonb)) AS o
+                         WHERE (o->>'Period')::integer = {period}::integer LIMIT 1),
+                       CASE WHEN jsonb_typeof(s.content_snapshot->'Payload'->'PricingOptions') IS DISTINCT FROM 'array'
+                                 AND (s.content_snapshot->'Payload'->>'RentPeriod')::integer = {period}::integer
+                            THEN s.content_snapshot->'Payload'->>'Currency' END) END AS "PeriodCurrency",
+                   (s.content_snapshot->'Payload'->'PricingOptions')::text AS "PricingOptionsJson",
+                   (s.content_snapshot->'Payload'->'RentalTerms')::text AS "RentalTermsJson",
+                   (SELECT string_agg(c.start_date::text || '|' || c.end_date::text, ',' ORDER BY c.start_date)
+                      FROM marketplace.property_commitments AS c
+                     WHERE c.property_id = l.property_id AND c.kind = 'Rental'
+                       AND c.status IN ('PendingSignature', 'Signed', 'Occupied')
+                       AND NOT (c.status = 'PendingSignature' AND c.signing_deadline <= now())) AS "BlockedRangesText"
+            FROM marketplace.listings AS l
+            JOIN marketplace.submissions AS s
+              ON s.id = l.published_submission_id AND s.listing_id = l.id
+             AND s.property_id = l.property_id AND s.purpose = l.purpose
+            JOIN registry.properties AS p ON p.id = l.property_id
+            WHERE l.publication_status = 'Published' AND l.availability_status = 'Open'
+              AND NOT l.closed_by_reservation AND l.published_at IS NOT NULL
+              AND p.status = 'Active' AND s.status = 'Approved'
+              AND s.content_snapshot->>'FormatVersion' = '1'
+              AND EXISTS (SELECT 1 FROM marketplace.review_decisions AS d
+                          WHERE d.submission_id = s.id AND d.approved)
+              AND NOT EXISTS (SELECT 1 FROM marketplace.property_reservations AS r
+                              WHERE r.property_id = l.property_id)
+              AND ({availableFrom}::date IS NULL OR (
+                    EXISTS (SELECT 1
+                              FROM jsonb_array_elements(COALESCE(s.content_snapshot->'Payload'->'RentalTerms'->'Windows', '[]'::jsonb)) AS w
+                             WHERE (w->>'StartDate')::date <= {availableFrom}::date AND (w->>'EndDate')::date >= {availableTo}::date)
+                    AND NOT EXISTS (SELECT 1
+                                      FROM marketplace.property_commitments AS c
+                                     WHERE c.property_id = l.property_id AND c.kind = 'Rental'
+                                       AND c.status IN ('PendingSignature', 'Signed', 'Occupied')
+                                       AND NOT (c.status = 'PendingSignature' AND c.signing_deadline <= now())
+                                       AND c.start_date < {availableTo}::date AND {availableFrom}::date < c.end_date)))
+            """);
 
     private IQueryable<PublicListingReadRow> Filter(PublicListingSearchCriteria criteria)
     {
@@ -55,13 +97,20 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
             || (criteria.RentPeriod.HasValue && criteria.Purpose != ListingPurpose.Rent)
             || criteria.MinPrice < 0 || criteria.MaxPrice < 0 || criteria.MinPrice > criteria.MaxPrice
             || (comparesPrices && (!criteria.Purpose.HasValue || string.IsNullOrWhiteSpace(criteria.Currency)))
-            || (comparesPrices && criteria.Purpose == ListingPurpose.Rent && !criteria.RentPeriod.HasValue))
+            || (comparesPrices && criteria.Purpose == ListingPurpose.Rent && !criteria.RentPeriod.HasValue)
+            || (criteria.AvailableFrom.HasValue != criteria.AvailableTo.HasValue)
+            || (criteria.AvailableFrom.HasValue && (criteria.AvailableTo <= criteria.AvailableFrom || criteria.Purpose != ListingPurpose.Rent)))
             throw new ArgumentException("Invalid public listing search criteria.", nameof(criteria));
 
-        var query = Visible();
+        var query = Visible(criteria.RentPeriod is { } requested ? (int)requested : null, criteria.AvailableFrom, criteria.AvailableTo);
         if (criteria.Purpose is { } purpose) query = query.Where(x => x.Purpose == (int)purpose);
         if (criteria.PropertyType is { } type) query = query.Where(x => x.PropertyType == (int)type);
-        if (criteria.RentPeriod is { } period) query = query.Where(x => x.RentPeriod == (int)period);
+
+        // A rental is found by any pricing period it offers, not only its primary one, and its price in that period is
+        // the price that is compared, sorted and shown. A search without a period compares the plain listing price.
+        var byPeriod = criteria.RentPeriod.HasValue;
+        if (byPeriod) query = query.Where(x => x.PeriodAmount != null);
+
         // Never normalize stored historical strings or infer codes. C2 supplies normalized code filters.
         var country = Trim(criteria.CountryCode);
         var currency = Trim(criteria.Currency);
@@ -69,20 +118,31 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
         var city = Trim(criteria.City);
         var district = Trim(criteria.District);
         if (country is not null) query = query.Where(x => EF.Functions.Collate(x.Country, "C") == country);
-        if (currency is not null) query = query.Where(x => EF.Functions.Collate(x.Currency, "C") == currency);
+        if (currency is not null)
+        {
+            query = byPeriod
+                ? query.Where(x => EF.Functions.Collate(x.PeriodCurrency!, "C") == currency)
+                : query.Where(x => EF.Functions.Collate(x.Currency, "C") == currency);
+        }
+
         if (region is not null) query = query.Where(x => EF.Functions.Collate(x.Region, "C") == region);
         if (city is not null) query = query.Where(x => EF.Functions.Collate(x.City, "C") == city);
         if (district is not null) query = query.Where(x => EF.Functions.Collate(x.District, "C") == district);
-        if (criteria.MinPrice is { } min) query = query.Where(x => x.Amount >= min);
-        if (criteria.MaxPrice is { } max) query = query.Where(x => x.Amount <= max);
+        if (criteria.MinPrice is { } min) query = byPeriod ? query.Where(x => x.PeriodAmount >= min) : query.Where(x => x.Amount >= min);
+        if (criteria.MaxPrice is { } max) query = byPeriod ? query.Where(x => x.PeriodAmount <= max) : query.Where(x => x.Amount <= max);
         return query;
     }
 
-    private static IOrderedQueryable<PublicListingReadRow> Order(IQueryable<PublicListingReadRow> query, PublicListingSortOrder sort) => sort switch
+    private static IOrderedQueryable<PublicListingReadRow> Order(
+        IQueryable<PublicListingReadRow> query, PublicListingSortOrder sort, bool byPeriod) => sort switch
     {
         PublicListingSortOrder.Newest => query.OrderByDescending(x => x.PublishedAt).ThenBy(x => x.ListingId),
-        PublicListingSortOrder.PriceAsc => query.OrderBy(x => x.Amount).ThenBy(x => x.ListingId),
-        PublicListingSortOrder.PriceDesc => query.OrderByDescending(x => x.Amount).ThenBy(x => x.ListingId),
+        PublicListingSortOrder.PriceAsc => byPeriod
+            ? query.OrderBy(x => x.PeriodAmount).ThenBy(x => x.ListingId)
+            : query.OrderBy(x => x.Amount).ThenBy(x => x.ListingId),
+        PublicListingSortOrder.PriceDesc => byPeriod
+            ? query.OrderByDescending(x => x.PeriodAmount).ThenBy(x => x.ListingId)
+            : query.OrderByDescending(x => x.Amount).ThenBy(x => x.ListingId),
         _ => throw new ArgumentOutOfRangeException(nameof(sort))
     };
 
@@ -91,22 +151,146 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
         if (skip < 0 || skip > PageParameters.MaxOffset) throw new ArgumentOutOfRangeException(nameof(skip));
         if (take < 1 || take > PageParameters.MaxPageSize) throw new ArgumentOutOfRangeException(nameof(take));
         var query = Filter(criteria);
+        var byPeriod = criteria.RentPeriod.HasValue;
         // Two statements, not a repeatable-read snapshot: concurrent commits may change count/page membership.
         var count = await query.LongCountAsync(cancellationToken);
-        var items = await Order(query, criteria.Sort).Skip(skip).Take(take)
-            .Select(x => new PublicListingSummary(x.ListingId, (ListingPurpose)x.Purpose, x.Title,
-                new PublicListingPrice(x.Amount, x.Currency, (RentPeriod?)x.RentPeriod), (PropertyType)x.PropertyType,
-                new PublicListingLocation(x.Country, x.Region, x.City, x.District), x.PublishedAt))
-            .ToListAsync(cancellationToken);
+        var rows = await Order(query, criteria.Sort, byPeriod).Skip(skip).Take(take).ToListAsync(cancellationToken);
+        var items = rows.Select(row => ToSummary(row, criteria.RentPeriod)).ToList();
         return new PublicListingPage(items, count);
     }
 
-    public Task<PublicListingDetail?> GetByIdAsync(Guid listingId, CancellationToken cancellationToken = default) =>
-        Visible().Where(x => x.ListingId == listingId)
-            .Select(x => new PublicListingDetail(x.ListingId, (ListingPurpose)x.Purpose, x.Title, x.Description,
-                new PublicListingPrice(x.Amount, x.Currency, (RentPeriod?)x.RentPeriod), (PropertyType)x.PropertyType,
-                new PublicListingLocation(x.Country, x.Region, x.City, x.District), x.PublishedAt))
+    public async Task<PublicListingDetail?> GetByIdAsync(Guid listingId, CancellationToken cancellationToken = default)
+    {
+        var row = await Visible(period: null, availableFrom: null, availableTo: null)
+            .Where(x => x.ListingId == listingId)
             .SingleOrDefaultAsync(cancellationToken);
+
+        return row is null ? null : ToDetail(row);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<PublicListingSummary>>> GetCurrentAsync(
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(propertyIds);
+
+        var ids = propertyIds.Where(id => id != Guid.Empty).Distinct().Take(PageParameters.MaxPageSize).ToArray();
+
+        if (ids.Length == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyList<PublicListingSummary>>();
+        }
+
+        var rows = await Visible(period: null, availableFrom: null, availableTo: null)
+            .Where(x => ids.Contains(x.PropertyId))
+            .OrderBy(x => x.Purpose).ThenBy(x => x.ListingId)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(row => row.PropertyId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<PublicListingSummary>)group.Select(row => ToSummary(row, searchedPeriod: null)).ToArray());
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, PropertyListingReference>> GetByListingIdsAsync(
+        IReadOnlyCollection<Guid> listingIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(listingIds);
+
+        var ids = listingIds.Where(id => id != Guid.Empty).Distinct().Take(PageParameters.MaxPageSize).ToArray();
+
+        if (ids.Length == 0)
+        {
+            return new Dictionary<Guid, PropertyListingReference>();
+        }
+
+        var rows = await Visible(period: null, availableFrom: null, availableTo: null)
+            .Where(x => ids.Contains(x.ListingId))
+            .ToListAsync(cancellationToken);
+
+        return rows.ToDictionary(
+            row => row.ListingId,
+            row => new PropertyListingReference(row.PropertyId, ToSummary(row, searchedPeriod: null)));
+    }
+
+    private static PublicListingSummary ToSummary(PublicListingReadRow x, RentPeriod? searchedPeriod) =>
+        new(x.ListingId, (ListingPurpose)x.Purpose, x.Title, PriceOf(x, searchedPeriod), (PropertyType)x.PropertyType,
+            new PublicListingLocation(x.Country, x.Region, x.City, x.District), x.PublishedAt, OptionsOf(x));
+
+    private static PublicListingDetail ToDetail(PublicListingReadRow x) =>
+        new(x.ListingId, (ListingPurpose)x.Purpose, x.Title, x.Description, PriceOf(x, searchedPeriod: null), (PropertyType)x.PropertyType,
+            new PublicListingLocation(x.Country, x.Region, x.City, x.District), x.PublishedAt,
+            OptionsOf(x), TermsOf(x), BlockedOf(x));
+
+    // The plain listing price, or, when the search asked for a pricing period the listing offers, that option.
+    private static PublicListingPrice PriceOf(PublicListingReadRow x, RentPeriod? searchedPeriod) =>
+        searchedPeriod is { } period && x.PeriodAmount is { } amount && x.PeriodCurrency is { } currency
+            ? new PublicListingPrice(amount, currency, period)
+            : new PublicListingPrice(x.Amount, x.Currency, (RentPeriod?)x.RentPeriod);
+
+    private static IReadOnlyList<PublicListingPrice>? OptionsOf(PublicListingReadRow x)
+    {
+        if (string.IsNullOrWhiteSpace(x.PricingOptionsJson))
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(x.PricingOptionsJson);
+
+        return document.RootElement.ValueKind != JsonValueKind.Array
+            ? null
+            : document.RootElement.EnumerateArray()
+                .Select(option => new PublicListingPrice(
+                    option.GetProperty("Amount").GetDecimal(),
+                    option.GetProperty("Currency").GetString()!,
+                    (RentPeriod)option.GetProperty("Period").GetInt32()))
+                .OrderBy(option => option.RentPeriod)
+                .ToArray();
+    }
+
+    private static PublicRentalTerms? TermsOf(PublicListingReadRow x)
+    {
+        if (string.IsNullOrWhiteSpace(x.RentalTermsJson))
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(x.RentalTermsJson);
+        var terms = document.RootElement;
+
+        if (terms.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return new PublicRentalTerms(
+            terms.GetProperty("TimeZoneId").GetString()!,
+            TimeOnly.ParseExact(terms.GetProperty("CheckInTime").GetString()!, "HH:mm:ss", CultureInfo.InvariantCulture),
+            TimeOnly.ParseExact(terms.GetProperty("CheckOutTime").GetString()!, "HH:mm:ss", CultureInfo.InvariantCulture),
+            terms.GetProperty("MinimumStayDays").ValueKind == JsonValueKind.Null ? null : terms.GetProperty("MinimumStayDays").GetInt32(),
+            terms.GetProperty("Windows").EnumerateArray()
+                .Select(window => new PublicDateRange(
+                    DateOnly.ParseExact(window.GetProperty("StartDate").GetString()!, "yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    DateOnly.ParseExact(window.GetProperty("EndDate").GetString()!, "yyyy-MM-dd", CultureInfo.InvariantCulture)))
+                .ToArray());
+    }
+
+    private static IReadOnlyList<PublicDateRange>? BlockedOf(PublicListingReadRow x)
+    {
+        if (string.IsNullOrWhiteSpace(x.BlockedRangesText))
+        {
+            return null;
+        }
+
+        return x.BlockedRangesText.Split(',')
+            .Select(range => range.Split('|'))
+            .Select(parts => new PublicDateRange(
+                DateOnly.ParseExact(parts[0], "yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DateOnly.ParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture)))
+            .ToArray();
+    }
 
     private static string? Trim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

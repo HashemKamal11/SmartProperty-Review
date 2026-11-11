@@ -81,88 +81,38 @@ internal static class PropertyCommandSupport
     }
 
     /// <summary>
-    /// Validates the market-facing fields shared by create and update and builds them, returning the validation
-    /// message or null. Every field is optional; a missing listing status means Available.
+    /// Validates the physical fields shared by create and update and builds them, returning the validation message
+    /// or null. Every field is optional. Commercial data is not accepted here: it belongs to a listing.
     /// </summary>
-    public static string? ValidateListing(
-        string? transactionType,
-        decimal? price,
+    public static string? ValidatePhysical(
         decimal? areaSqm,
         int? floor,
         bool? furnished,
-        string? listingStatus,
-        string? titleAr,
-        string? titleEn,
-        string? descriptionAr,
-        string? descriptionEn,
-        out PropertyListingInfo listing)
+        string? timeZoneId,
+        out PropertyPhysicalInfo physical)
     {
-        listing = PropertyListingInfo.Empty;
+        physical = PropertyPhysicalInfo.Empty;
 
-        TransactionType? parsedTransaction = null;
-        if (transactionType is not null)
+        if (areaSqm is <= 0m or > PropertyPhysicalInfo.MaxAreaSqm)
         {
-            if (!TryParseName<TransactionType>(transactionType, out var transaction))
-            {
-                return $"Transaction type must be one of: {NamesOf<TransactionType>()}.";
-            }
-
-            parsedTransaction = transaction;
+            return $"Area must be greater than zero and at most {PropertyPhysicalInfo.MaxAreaSqm} square metres.";
         }
 
-        var status = ListingStatus.Available;
-        if (listingStatus is not null)
+        if (floor is < PropertyPhysicalInfo.MinFloor or > PropertyPhysicalInfo.MaxFloor)
         {
-            if (!TryParseName<ListingStatus>(listingStatus, out status))
-            {
-                return $"Listing status must be one of: {NamesOf<ListingStatus>()}.";
-            }
+            return $"Floor must be between {PropertyPhysicalInfo.MinFloor} and {PropertyPhysicalInfo.MaxFloor}.";
         }
 
-        if (price is <= 0m)
+        if (!string.IsNullOrWhiteSpace(timeZoneId)
+            && (timeZoneId.Trim().Length > PropertyPhysicalInfo.MaxTimeZoneIdLength
+                || !TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId.Trim(), out _)))
         {
-            return "Price must be greater than zero.";
+            return "The time zone must be a known IANA time zone identifier such as Africa/Cairo.";
         }
 
-        if (areaSqm is <= 0m or > PropertyListingInfo.MaxAreaSqm)
-        {
-            return $"Area must be greater than zero and at most {PropertyListingInfo.MaxAreaSqm} square metres.";
-        }
-
-        if (floor is < PropertyListingInfo.MinFloor or > PropertyListingInfo.MaxFloor)
-        {
-            return $"Floor must be between {PropertyListingInfo.MinFloor} and {PropertyListingInfo.MaxFloor}.";
-        }
-
-        if (TooLong(titleAr, PropertyListingInfo.MaxTitleLength) || TooLong(titleEn, PropertyListingInfo.MaxTitleLength))
-        {
-            return $"A title must not exceed {PropertyListingInfo.MaxTitleLength} characters.";
-        }
-
-        if (TooLong(descriptionAr, PropertyListingInfo.MaxDescriptionLength)
-            || TooLong(descriptionEn, PropertyListingInfo.MaxDescriptionLength))
-        {
-            return $"A description must not exceed {PropertyListingInfo.MaxDescriptionLength} characters.";
-        }
-
-        listing = new PropertyListingInfo(
-            parsedTransaction,
-            price,
-            areaSqm,
-            floor,
-            furnished,
-            status,
-            titleAr,
-            titleEn,
-            descriptionAr,
-            descriptionEn);
+        physical = new PropertyPhysicalInfo(areaSqm, floor, furnished, timeZoneId);
 
         return null;
-    }
-
-    private static bool TooLong(string? value, int maxLength)
-    {
-        return value is not null && value.Trim().Length > maxLength;
     }
 
     /// <summary>
@@ -196,19 +146,9 @@ internal static class PropertyCommandSupport
             .ToList();
     }
 
-    public static PropertyListingDetails ToListingDetails(PropertyListingInfo listing)
+    public static PropertyPhysicalDetails ToPhysicalDetails(PropertyPhysicalInfo physical)
     {
-        return new PropertyListingDetails(
-            listing.TransactionType,
-            listing.Price,
-            listing.AreaSqm,
-            listing.Floor,
-            listing.Furnished,
-            listing.ListingStatus,
-            listing.TitleAr,
-            listing.TitleEn,
-            listing.DescriptionAr,
-            listing.DescriptionEn);
+        return new PropertyPhysicalDetails(physical.AreaSqm, physical.Floor, physical.Furnished, physical.TimeZoneId);
     }
 
     /// <summary>
@@ -306,11 +246,6 @@ internal static class PropertyCommandSupport
                 : null);
     }
 
-    public static AiSyncDetails ToAiSyncDetails(Property property)
-    {
-        return new AiSyncDetails(property.AiSyncStatus, property.AiSyncedAt, property.AiSyncError);
-    }
-
     /// <summary>The read model of the tracked aggregate, as the command left it.</summary>
     public static PropertyDetails ToDetails(Property property)
     {
@@ -335,8 +270,7 @@ internal static class PropertyCommandSupport
             property.FinishingStatus,
             ToAmenityDetails(property.Amenities),
             ToViewDetails(property.Views),
-            ToListingDetails(property.Listing),
-            ToAiSyncDetails(property),
+            ToPhysicalDetails(property.Physical),
             ToPlaceDetails(property),
             ToImageDetails(property.Images));
     }

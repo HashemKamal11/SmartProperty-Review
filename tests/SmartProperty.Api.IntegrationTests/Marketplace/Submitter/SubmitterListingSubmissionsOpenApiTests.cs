@@ -33,13 +33,14 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
     }
 
     [Fact]
-    public async Task OnlyGetOperationsAreDocumentedForTheSubmitterPaths()
+    public async Task TheAdvertiserPathsDocumentExactlyTheApprovedOperations()
     {
         using var document = await LoadDocumentAsync(mount: true);
         var paths = document.RootElement.GetProperty("paths");
 
-        Assert.Equal(new[] { "get" }, OperationNames(paths.GetProperty(ListPath)));
-        Assert.Equal(new[] { "get" }, OperationNames(paths.GetProperty(DetailPath)));
+        // The list path reads and creates; the item path reads, replaces and discards.
+        Assert.Equal(new[] { "get", "post" }, OperationNames(paths.GetProperty(ListPath)));
+        Assert.Equal(new[] { "delete", "get", "put" }, OperationNames(paths.GetProperty(DetailPath)));
     }
 
     [Fact]
@@ -135,21 +136,32 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
     }
 
     [Fact]
-    public async Task TheProductionCompositionDocumentsExactlyTheTwoSubmitterReads()
+    public async Task TheProductionCompositionDocumentsExactlyTheApprovedMarketplaceOperations()
     {
         using var document = await LoadDocumentAsync(mount: false);
         var root = document.RootElement;
         var paths = root.GetProperty("paths");
-        var pathNames = paths.EnumerateObject().Select(property => property.Name).ToArray();
         var schemas = root.GetProperty("components").GetProperty("schemas").EnumerateObject().Select(property => property.Name).ToArray();
 
-        // The document is real: the public marketplace is in it.
-        Assert.Contains(pathNames, path => path.StartsWith("/api/public/marketplace/listings", StringComparison.Ordinal));
-        Assert.Equal(
-            new[] { ListPath, DetailPath },
-            pathNames.Where(path => path.Contains("marketplace/me", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
-        Assert.Equal(new[] { "get" }, OperationNames(paths.GetProperty(ListPath)));
-        Assert.Equal(new[] { "get" }, OperationNames(paths.GetProperty(DetailPath)));
+        // The document is real: the public marketplace is in it. Every marketplace path and its operations are exactly the
+        // approved inventory, converted from route templates to OpenAPI path keys.
+        var documented = paths.EnumerateObject()
+            .Where(path => path.Name.Contains("marketplace", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(path => path.Value.EnumerateObject().Select(operation => $"{operation.Name.ToUpperInvariant()} {path.Name}"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var expected = MarketplaceRouteInventory.Approved
+            .Select(line =>
+            {
+                var parts = line.Split(' ', 2);
+
+                return $"{parts[0]} /{System.Text.RegularExpressions.Regex.Replace(parts[1], ":[a-z]+\\}", "}")}";
+            })
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Contains(documented, line => line.StartsWith("GET /api/public/marketplace/listings", StringComparison.Ordinal));
+        Assert.Equal(expected, documented);
         AssertBearerSecurity(paths.GetProperty(ListPath).GetProperty("get"));
         AssertBearerSecurity(paths.GetProperty(DetailPath).GetProperty("get"));
         AssertResponses(paths.GetProperty(ListPath).GetProperty("get"), present: ["200", "400", "401", "403", "422"], absent: ["404"]);

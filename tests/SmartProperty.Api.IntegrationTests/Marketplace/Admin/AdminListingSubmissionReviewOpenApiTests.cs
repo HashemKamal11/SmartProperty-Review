@@ -147,7 +147,7 @@ public sealed class AdminListingSubmissionReviewOpenApiTests
     }
 
     [Fact]
-    public async Task TheProductionCompositionDocumentsExactlyTheTwoReadPathsAndNoDecisionPath()
+    public async Task TheProductionCompositionDocumentsExactlyTheApprovedAdministratorOperations()
     {
         using var document = await LoadDocumentAsync(mount: false);
         var root = document.RootElement;
@@ -157,10 +157,27 @@ public sealed class AdminListingSubmissionReviewOpenApiTests
 
         // The document is real: the public marketplace is in it.
         Assert.Contains(paths, path => path.StartsWith("/api/public/marketplace/listings", StringComparison.Ordinal));
-        Assert.Equal(
-            new[] { ListPath, DetailPath },
-            paths.Where(path => path.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
-        Assert.DoesNotContain(paths, path => path.Contains("marketplace", StringComparison.OrdinalIgnoreCase) && (path.EndsWith("/approve", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/reject", StringComparison.OrdinalIgnoreCase)));
+
+        // The administrator operations are exactly the approved ones: the two review reads, the two decisions and the
+        // signing-window setting.
+        var documented = pathProperties
+            .Where(path => path.Name.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(path => path.Value.EnumerateObject().Select(operation => $"{operation.Name.ToUpperInvariant()} {path.Name}"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        var expected = MarketplaceRouteInventory.Approved
+            .Where(line => line.Contains(" api/admin/marketplace", StringComparison.Ordinal))
+            .Select(line =>
+            {
+                var parts = line.Split(' ', 2);
+
+                return $"{parts[0]} /{System.Text.RegularExpressions.Regex.Replace(parts[1], ":[a-z]+\\}", "}")}";
+            })
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.NotEmpty(expected);
+        Assert.Equal(expected, documented);
 
         foreach (var path in pathProperties.Where(property => property.Name is ListPath or DetailPath))
         {
@@ -172,6 +189,7 @@ public sealed class AdminListingSubmissionReviewOpenApiTests
             Assert.Contains(schema, schemas);
         }
     }
+
     private static async Task<JsonDocument> LoadDocumentAsync(bool mount)
     {
         using var host = new AdminReviewApiTestHost(new StubReviewerListingSubmissionReadRepository(), mount);

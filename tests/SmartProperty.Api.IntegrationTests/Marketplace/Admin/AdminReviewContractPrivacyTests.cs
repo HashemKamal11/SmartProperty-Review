@@ -306,7 +306,7 @@ public sealed class AdminReviewContractPrivacyTests
     }
 
     [Fact]
-    public void OnlyTheTwoReviewReadRoutesExistUnderTheAdminMarketplacePath()
+    public void TheAdminMarketplaceRoutesAreExactlyTheApprovedOnes()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -324,22 +324,21 @@ public sealed class AdminReviewContractPrivacyTests
         Assert.Contains(routes, route => route.StartsWith("api/admin/workspace-access-requests", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(routes, route => route.StartsWith("api/public/marketplace/listings", StringComparison.OrdinalIgnoreCase));
 
-        var adminMarketplace = routes.Where(route => route.Contains("admin/marketplace", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray();
+        // Reading, deciding and settings are exactly the approved set, and nothing else lives under the admin path.
+        var actual = MarketplaceRouteInventory.Actual(host.Services)
+            .Where(line => line.Contains(" api/admin/marketplace", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var approved = MarketplaceRouteInventory.ApprovedOrdered
+            .Where(line => line.Contains(" api/admin/marketplace", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        Assert.Equal(approved, actual);
         Assert.Equal(
-            new[] { "api/admin/marketplace/listing-submissions", "api/admin/marketplace/listing-submissions/{submissionId:guid}" },
-            adminMarketplace);
-        Assert.DoesNotContain(routes, route => route.Contains("marketplace", StringComparison.OrdinalIgnoreCase) && (route.Contains("approve", StringComparison.OrdinalIgnoreCase) || route.Contains("reject", StringComparison.OrdinalIgnoreCase)));
-
-        // The submitter's own reads are the only other listing-submission routes, and exactly these two.
-        var submitter = new[] { "api/marketplace/me/listing-submissions", "api/marketplace/me/listing-submissions/{submissionId:guid}" };
-        Assert.Equal(
-            submitter,
-            routes.Where(route => route.StartsWith("api/marketplace/me", StringComparison.OrdinalIgnoreCase)).Order(StringComparer.Ordinal).ToArray());
-        Assert.DoesNotContain(routes, route => route.Contains("listing-submissions", StringComparison.OrdinalIgnoreCase) && !adminMarketplace.Contains(route) && !submitter.Contains(route));
+            new[] { "POST api/admin/marketplace/listing-submissions/{submissionId:guid}/approve", "POST api/admin/marketplace/listing-submissions/{submissionId:guid}/reject" },
+            actual.Where(line => line.EndsWith("/approve", StringComparison.Ordinal) || line.EndsWith("/reject", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
-    public void TheProductionContainerRegistersTheReadHandlersAndAuthorizerButNoDecisionService()
+    public void TheProductionContainerRegistersTheReadAndDecisionHandlersWithSeparateAuthorizers()
     {
         using var root = new SmartPropertyApiFactory(UnusedConnectionString);
         using var host = root.WithWebHostBuilder(builder =>
@@ -353,38 +352,15 @@ public sealed class AdminReviewContractPrivacyTests
         Assert.NotNull(provider.GetService<IQueryHandler<GetReviewQueueQuery, PagedList<ReviewQueueItem>>>());
         Assert.NotNull(provider.GetService<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>>());
 
-        AssertNotResolvable(provider, "SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer");
-        AssertNoCommandHandler(provider, "ApproveListingSubmissionCommand", "ApproveListingSubmissionResult");
-        AssertNoCommandHandler(provider, "RejectListingSubmissionCommand", "RejectListingSubmissionResult");
-    }
-
-    // The decision stack is excluded from this build, so its types are named, not referenced. A named type that exists
-    // must not be resolvable; one that does not exist cannot be registered. The anchor proves the lookup searches the
-    // assembly that would define them, so an absence is real and not a lookup mistake.
-    private const string DecisionTypes = "SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decision.";
-
-    private static Type? ApplicationType(string fullName)
-    {
-        var assembly = typeof(IReviewReadAuthorizer).Assembly;
-        Assert.NotNull(assembly.GetType("SmartProperty.Application.Abstractions.Authorization.IReviewReadAuthorizer", throwOnError: false));
-        return assembly.GetType(fullName, throwOnError: false);
-    }
-
-    private static void AssertNotResolvable(IServiceProvider provider, string fullName)
-    {
-        if (ApplicationType(fullName) is { } type)
-        {
-            Assert.Null(provider.GetService(type));
-            Assert.Empty(provider.GetServices(type));
-        }
-    }
-
-    private static void AssertNoCommandHandler(IServiceProvider provider, string command, string result)
-    {
-        if (ApplicationType(DecisionTypes + command) is { } commandType && ApplicationType(DecisionTypes + result) is { } resultType)
-        {
-            Assert.Null(provider.GetService(typeof(ICommandHandler<,>).MakeGenericType(commandType, resultType)));
-        }
+        // Reading and deciding are separate authorities with separate authorizers and separate handlers.
+        var decision = provider.GetRequiredService<SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer>();
+        Assert.NotSame(provider.GetRequiredService<IReviewReadAuthorizer>(), decision);
+        Assert.NotNull(provider.GetService<ICommandHandler<
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ApproveListingSubmissionCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>>());
+        Assert.NotNull(provider.GetService<ICommandHandler<
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.RejectListingSubmissionCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>>());
     }
 
     // ----- sample data

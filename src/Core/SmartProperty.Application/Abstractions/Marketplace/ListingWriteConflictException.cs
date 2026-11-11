@@ -12,7 +12,16 @@ public enum ListingWriteConflictKind
     SubmissionVersion = 2,
 
     /// <summary>Another writer changed the draft first, so the revision the caller wrote against is stale.</summary>
-    StaleRevision = 3
+    StaleRevision = 3,
+
+    /// <summary>The customer already has an open request on the listing (a concurrent request won).</summary>
+    RequestAlreadyOpen = 4,
+
+    /// <summary>A concurrent acceptance committed overlapping dates.</summary>
+    DatesUnavailable = 5,
+
+    /// <summary>A concurrent acceptance committed the property to a sale.</summary>
+    PropertyAlreadyCommitted = 6
 }
 
 /// <summary>

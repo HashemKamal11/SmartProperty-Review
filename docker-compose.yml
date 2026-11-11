@@ -1,6 +1,13 @@
 x-smartproperty-image: &smartproperty-image
   image: smartproperty:${SMARTPROPERTY_IMAGE_TAG:-local}
 
+# The migrator and the api run the same image, so both declare how to build it. That way `docker compose up -d --build`
+# (with or without a service name) always rebuilds the current source before starting either one; the second build is a
+# layer-cache hit.
+x-smartproperty-build: &smartproperty-build
+  context: .
+  dockerfile: Dockerfile
+
 services:
   postgres:
     image: postgres:17
@@ -23,9 +30,7 @@ services:
 
   migrator:
     <<: *smartproperty-image
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: *smartproperty-build
     working_dir: /app/migrator
     entrypoint: ["dotnet", "SmartProperty.Migrator.dll"]
     environment:
@@ -41,6 +46,7 @@ services:
 
   api:
     <<: *smartproperty-image
+    build: *smartproperty-build
     environment:
       ASPNETCORE_ENVIRONMENT: Staging
       ASPNETCORE_URLS: http://+:8080
@@ -49,6 +55,9 @@ services:
       Jwt__Issuer: SmartProperty
       Jwt__Audience: SmartProperty.Api
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Set JWT_SIGNING_KEY in your shell before running Docker Compose}
+      # TimeSpan values (d.hh:mm:ss). Long values are for local testing only.
+      Jwt__AccessTokenLifetime: ${JWT_ACCESS_TOKEN_LIFETIME:-00:15:00}
+      Jwt__RefreshTokenLifetime: ${JWT_REFRESH_TOKEN_LIFETIME:-7.00:00:00}
       AiIntegration__ApiKey: ${AI_INTEGRATION_API_KEY:-}
       # The AI search service. Off unless AI_SEARCH_ENABLED=true; the key is sent as x-api-key when properties are
       # added to or removed from it.

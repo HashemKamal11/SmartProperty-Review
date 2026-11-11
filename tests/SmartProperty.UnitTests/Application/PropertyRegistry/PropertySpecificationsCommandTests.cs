@@ -12,7 +12,6 @@ public sealed class PropertySpecificationsCommandTests
     private readonly FakeAmenityRepository _amenities = new();
     private readonly FakeViewRepository _views = new();
     private readonly FakeLocationRepository _locations = new();
-    private readonly FakePropertyAiSynchronizer _ai = new();
 
     [Fact]
     public async Task CreateStoresBedroomsBathroomsBuiltDateAndFinishingStatus()
@@ -86,7 +85,6 @@ public sealed class PropertySpecificationsCommandTests
             _amenities,
             _views,
             _locations,
-            _ai,
             new FakeDateTimeProvider(new DateTimeOffset(2026, 11, 1, 9, 0, 0, TimeSpan.Zero)),
             new FakeUnitOfWork());
     }

@@ -2,25 +2,23 @@ using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
-using SmartProperty.Application.PropertyRegistry.Ai;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.PropertyRegistry;
 
 namespace SmartProperty.Application.PropertyRegistry.Create;
 
 /// <summary>
-/// Registers a new property and then offers it to the AI search service.
+/// Registers a new physical property.
 /// </summary>
 /// <remarks>
-/// The property is committed first. Sending it to the AI service is best effort afterwards, so an outage there
-/// never loses the registration: the outcome is recorded on the property and returned as <c>aiSync</c>.
+/// A property is the physical asset only. Advertising it (sale, rent, prices, promotional text) is a separate
+/// Marketplace listing, so creating a property never publishes or offers anything to the AI search service.
 /// </remarks>
 public sealed class CreatePropertyCommandHandler(
     IPropertyRepository propertyRepository,
     IAmenityRepository amenityRepository,
     IViewRepository viewRepository,
     ILocationRepository locationRepository,
-    IPropertyAiSynchronizer aiSynchronizer,
     IDateTimeProvider dateTimeProvider,
     IUnitOfWork unitOfWork)
     : ICommandHandler<CreatePropertyCommand, CreatePropertyResult>
@@ -32,7 +30,7 @@ public sealed class CreatePropertyCommandHandler(
         ArgumentNullException.ThrowIfNull(command);
 
         if (CreatePropertyCommandValidator.Validate(
-                command, out var propertyType, out var finishingStatus, out var listing) is { } validationError)
+                command, out var propertyType, out var finishingStatus, out var physical) is { } validationError)
         {
             return Result<CreatePropertyResult>.Failure(validationError);
         }
@@ -101,15 +99,13 @@ public sealed class CreatePropertyCommandHandler(
             finishingStatus,
             amenities.Value,
             views.Value,
-            listing,
+            physical,
             place.Value.Area,
             place.Value.Compound,
             command.OwnerUserId);
 
         await propertyRepository.AddAsync(property, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
-
-        await aiSynchronizer.SyncAsync(property, cancellationToken);
 
         return Result<CreatePropertyResult>.Success(new CreatePropertyResult(
             property.Id,
@@ -132,8 +128,7 @@ public sealed class CreatePropertyCommandHandler(
             property.FinishingStatus,
             PropertyCommandSupport.ToAmenityDetails(property.Amenities),
             PropertyCommandSupport.ToViewDetails(property.Views),
-            PropertyCommandSupport.ToListingDetails(property.Listing),
-            PropertyCommandSupport.ToAiSyncDetails(property),
+            PropertyCommandSupport.ToPhysicalDetails(property.Physical),
             PropertyCommandSupport.ToPlaceDetails(property)));
     }
 }

@@ -20,8 +20,7 @@ public sealed record PropertyResponse(
     string? FinishingStatus = null,
     IReadOnlyList<AmenityResponse>? Amenities = null,
     IReadOnlyList<ViewResponse>? Views = null,
-    PropertyListingResponse? Listing = null,
-    AiSyncResponse? AiSync = null,
+    PropertyPhysicalResponse? Physical = null,
     PropertyPlaceResponse? Place = null,
     IReadOnlyList<PropertyImageResponse>? Images = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]

@@ -126,7 +126,7 @@ public sealed class PublicListingEndpointTests
         using var client = host.CreateClient();
 
         using var response = await client.GetAsync(
-            $"{ListRoute}?purpose=Rent&propertyType=Unit&countryCode=sa&region=%20Riyadh%20Province&city=Riyadh"
+            $"{ListRoute}?purpose=Rent&propertyType=Apartment&countryCode=sa&region=%20Riyadh%20Province&city=Riyadh"
             + "&district=Al%20Olaya&minPrice=1000&maxPrice=6000&currency=sar&rentPeriod=Monthly&sort=PriceAsc&page=2&pageSize=20");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

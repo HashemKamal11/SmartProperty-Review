@@ -1,4 +1,5 @@
 #nullable enable
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -46,7 +47,6 @@ using SmartProperty.Application.PropertyRegistry;
 using SmartProperty.Application.PropertyRegistry.Archive;
 using SmartProperty.Application.PropertyRegistry.Share;
 using SmartProperty.Application.PropertyRegistry.Amenities;
-using SmartProperty.Application.PropertyRegistry.Ai;
 using SmartProperty.Application.Locations;
 using SmartProperty.Application.PropertyImages;
 using SmartProperty.Application.PropertyImages.Delete;
@@ -67,7 +67,6 @@ using SmartProperty.Application.PropertyComparison.Add;
 using SmartProperty.Application.PropertyComparison.Get;
 using SmartProperty.Application.PropertyComparison.Remove;
 using SmartProperty.Domain.OwnerVerification;
-using SmartProperty.Application.PropertyRegistry.Ai.Sync;
 using SmartProperty.Application.PropertyRegistry.Views;
 using SmartProperty.Application.PropertyMatching.Search;
 using SmartProperty.Application.Abstractions.Ai;
@@ -343,8 +342,6 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetAmenitiesQuery, IReadOnlyList<AmenityDetails>>, GetAmenitiesQueryHandler>();
         services.AddScoped<IQueryHandler<GetViewsQuery, IReadOnlyList<ViewDetails>>, GetViewsQueryHandler>();
         services.AddScoped<IQueryHandler<GetLocationsQuery, IReadOnlyList<LocationDetails>>, GetLocationsQueryHandler>();
-        services.AddScoped<IPropertyAiSynchronizer, PropertyAiSynchronizer>();
-        services.AddScoped<ICommandHandler<SyncPropertyWithAiCommand, PropertyDetails>, SyncPropertyWithAiCommandHandler>();
         services.AddScoped<ICommandHandler<SearchPropertiesCommand, PropertySearchResult>, SearchPropertiesCommandHandler>();
         services.AddScoped<ICommandHandler<UploadPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>>, UploadPropertyImagesCommandHandler>();
         services.AddScoped<ICommandHandler<DeletePropertyImageCommand, DeletePropertyImageResult>, DeletePropertyImageCommandHandler>();
@@ -424,6 +421,88 @@ internal static class ServiceCollectionExtensions
         services
             .AddScoped<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>,
                 GetReviewSubmissionQueryHandler>();
+
+        // The owner's advertisement workflow and the administrator's decisions. Fail-closed seams: with no trusted
+        // evidence provider and no reviewer-independence provider configured, attaching evidence, submitting,
+        // approving and every decision are refused; rejecting needs no evidence but still needs independence. Grants
+        // are read, never issued, by these handlers. Test hosts replace the two seams with fakes; production does not.
+        services.TryAddScoped<SmartProperty.Application.Abstractions.Marketplace.IEvidenceAssessmentProvider,
+            SmartProperty.Api.Infrastructure.Marketplace.UnavailableEvidenceAssessmentProvider>();
+        services.TryAddScoped<SmartProperty.Application.Abstractions.Marketplace.IReviewerIndependenceProvider,
+            SmartProperty.Api.Infrastructure.Marketplace.UnavailableReviewerIndependenceProvider>();
+        services.AddScoped<IReviewDecisionAuthorizer, PlatformReviewDecisionAuthorizer>();
+
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create.CreateListingDraftCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.ListingDraftResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create.CreateListingDraftCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.CreateBoth.CreatePropertyListingDraftsCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.CreateBoth.PropertyListingDraftsResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.CreateBoth.CreatePropertyListingDraftsCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Update.UpdateListingDraftCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.ListingDraftResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Update.UpdateListingDraftCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Submit.SubmitListingDraftCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Submit.SubmitListingDraftResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Submit.SubmitListingDraftCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Discard.DiscardListingDraftCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Discard.DiscardListingDraftResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Discard.DiscardListingDraftCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw.WithdrawListingCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw.WithdrawListingResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw.WithdrawListingCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ApproveListingSubmissionCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ApproveListingSubmissionCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.RejectListingSubmissionCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.RejectListingSubmissionCommandHandler>();
+
+        // Purchase and rental requests, the commitments they become, and the administrator's signing window. Every
+        // handler takes the acting user from ICurrentUser alone. Reads are scoped to the caller inside the query.
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.Requests.Create.CreatePurchaseRequestCommand,
+            SmartProperty.Application.Marketplace.Requests.Create.RequestCreatedResult>,
+            SmartProperty.Application.Marketplace.Requests.Create.CreatePurchaseRequestCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.Requests.Create.CreateRentalRequestCommand,
+            SmartProperty.Application.Marketplace.Requests.Create.RequestCreatedResult>,
+            SmartProperty.Application.Marketplace.Requests.Create.CreateRentalRequestCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.Requests.Decide.WithdrawRequestCommand,
+            SmartProperty.Application.Marketplace.Requests.Decide.RequestDecisionResult>,
+            SmartProperty.Application.Marketplace.Requests.Decide.WithdrawRequestCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.Requests.Decide.RejectRequestCommand,
+            SmartProperty.Application.Marketplace.Requests.Decide.RequestDecisionResult>,
+            SmartProperty.Application.Marketplace.Requests.Decide.RejectRequestCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.Requests.Decide.AcceptRequestCommand,
+            SmartProperty.Application.Marketplace.Requests.Decide.AcceptRequestResult>,
+            SmartProperty.Application.Marketplace.Requests.Decide.AcceptRequestCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.Requests.Decide.ConfirmCommitmentStepCommand,
+            SmartProperty.Application.Marketplace.Requests.Decide.CommitmentStepResult>,
+            SmartProperty.Application.Marketplace.Requests.Decide.ConfirmCommitmentStepCommandHandler>();
+
+        services.AddScoped<IQueryHandler<SmartProperty.Application.Marketplace.Requests.Read.GetMyRequestsQuery,
+            PagedList<SmartProperty.Application.Marketplace.Requests.MarketplaceRequestView>>,
+            SmartProperty.Application.Marketplace.Requests.Read.RequestReadHandlers>();
+        services.AddScoped<IQueryHandler<SmartProperty.Application.Marketplace.Requests.Read.GetMyRequestQuery,
+            SmartProperty.Application.Marketplace.Requests.MarketplaceRequestView>,
+            SmartProperty.Application.Marketplace.Requests.Read.RequestReadHandlers>();
+        services.AddScoped<IQueryHandler<SmartProperty.Application.Marketplace.Requests.Read.GetReceivedRequestsQuery,
+            PagedList<SmartProperty.Application.Marketplace.Requests.MarketplaceRequestView>>,
+            SmartProperty.Application.Marketplace.Requests.Read.RequestReadHandlers>();
+        services.AddScoped<IQueryHandler<SmartProperty.Application.Marketplace.Requests.Read.GetReceivedRequestQuery,
+            SmartProperty.Application.Marketplace.Requests.MarketplaceRequestView>,
+            SmartProperty.Application.Marketplace.Requests.Read.RequestReadHandlers>();
+        services.AddScoped<IQueryHandler<SmartProperty.Application.Marketplace.Requests.Read.GetMyCommitmentsQuery,
+            PagedList<SmartProperty.Application.Marketplace.Requests.CommitmentView>>,
+            SmartProperty.Application.Marketplace.Requests.Read.RequestReadHandlers>();
+        services.AddScoped<IQueryHandler<SmartProperty.Application.Marketplace.Requests.Read.GetMyCommitmentQuery,
+            SmartProperty.Application.Marketplace.Requests.CommitmentView>,
+            SmartProperty.Application.Marketplace.Requests.Read.RequestReadHandlers>();
+
+        services.AddScoped<IQueryHandler<SmartProperty.Application.Marketplace.Requests.Settings.GetSigningWindowQuery,
+            SmartProperty.Application.Marketplace.Requests.Settings.SigningWindowResult>,
+            SmartProperty.Application.Marketplace.Requests.Settings.SigningWindowHandlers>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.Requests.Settings.SetSigningWindowCommand,
+            SmartProperty.Application.Marketplace.Requests.Settings.SigningWindowResult>,
+            SmartProperty.Application.Marketplace.Requests.Settings.SigningWindowHandlers>();
 
         services
             .AddScoped<ICommandHandler<BootstrapPlatformAdminCommand, BootstrapPlatformAdminResult>,

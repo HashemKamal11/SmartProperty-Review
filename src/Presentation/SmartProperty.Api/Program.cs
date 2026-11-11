@@ -5,6 +5,7 @@ using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using SmartProperty.Api.Infrastructure;
 using SmartProperty.Api.Infrastructure.AiSearch;
+using SmartProperty.Api.Infrastructure.Development;
 using SmartProperty.Api.Infrastructure.Storage;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Http;
@@ -67,8 +68,16 @@ builder.Services.AddAiSearch(builder.Configuration);
 builder.Services.AddImageStorage(builder.Configuration);
 builder.Services.AddApplicationHandlers();
 builder.Services.AddPlatformAdminBootstrap(builder.Configuration);
+builder.Services.AddDemoMode();
 
 var app = builder.Build();
+
+if (DemoModeServiceCollectionExtensions.IsActive(app.Services))
+{
+    app.Logger.LogWarning(
+        "DEMO MODE IS ACTIVE (Development only): evidence is assessed by a simulated provider that recognises only registered fixtures, "
+        + "and reviewer independence is checked from persisted relationships with simulated identity verification. Nothing here is a real external check.");
+}
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();

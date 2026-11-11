@@ -14,7 +14,8 @@ public sealed record PropertySearchResponse(
 /// <summary>
 /// One result. <c>propertyId</c> is set when it is a property of this platform; any other listing the AI service
 /// knows has a null <c>propertyId</c> and is shown from <c>details</c> only.
-/// <c>externalId</c> is the id this platform sent for the listing (the property id, or null for a listing it did not add);
+/// <c>externalId</c> is the id this platform sent for the advertisement (the LISTING id, or null for a record it did not add);
+/// <c>listing</c> is that advertisement as the marketplace shows it now, set only when it is still visible;
 /// <c>aiPropertyId</c> is the AI service's own reference.
 /// </summary>
 /// <param name="MatchPercentage">The AI relevance score scaled to 0–100. A ranking signal, not a probability.</param>
@@ -25,7 +26,8 @@ public sealed record PropertySearchItemResponse(
     decimal MatchPercentage,
     string Description,
     PropertySearchDetailsResponse Details,
-    PropertyResponse? Property = null);
+    PropertyResponse? Property = null,
+    SmartProperty.Api.Contracts.Marketplace.Public.PublicListingSummaryResponse? Listing = null);
 
 public sealed record PropertySearchDetailsResponse(
     string? City,

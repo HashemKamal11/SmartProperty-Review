@@ -18,4 +18,5 @@ public sealed record LockedPropertyView(
     string CountryCode,
     string? Region,
     string? City,
-    string? District);
+    string? District,
+    string? TimeZoneId = null);

@@ -83,7 +83,7 @@ public sealed class PublicMarketplaceControllerTests
         Assert.Equal(
             new[]
             {
-                "cancellationToken", "city", "countryCode", "currency", "district", "handler", "maxPrice", "minPrice",
+                "availableFrom", "availableTo", "cancellationToken", "city", "countryCode", "currency", "district", "handler", "maxPrice", "minPrice",
                 "page", "pageSize", "propertyType", "purpose", "region", "rentPeriod", "sort",
             },
             parameters);

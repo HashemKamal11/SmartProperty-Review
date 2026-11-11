@@ -74,48 +74,15 @@ public sealed class CreateListingDraftCommandHandler(
             return Result<ListingDraftResult>.Failure(gate.Error!);
         }
 
-        var content = CanonicalListingContent.Build(gate.Property!, command.Purpose, command.Content);
+        var prepared = await DraftCreation.PrepareAsync(
+            repository, gate, command.Purpose, command.Content, references.Value, now, cancellationToken);
 
-        if (content.IsFailure)
+        if (prepared.IsFailure)
         {
-            return Result<ListingDraftResult>.Failure(content.Error!);
+            return Result<ListingDraftResult>.Failure(prepared.Error!);
         }
 
-        var listing = await repository.GetListingAsync(command.PropertyId, command.Purpose, cancellationToken);
-        ListingSubmission? predecessor = null;
-
-        if (listing is not null)
-        {
-            if (OwnDraft.IsClosedByReservation(listing))
-            {
-                return Result<ListingDraftResult>.Failure(WriteErrors.PropertyUnavailable);
-            }
-
-            var latest = await repository.GetLatestSubmissionAsync(listing.Id, cancellationToken);
-
-            if (latest is not null)
-            {
-                // Only a reviewed version has a successor. A draft or a version awaiting review is the open one.
-                if (latest.Status is ListingSubmissionStatus.Draft or ListingSubmissionStatus.PendingReview)
-                {
-                    return Result<ListingDraftResult>.Failure(WriteErrors.OpenRevisionExists);
-                }
-
-                predecessor = latest;
-            }
-        }
-
-        var isNewListing = listing is null;
-        listing ??= new PropertyListing(Guid.NewGuid(), command.PropertyId, command.Purpose, now);
-
-        var submission = new ListingSubmission(
-            Guid.NewGuid(),
-            listing,
-            content.Value,
-            DraftAuthority.FromFacts(gate.Authority!),
-            references.Value,
-            now,
-            predecessor);
+        var (listing, isNewListing, submission) = prepared.Value;
 
         if (isNewListing)
         {

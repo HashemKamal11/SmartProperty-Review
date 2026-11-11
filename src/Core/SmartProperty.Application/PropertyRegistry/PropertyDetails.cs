@@ -24,8 +24,7 @@ public sealed record PropertyDetails(
     FinishingStatus? FinishingStatus = null,
     IReadOnlyList<AmenityDetails>? Amenities = null,
     IReadOnlyList<ViewDetails>? Views = null,
-    PropertyListingDetails? Listing = null,
-    AiSyncDetails? AiSync = null,
+    PropertyPhysicalDetails? Physical = null,
     PropertyPlaceDetails? Place = null,
     IReadOnlyList<PropertyImageDetails>? Images = null,
     decimal? MatchPercentage = null);
@@ -40,18 +39,15 @@ public sealed record PropertyAddressDetails(
     decimal? Latitude,
     decimal? Longitude);
 
-/// <summary>The market-facing facts of a property. Currency is not held; it follows the area's country.</summary>
-public sealed record PropertyListingDetails(
-    TransactionType? TransactionType,
-    decimal? Price,
+/// <summary>
+/// The physical facts of a property that have no field of their own. Commercial terms (transaction type, prices,
+/// availability, promotional text) belong to the Marketplace listing and are not part of the property.
+/// </summary>
+public sealed record PropertyPhysicalDetails(
     decimal? AreaSqm,
     int? Floor,
     bool? Furnished,
-    ListingStatus ListingStatus,
-    string? TitleAr,
-    string? TitleEn,
-    string? DescriptionAr,
-    string? DescriptionEn);
+    string? TimeZoneId = null);
 
 /// <summary>
 /// Where a property is: its area and the city and country above it, and the compound when it is in one.
@@ -62,8 +58,6 @@ public sealed record PropertyPlaceDetails(
     LocationDetails Area,
     LocationDetails? Compound);
 
-/// <summary>Whether the AI search service holds the property, and when or why not.</summary>
-public sealed record AiSyncDetails(AiSyncStatus Status, DateTimeOffset? SyncedAt, string? Error);
 
 /// <summary>Read model of one view. <paramref name="Code"/> is what clients send when choosing views.</summary>
 public sealed record ViewDetails(string Code, string NameAr, string NameEn);

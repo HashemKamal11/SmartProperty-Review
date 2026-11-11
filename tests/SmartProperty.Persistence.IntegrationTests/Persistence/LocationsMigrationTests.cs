@@ -62,7 +62,7 @@ public sealed class LocationsMigrationTests(PostgreSqlFixture fixture) : Databas
     }
 
     [Fact]
-    public async Task ExistingPropertiesKeepEverythingElseAndHaveNoPlaceYet()
+    public async Task ExistingPropertiesKeepEverythingElseHaveNoPlaceYetAndArchiveTheirCommercialValues()
     {
         await MigrateToAsync(Previous);
         var id = Guid.NewGuid();
@@ -76,13 +76,16 @@ public sealed class LocationsMigrationTests(PostgreSqlFixture fixture) : Databas
         await MigrateToLatestAsync();
 
         var row = (await QueryAsync(
-            $"SELECT type, bedrooms, price, transaction_type, area_id, compound_id FROM registry.properties WHERE id = '{id}';")).Single();
+            $"SELECT type, bedrooms, area_id, compound_id FROM registry.properties WHERE id = '{id}';")).Single();
+        var archived = (await QueryAsync(
+            $"SELECT price, transaction_type FROM registry.legacy_property_commercial WHERE property_id = '{id}';")).Single();
         Assert.Equal("Villa", row[0]);
         Assert.Equal(4, row[1]);
-        Assert.Equal(3500000m, row[2]);
-        Assert.Equal("Sale", row[3]);
-        Assert.Null(row[4]);
-        Assert.Null(row[5]);
+        Assert.Null(row[2]);
+        Assert.Null(row[3]);
+        // The commercial values do not stay on the property: they are archived, not lost.
+        Assert.Equal(3500000m, archived[0]);
+        Assert.Equal("Sale", archived[1]);
     }
 
     [Fact]

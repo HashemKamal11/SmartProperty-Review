@@ -248,7 +248,7 @@ public sealed class FavoritePropertyPersistenceTests(PostgreSqlFixture fixture) 
             bedrooms: 4,
             bathrooms: 3,
             finishingStatus: FinishingStatus.LuxuryFinished,
-            listing: new PropertyListingInfo(TransactionType.Sale, 5_000_000m, 300m, titleEn: "A villa"));
+            physical: new PropertyPhysicalInfo(300m));
         await using (var seeding = Host.CreateVerificationContext())
         {
             seeding.Properties.Add(property);
@@ -267,9 +267,8 @@ public sealed class FavoritePropertyPersistenceTests(PostgreSqlFixture fixture) 
         Assert.Equal(direct.Type, listed.Type);
         Assert.Equal(direct.Bedrooms, listed.Bedrooms);
         Assert.Equal(direct.FinishingStatus, listed.FinishingStatus);
-        Assert.Equal(direct.Listing, listed.Listing);
+        Assert.Equal(direct.Physical, listed.Physical);
         Assert.Equal(direct.Address, listed.Address);
-        Assert.Equal(direct.AiSync, listed.AiSync);
     }
 
     [Fact]

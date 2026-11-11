@@ -9,7 +9,9 @@ namespace SmartProperty.Application.Favorites.List;
 /// Returns one page of the user's own favorites. Read-only: it saves nothing, and the user id is the one the caller
 /// is signed in as, so one user can never read another's list.
 /// </summary>
-public sealed class GetFavoritesQueryHandler(IFavoritePropertyRepository favoriteRepository)
+public sealed class GetFavoritesQueryHandler(
+    IFavoritePropertyRepository favoriteRepository,
+    IPropertyListingsLookup? listings = null)
     : IQueryHandler<GetFavoritesQuery, PagedList<FavoriteDetails>>
 {
     public async Task<Result<PagedList<FavoriteDetails>>> Handle(
@@ -44,9 +46,21 @@ public sealed class GetFavoritesQueryHandler(IFavoritePropertyRepository favorit
             pageParameters.PageSize,
             cancellationToken);
 
+        // The price and terms of a property now live on its listings, so each favorite carries the advertisements a
+        // visitor can currently see for it. A property with none simply has no listings.
+        var items = result.Items;
+
+        if (listings is not null && items.Count > 0)
+        {
+            var current = await listings.GetCurrentAsync(items.Select(item => item.Property.Id).ToArray(), cancellationToken);
+            items = items
+                .Select(item => item with { Listings = current.TryGetValue(item.Property.Id, out var found) ? found : [] })
+                .ToArray();
+        }
+
         return Result<PagedList<FavoriteDetails>>.Success(
             PagedList<FavoriteDetails>.Create(
-                result.Items,
+                items,
                 pageParameters.PageNumber,
                 pageParameters.PageSize,
                 result.TotalCount));

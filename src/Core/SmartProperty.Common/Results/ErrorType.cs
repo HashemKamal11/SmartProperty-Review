@@ -8,5 +8,8 @@ public enum ErrorType
     Conflict,
     Forbidden,
     Unauthorized,
-    TooManyRequests
+    TooManyRequests,
+
+    /// <summary>A required trusted dependency cannot answer right now, so the request cannot be decided either way.</summary>
+    ServiceUnavailable
 }

@@ -15,8 +15,7 @@ public sealed record CreatePropertyResponse(
     string? FinishingStatus = null,
     IReadOnlyList<AmenityResponse>? Amenities = null,
     IReadOnlyList<ViewResponse>? Views = null,
-    PropertyListingResponse? Listing = null,
-    AiSyncResponse? AiSync = null,
+    PropertyPhysicalResponse? Physical = null,
     PropertyPlaceResponse? Place = null,
     IReadOnlyList<PropertyImageResponse>? Images = null);
 

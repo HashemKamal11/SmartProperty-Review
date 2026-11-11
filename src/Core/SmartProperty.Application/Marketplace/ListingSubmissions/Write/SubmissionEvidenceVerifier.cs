@@ -59,7 +59,8 @@ internal sealed record EvidenceVerification(
 /// assessment that matches it precisely (evidence, version, property, purpose and digest), is Clean, and is not later
 /// than the evaluation time; that is the Domain's own test, applied here so a failure is a typed conflict and not an
 /// exception. An unavailable provider, a missing assessment, a duplicate, a mismatch or a verdict that is not Clean
-/// are all the same public <see cref="WriteErrors.PrerequisitesUnverified"/>, and nothing in a response says which.
+/// are all the same public <see cref="WriteErrors.PrerequisitesUnverified"/>, and nothing in a response says which;
+/// the one exception is an unavailable provider, which is the clear <see cref="WriteErrors.EvidenceVerificationUnavailable"/>.
 /// The internal <see cref="EvidenceVerificationFailure"/> does.
 /// </para>
 /// <para>
@@ -126,8 +127,12 @@ internal static class SubmissionEvidenceVerifier
 
     private static EvidenceVerification Unverified(EvidenceVerificationFailure failure)
     {
-        return new EvidenceVerification(
-            Result<IReadOnlyList<ListingEvidenceAssessment>>.Failure(WriteErrors.PrerequisitesUnverified),
-            failure);
+        // An unavailable provider is a fact about the platform, not about the evidence, so it is stated clearly.
+        // Every verdict about the evidence itself stays the one generic error.
+        var error = failure == EvidenceVerificationFailure.ProviderUnavailable
+            ? WriteErrors.EvidenceVerificationUnavailable
+            : WriteErrors.PrerequisitesUnverified;
+
+        return new EvidenceVerification(Result<IReadOnlyList<ListingEvidenceAssessment>>.Failure(error), failure);
     }
 }

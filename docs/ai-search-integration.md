@@ -1,55 +1,59 @@
 # AI search integration
 
-The platform keeps its properties in the registry and lets an external **AI search service**
-(<https://ai-search.neurix.uk/docs>) answer free-text searches. This page describes how the two are connected.
-Changes still to be agreed with the AI team are collected in
+The platform keeps its properties in the registry and its advertisements in the marketplace, and lets an external
+**AI search service** (<https://ai-search.neurix.uk/docs>) answer free-text searches. This page describes how the two are
+connected. Changes still to be agreed with the AI team are collected in
 [ai-integration-pending-changes.md](ai-integration-pending-changes.md).
+
+> **What changed.** The AI service holds *advertisements*, not properties. Its `external_id` for a record is now the
+> platform's **listing id** (one record per published Sale or Rent listing), no longer the property id. A property has no
+> price, transaction type or listing status any more; those belong to its listings. See
+> [marketplace-listings-and-requests.md](marketplace-listings-and-requests.md).
 
 ## Configuration
 
 | Setting | Environment variable | Default | Meaning |
 |---|---|---|---|
-| `AiSearch:Enabled` | `AI_SEARCH_ENABLED` (compose) | `false` | Master switch. While off nothing is sent and every property reports `NotSynced`. |
+| `AiSearch:Enabled` | `AI_SEARCH_ENABLED` (compose) | `false` | Master switch. While off nothing is sent. |
 | `AiSearch:BaseUrl` | `AI_SEARCH_BASE_URL` | `https://ai-search.neurix.uk` | The AI service. |
-| `AiSearch:ApiKey` | `AI_SEARCH_API_KEY` | empty | Sent as `x-api-key` when adding or removing properties. Searching needs no key. |
+| `AiSearch:ApiKey` | `AI_SEARCH_API_KEY` | empty | Sent as `x-api-key` when adding or removing records. Searching needs no key. |
 | `AiSearch:TimeoutSeconds` | `AI_SEARCH_TIMEOUT_SECONDS` | `30` | A slower answer counts as a failed call. |
 
 Set them in `.env` (local, git-ignored) or the deployment's secret store; `.env.example` lists them. The key is a secret
 and must never be committed.
 
-## Flow 1: a property is sent to the AI service
+## Flow 1: an advertisement is sent to the AI service
 
-When a property is **created**, **updated**, or **archived**, the platform saves it first and then calls the AI
-service:
+The marketplace decides and commits first; the AI service is told afterwards, **best effort**:
 
-| Event | Call |
+| Event (committed) | Call |
 |---|---|
-| created / updated | `PUT /v1/listings/{propertyId}` (adds, or replaces the copy) |
-| archived | `DELETE /v1/listings/{propertyId}` |
+| A reviewer approves a submission, so the listing is published | `PUT /v1/listings/{listingId}` (adds, or replaces the copy) |
+| The advertiser withdraws the listing | `DELETE /v1/listings/{listingId}` |
+| An accepted request closes the property's published advertisements | `DELETE /v1/listings/{listingId}` for each one closed |
 
-The AI listing's `external_id` is the property's own id: the platform and the AI service each have their own id for a
-property, and the id we send in the path (`PUT /v1/listings/{external_id}`) is the platform's. The call carries nothing else
-but the body and the `x-api-key` header.
+The record is built from the physical property (place, type, rooms, area in m², floor, furnished, finishing status,
+amenities, the first view) and the approved listing (purpose as `TransactionType`, the listing's primary price, title and
+description). `ListingStatus` is always `Available`, because only a published, open listing is ever sent. A listing has one
+title and one description, in whatever language its advertiser wrote; the same text is sent as both the Arabic and the
+English field so the service finds it either way.
 
-The call is **best effort**. An outage of the AI service never loses or rejects a registry write. The outcome is stored
-on the property and returned as `aiSync`:
+**It never fails a decision and nothing retries it.** If the service is switched off, down, or the property lacks something
+the service requires (an area with the service's id, an area in square metres, bedroom and bathroom counts, at most 50 of
+each), the copy is not updated and a warning is logged with the listing id and a fixed category, never the content. There
+is no status stored on the property or the listing and no background job, so a missed update stays missed until that
+listing is published or withdrawn again. This is a known limitation, not a hidden one.
 
-| `aiSync.status` | Meaning |
-|---|---|
-| `Synced` | The AI service holds the property as last saved. |
-| `NotSynced` | Nothing is held. `error` says why: the integration is disabled, the property is incomplete, or it was archived. |
-| `Failed` | The last attempt failed. `error` says why. |
-
-A property can only be sent when it has a **transaction type, price, area (m²), place (`areaId`), bedrooms and
-bathrooms**, and no more than 50 bedrooms or bathrooms. Otherwise it stays `NotSynced` with a message naming what is
-missing. Saving the property again, or `POST /api/properties/{id}/ai-sync`, sends it again; both are safe to repeat.
+The AI service has **no notion of currency, pricing period or availability**. It receives the listing's primary price (for
+a rental with several pricing options, the monthly price first) as a bare number. Use the marketplace search
+(`GET /api/public/marketplace/listings`) for price, period and availability filters.
 
 ### Choosing the place
 
 The platform keeps its own place tree in four tables: `locations.countries`, `cities`, `areas` and `compounds`. Each row
 has this platform's id and the AI service's id (`ai_id`), plus both names, and points to its parent. A property links
 to its **area** (and its **compound**, when it is in one); the city and country come from the area. The AI service's
-ids are used only when the property is sent to it.
+ids are used only when a record is sent to it.
 
 The AI service owns the data, so the tables fill themselves **the first time a level is asked for**:
 
@@ -70,9 +74,9 @@ That is intentional for now (see [ai-integration-pending-changes.md](ai-integrat
 
 ### Vocabulary
 
-Property types, finishing statuses, transaction types, listing statuses and views are the AI service's closed lists
-(`GET /v1/options`). The platform's enums use the same names, written without spaces; `AiVocabulary` converts them
-(`TwinHouse` → `Twin House`, `CoreAndShell` → `Core & Shell`, …).
+Property types, finishing statuses and views are the AI service's closed lists (`GET /v1/options`); the two purposes are
+called Sale and Rent in both systems. The platform's enums use the same names, written without spaces; `AiVocabulary`
+converts them (`TwinHouse` → `Twin House`, `CoreAndShell` → `Core & Shell`, …).
 
 Amenities have their own codes in the platform. Each one that has an equivalent in the AI service carries its
 `ai_code` (`SwimmingPool` → `pool`); the others are simply not sent. Several platform amenities may share one AI code.
@@ -83,25 +87,33 @@ Amenities have their own codes in the platform. Each one that has an equivalent 
 
 1. The query goes to the AI service (`POST /v1/search`).
 2. Each result has two ids: `property_id`, the AI service's **own** reference, and `external_id`, the id **this platform
-   sent** when it added the listing, which is our property id. Only `external_id` says a result is ours; `property_id` is
-   never taken for one of our ids.
-3. For every result whose `external_id` is the id of one of our properties, a match is stored for the user: the
+   sent** when it added the record, which is our **listing id**. Only `external_id` says a result is ours; `property_id`
+   is never taken for one of our ids.
+3. A result is ours only if its `external_id` is the id of a listing that is **visible right now** (published, open,
+   approved, on an active property). It then maps to the property it advertises, and a match is stored for the user: the
    percentage, the description and the query.
-4. All results are returned. A result that is not one of ours (`external_id` is null) has a null `propertyId`, is shown
-   from `details`, and is not stored. Every result carries `externalId` (ours, or null) and `aiPropertyId` (the AI
-   service's own reference).
+4. All results are returned. A result that is not ours has a null `propertyId` and `listing`, is shown from `details`, and
+   is not stored. That includes a record whose listing was withdrawn or closed since, and a record indexed before listings
+   existed (its `external_id` is a property id): both map to nothing, so stale prices from an old index are never shown as
+   ours. Every result carries `externalId` (ours, or null), `aiPropertyId` (the AI service's own reference) and, when it
+   is ours, `listing` (the advertisement as the marketplace shows it now) and `property`.
 
 `matchPercentage` is the AI relevance `score` × 100, clamped to 0–100. It ranks results against each other; it is not
 a probability. `description` is the AI's Arabic description, falling back to English, then the title.
 
 If the AI service is unreachable the search answers `502`; if the integration is disabled, `503`.
 
-## Endpoints added
+## Endpoints
 
 | Endpoint | Who |
 |---|---|
 | `GET /api/locations` | any signed-in user |
 | `GET /api/views`, `GET /api/amenities` | any signed-in user |
 | `POST /api/property-search` | any signed-in user |
-| `POST /api/properties/{id}/ai-sync` | `property.update` |
 | `POST /api/property-matches` | the AI service, with `X-Api-Key` — **legacy**, kept until the integration is complete |
+
+`POST /api/properties/{id}/ai-sync` no longer exists: a property is not sent to the AI service, its advertisements are.
+
+**Re-indexing after a gap.** Because nothing retries, records that were never indexed (the AI service was off when the
+listing was published) or are stale (indexed under a property id before listings existed) must be rebuilt. The supported
+way today is to withdraw and publish the listing again. A bulk re-index tool is not built.

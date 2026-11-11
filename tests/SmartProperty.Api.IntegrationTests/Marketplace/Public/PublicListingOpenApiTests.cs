@@ -55,7 +55,7 @@ public sealed class PublicListingOpenApiTests
         Assert.Equal(
             new[]
             {
-                "city", "countryCode", "currency", "district", "maxPrice", "minPrice", "page", "pageSize",
+                "availableFrom", "availableTo", "city", "countryCode", "currency", "district", "maxPrice", "minPrice", "page", "pageSize",
                 "propertyType", "purpose", "region", "rentPeriod", "sort",
             },
             list.GetProperty("parameters")
