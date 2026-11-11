@@ -181,6 +181,21 @@ public sealed class OwnerVerificationEndpointTests : IDisposable
     }
 
     [Fact]
+    public async Task AOneDigitBuildingNumberWithoutAnAdditionalNumberIsSaved()
+    {
+        using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());
+
+        using var response = await client.PutAsJsonAsync(
+            $"{MyRoute}/address",
+            AddressBody() with { BuildingNumber = "7", AdditionalNumber = null });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var profile = (await response.Content.ReadFromJsonAsync<OwnerProfileResponse>())!;
+        Assert.Equal("7", profile.Address!.BuildingNumber);
+        Assert.Null(profile.Address.AdditionalNumber);
+    }
+
+    [Fact]
     public async Task InvalidAddressReturns422()
     {
         using var client = _factory.CreateAuthenticatedClient(await SeedUserAsync());

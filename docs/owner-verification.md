@@ -38,7 +38,8 @@ NotStarted -> Draft -> UnderReview -> Approved
    the ID must not be expired, and `confirmed` must be true. A national ID of a country can belong to one account only
    (`409 owner_profile.national_id_taken`). The response's `identity` includes `idCountryCode`.
 3. **National address**: `PUT /api/owner-profile/address`
-   `{ buildingNumber (4 digits), streetName, district, city, postalCode (5 digits), additionalNumber (4 digits), confirmed }`
+   `{ buildingNumber (1 to 10 digits), streetName, district, city, postalCode (5 digits), additionalNumber (optional; 1 to 10 digits when given), confirmed }`
+   `additionalNumber` exists only in the Saudi national address; send `null` or leave it out elsewhere.
    then `PUT /api/owner-profile/address-proof` as `multipart/form-data`, field `file` (JPEG, PNG or WebP, at most 10 MB).
 
 `GET /api/owner-profile` returns the whole profile with `status`, `canAddProperties`, each step (or `null`),

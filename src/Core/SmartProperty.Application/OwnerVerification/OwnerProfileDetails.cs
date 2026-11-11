@@ -59,7 +59,7 @@ public sealed record OwnerProfileDetails(
                 profile.District!,
                 profile.City!,
                 profile.PostalCode!,
-                profile.AdditionalNumber!,
+                profile.AdditionalNumber,
                 profile.AddressProofKey is not null,
                 profile.AddressProofFileName);
 
@@ -98,7 +98,7 @@ public sealed record OwnerAddressStep(
     string District,
     string City,
     string PostalCode,
-    string AdditionalNumber,
+    string? AdditionalNumber,
     bool HasProofImage,
     string? ProofFileName);
 

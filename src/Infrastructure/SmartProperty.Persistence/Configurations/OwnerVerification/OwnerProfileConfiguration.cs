@@ -37,9 +37,9 @@ internal sealed class OwnerProfileConfiguration : IEntityTypeConfiguration<Owner
 
             tableBuilder.HasCheckConstraint(
                 "ck_identity_owner_profiles_address_numbers",
-                "(building_number IS NULL OR building_number ~ '^[0-9]{4}$')"
+                "(building_number IS NULL OR building_number ~ '^[0-9]{1,10}$')"
                 + " AND (postal_code IS NULL OR postal_code ~ '^[0-9]{5}$')"
-                + " AND (additional_number IS NULL OR additional_number ~ '^[0-9]{4}$')");
+                + " AND (additional_number IS NULL OR additional_number ~ '^[0-9]{1,10}$')");
 
             // A decided profile names its reviewer and time; a rejected one carries its reason.
             tableBuilder.HasCheckConstraint(
@@ -86,7 +86,7 @@ internal sealed class OwnerProfileConfiguration : IEntityTypeConfiguration<Owner
 
         builder.Property(profile => profile.BuildingNumber)
             .HasColumnName("building_number")
-            .HasMaxLength(OwnerProfile.BuildingNumberLength);
+            .HasMaxLength(OwnerProfile.MaxBuildingNumberLength);
 
         builder.Property(profile => profile.StreetName)
             .HasColumnName("street_name")
@@ -106,7 +106,7 @@ internal sealed class OwnerProfileConfiguration : IEntityTypeConfiguration<Owner
 
         builder.Property(profile => profile.AdditionalNumber)
             .HasColumnName("additional_number")
-            .HasMaxLength(OwnerProfile.AdditionalNumberLength);
+            .HasMaxLength(OwnerProfile.MaxAdditionalNumberLength);
 
         builder.Property(profile => profile.AddressConfirmedAt)
             .HasColumnName("address_confirmed_at");

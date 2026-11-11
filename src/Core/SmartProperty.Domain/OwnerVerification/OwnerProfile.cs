@@ -11,9 +11,9 @@ namespace SmartProperty.Domain.OwnerVerification;
 /// </remarks>
 public sealed class OwnerProfile
 {
-    public const int BuildingNumberLength = 4;
+    public const int MaxBuildingNumberLength = 10;
     public const int PostalCodeLength = 5;
-    public const int AdditionalNumberLength = 4;
+    public const int MaxAdditionalNumberLength = 10;
     public const int MaxTextLength = 200;
     public const int MaxRejectionReasonLength = 1000;
     public const int MinimumAgeYears = 18;
@@ -143,6 +143,11 @@ public sealed class OwnerProfile
     }
 
     /// <summary>Saves the national-address step.</summary>
+    /// <remarks>
+    /// The building number is 1 to <see cref="MaxBuildingNumberLength"/> digits. The additional number exists only in
+    /// some countries (the Saudi national address), so it is optional; when given it is 1 to
+    /// <see cref="MaxAdditionalNumberLength"/> digits.
+    /// </remarks>
     /// <returns>True when an approved profile was sent back to Draft by the edit.</returns>
     public bool SaveAddress(
         string buildingNumber,
@@ -150,16 +155,18 @@ public sealed class OwnerProfile
         string district,
         string city,
         string postalCode,
-        string additionalNumber,
+        string? additionalNumber,
         bool confirmed,
         DateTimeOffset at)
     {
         EnsureEditable();
 
-        if (!IsDigits(buildingNumber, BuildingNumberLength))
+        var building = buildingNumber?.Trim();
+
+        if (!IsDigitsUpTo(building, MaxBuildingNumberLength))
         {
             throw new ArgumentException(
-                $"The building number must be exactly {BuildingNumberLength} digits.",
+                $"The building number must be 1 to {MaxBuildingNumberLength} digits.",
                 nameof(buildingNumber));
         }
 
@@ -168,10 +175,12 @@ public sealed class OwnerProfile
             throw new ArgumentException($"The postal code must be exactly {PostalCodeLength} digits.", nameof(postalCode));
         }
 
-        if (!IsDigits(additionalNumber, AdditionalNumberLength))
+        var additional = string.IsNullOrWhiteSpace(additionalNumber) ? null : additionalNumber.Trim();
+
+        if (additional is not null && !IsDigitsUpTo(additional, MaxAdditionalNumberLength))
         {
             throw new ArgumentException(
-                $"The additional number must be exactly {AdditionalNumberLength} digits.",
+                $"The additional number, when given, must be 1 to {MaxAdditionalNumberLength} digits.",
                 nameof(additionalNumber));
         }
 
@@ -186,12 +195,12 @@ public sealed class OwnerProfile
                 nameof(confirmed));
         }
 
-        BuildingNumber = buildingNumber;
+        BuildingNumber = building;
         StreetName = street;
         District = districtValue;
         City = cityValue;
         PostalCode = postalCode;
-        AdditionalNumber = additionalNumber;
+        AdditionalNumber = additional;
         AddressConfirmedAt = at;
 
         return Touch(at);
@@ -272,6 +281,11 @@ public sealed class OwnerProfile
     private static bool IsDigits(string? value, int length)
     {
         return value is not null && value.Length == length && value.All(char.IsAsciiDigit);
+    }
+
+    private static bool IsDigitsUpTo(string? value, int maxLength)
+    {
+        return value is not null && value.Length is >= 1 && value.Length <= maxLength && value.All(char.IsAsciiDigit);
     }
 
     private void EnsureEditable()

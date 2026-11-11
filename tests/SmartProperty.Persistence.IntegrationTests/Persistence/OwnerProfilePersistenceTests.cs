@@ -173,9 +173,11 @@ public sealed class OwnerProfilePersistenceTests(PostgreSqlFixture fixture) : Da
     [Theory]
     [InlineData("national_id", "'123'")]
     [InlineData("national_id", "'12345abcde'")]
-    [InlineData("building_number", "'12'")]
+    [InlineData("building_number", "'12a'")]
+    [InlineData("building_number", "''")]
+    [InlineData("additional_number", "'5a'")]
     [InlineData("postal_code", "'1234'")]
-    [InlineData("additional_number", "'12345'")]
+    [InlineData("additional_number", "'12345678901'")]
     [InlineData("status", "'Pending'")]
     public async Task TheDatabaseRefusesMalformedValues(string column, string value)
     {

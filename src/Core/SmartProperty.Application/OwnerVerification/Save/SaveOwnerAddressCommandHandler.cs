@@ -57,7 +57,7 @@ public sealed class SaveOwnerAddressCommandHandler(
                 command.District!,
                 command.City!,
                 command.PostalCode!,
-                command.AdditionalNumber!,
+                command.AdditionalNumber,
                 command.Confirmed,
                 now);
         }

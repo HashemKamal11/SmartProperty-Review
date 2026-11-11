@@ -154,13 +154,28 @@ public sealed class OwnerProfileTests
     }
 
     [Theory]
-    [InlineData("123", "12345", "5678")]
-    [InlineData("12345", "12345", "5678")]
+    [InlineData("7", null)] // one-digit building, no additional number (Egypt, UAE)
+    [InlineData("7", "")]
+    [InlineData("1234567890", "1")]
+    [InlineData(" 12 ", " 5678 ")]
+    public void ShortBuildingNumbersAndAMissingAdditionalNumberAreAccepted(string building, string? additional)
+    {
+        var profile = NewProfile();
+
+        profile.SaveAddress(building, "Al Olaya", "Al Malqa", "Riyadh", "12345", additional, true, Now);
+
+        Assert.Equal(building.Trim(), profile.BuildingNumber);
+        Assert.Equal(string.IsNullOrWhiteSpace(additional) ? null : additional.Trim(), profile.AdditionalNumber);
+    }
+
+    [Theory]
+    [InlineData("", "12345", "5678")]
+    [InlineData("12345678901", "12345", "5678")]
+    [InlineData("12a4", "12345", "5678")]
     [InlineData("1234", "1234", "5678")]
     [InlineData("1234", "123456", "5678")]
-    [InlineData("1234", "12345", "567")]
-    [InlineData("1234", "12345", "56789")]
-    [InlineData("12a4", "12345", "5678")]
+    [InlineData("1234", "12345", "12345678901")]
+    [InlineData("1234", "12345", "56a8")]
     public void NumbersOfTheWrongLengthOrWithLettersAreRefused(string building, string postal, string additional)
     {
         var profile = NewProfile();

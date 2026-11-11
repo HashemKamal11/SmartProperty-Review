@@ -17,7 +17,10 @@ public sealed record SaveOwnerIdentityRequest(
     DateOnly? IdExpiryDate,
     bool Confirmed);
 
-/// <summary>Step 3: the national address (the proof image is a separate upload).</summary>
+/// <summary>
+/// Step 3: the national address (the proof image is a separate upload). <c>buildingNumber</c> is 1 to 10 digits;
+/// <c>additionalNumber</c> is optional (null or omitted), and when given 1 to 10 digits.
+/// </summary>
 public sealed record SaveOwnerAddressRequest(
     string? BuildingNumber,
     string? StreetName,
@@ -105,7 +108,7 @@ public sealed record OwnerAddressStepResponse(
     string District,
     string City,
     string PostalCode,
-    string AdditionalNumber,
+    string? AdditionalNumber,
     bool HasProofImage,
     string? ProofFileName);
 
