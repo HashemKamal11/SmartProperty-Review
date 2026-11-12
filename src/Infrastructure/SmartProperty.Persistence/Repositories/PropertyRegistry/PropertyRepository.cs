@@ -143,6 +143,11 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
             filtered = filtered.Where(property => property.Status == targetStatus);
         }
 
+        if (filter.OwnerUserId is { } owner)
+        {
+            filtered = filtered.Where(property => property.OwnerUserId == owner);
+        }
+
         if (filter.CountryCode is { } countryCode)
         {
             filtered = filtered.Where(property => property.Address.CountryCode == countryCode);

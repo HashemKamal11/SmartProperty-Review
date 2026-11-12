@@ -23,6 +23,8 @@ internal sealed class SubmitterListingSubmissionReadRow
     public DateTimeOffset? SubmittedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public bool IsCurrentlyPublished { get; set; }
+    public string? PricingOptionsJson { get; set; }
+    public string? RentalTermsJson { get; set; }
 }
 
 internal sealed class SubmitterListingSubmissionDetailReadRow
@@ -47,6 +49,8 @@ internal sealed class SubmitterListingSubmissionDetailReadRow
     public DateTimeOffset UpdatedAt { get; set; }
     public bool IsCurrentlyPublished { get; set; }
     public string Description { get; set; } = null!;
+    public string? PricingOptionsJson { get; set; }
+    public string? RentalTermsJson { get; set; }
     public bool? DecisionApproved { get; set; }
     public string? DecisionReason { get; set; }
     public DateTimeOffset? DecidedAt { get; set; }
@@ -72,5 +76,7 @@ internal sealed class SubmitterListingSubmissionDetailReadRow
         SubmittedAt = SubmittedAt,
         UpdatedAt = UpdatedAt,
         IsCurrentlyPublished = IsCurrentlyPublished,
+        PricingOptionsJson = PricingOptionsJson,
+        RentalTermsJson = RentalTermsJson,
     };
 }

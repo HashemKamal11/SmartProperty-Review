@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SmartProperty.Domain.Marketplace;
 
 namespace SmartProperty.Application.Marketplace.AuthorityRequests;
@@ -177,27 +178,34 @@ public sealed record AuthorityRequestView(
     }
 }
 
-/// <summary>The stored listing content, shaped like the listing-draft request body (enum values as names).</summary>
+/// <summary>
+/// The stored listing content, shaped like the listing-draft request body (enum values as names). Only the fields
+/// that apply are present: a sale has <c>amount</c> and <c>currency</c>; a rental has <c>pricingOptions</c> and
+/// <c>rentalTerms</c> (or, in the older single-price form, <c>amount</c>, <c>currency</c> and <c>rentPeriod</c>).
+/// </summary>
 public sealed record ListingDraftContentInputView(
     string Title,
     string Description,
-    decimal Amount,
-    string? Currency,
-    string? RentPeriod,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Amount,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Currency,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RentPeriod,
     IReadOnlyList<Guid> EvidenceIds,
-    IReadOnlyList<PricingOptionView>? PricingOptions,
-    RentalTermsView? RentalTerms)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PricingOptionView>? PricingOptions,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RentalTermsView? RentalTerms)
 {
     internal static ListingDraftContentInputView? From(ListingSubmissions.Write.ListingDraftContentInput? input)
     {
+        // A rental priced by options derives its plain price from them, so its own amount and currency are unused.
+        var priced = input?.PricingOptions is { Count: > 0 };
+
         return input is null
             ? null
             : new ListingDraftContentInputView(
                 input.Title,
                 input.Description,
-                input.Amount,
-                string.IsNullOrEmpty(input.Currency) ? null : input.Currency,
-                input.RentPeriod?.ToString(),
+                priced ? null : input.Amount,
+                priced || string.IsNullOrEmpty(input.Currency) ? null : input.Currency,
+                priced ? null : input.RentPeriod?.ToString(),
                 input.EvidenceIds,
                 input.PricingOptions?.Select(option => new PricingOptionView(option.Period.ToString(), option.Amount, option.Currency)).ToArray(),
                 input.RentalTerms is { } terms

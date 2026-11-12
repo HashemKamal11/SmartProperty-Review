@@ -56,6 +56,8 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         typeof(SubmitterSubmissionDecisionResponse),
         typeof(PublicMoneyResponse),
         typeof(PublicLocationResponse),
+        typeof(PublicRentalTermsResponse),
+        typeof(PublicDateRangeResponse),
     ];
 
     // Name fragments that would indicate confidential or privileged data. Matched case-insensitively against every
@@ -139,15 +141,16 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         Assert.Equal(
             new[]
             {
-                "CreatedAt", "IsCurrentlyPublished", "ListingId", "Location", "Price", "PropertyType", "Purpose",
-                "Representation", "Status", "SubmissionId", "SubmittedAt", "Title", "UpdatedAt", "Version",
+                "CreatedAt", "IsCurrentlyPublished", "ListingId", "Location", "Price", "PricingOptions", "PropertyType",
+                "Purpose", "RentalTerms", "Representation", "Status", "SubmissionId", "SubmittedAt", "Title", "UpdatedAt",
+                "Version",
             },
             MemberNames(typeof(SubmitterSubmissionSummaryResponse)));
         Assert.Equal(
             new[]
             {
                 "CreatedAt", "Decision", "Description", "IsCurrentlyPublished", "ListingId", "Location", "Price",
-                "PropertyType", "Purpose", "Representation", "Status", "SubmissionId", "SubmittedAt", "Title",
+                "PricingOptions", "PropertyType", "Purpose", "RentalTerms", "Representation", "Status", "SubmissionId", "SubmittedAt", "Title",
                 "UpdatedAt", "Version",
             },
             MemberNames(typeof(SubmitterSubmissionDetailResponse)));
@@ -193,15 +196,16 @@ public sealed class SubmitterSubmissionContractPrivacyTests
             new[]
             {
                 "createdAt", "decision", "description", "isCurrentlyPublished", "listingId", "location", "price",
-                "propertyType", "purpose", "representation", "status", "submissionId", "submittedAt", "title",
-                "updatedAt", "version",
+                "pricingOptions", "propertyType", "purpose", "rentalTerms", "representation", "status", "submissionId",
+                "submittedAt", "title", "updatedAt", "version",
             },
             full.Order(StringComparer.Ordinal).ToArray());
 
         var draft = TopLevelKeys(Serialize(SubmitterSubmissionMapper.ToDetailResponse(DraftDetail())));
         Assert.DoesNotContain("submittedAt", draft);
         Assert.DoesNotContain("decision", draft);
-        Assert.Equal(full.Length - 2, draft.Length);
+        Assert.DoesNotContain("pricingOptions", draft); // a sale
+        Assert.Equal(full.Length - 4, draft.Length);
     }
 
     [Fact]
@@ -509,7 +513,10 @@ public sealed class SubmitterSubmissionContractPrivacyTests
             Submitted,
             Decided,
             false,
-            new SubmitterSubmissionDecision(Approved: false, "The deed does not cover this parcel.", Decided)));
+            new SubmitterSubmissionDecision(Approved: false, "The deed does not cover this parcel.", Decided),
+            [new PublicListingPrice(5200m, "SAR", RentPeriod.Monthly), new PublicListingPrice(400m, "SAR", RentPeriod.Daily)],
+            new PublicRentalTerms("Asia/Riyadh", new TimeOnly(14, 0), new TimeOnly(11, 0), 2,
+                [new PublicDateRange(new DateOnly(2027, 1, 1), new DateOnly(2027, 12, 31))])));
     }
 
     private static SubmitterSubmissionSummary PendingSummary()
@@ -625,6 +632,7 @@ public sealed class SubmitterSubmissionContractPrivacyTests
             || type == typeof(int)
             || type == typeof(bool)
             || type == typeof(DateTimeOffset)
+            || (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>) && IsAllowedMemberType(type.GetGenericArguments()[0]))
             || ContractTypes.Contains(type);
     }
 

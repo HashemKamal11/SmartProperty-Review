@@ -91,16 +91,17 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
         Assert.Equal(
             new[]
             {
-                "createdAt", "isCurrentlyPublished", "listingId", "location", "price", "propertyType", "purpose",
-                "representation", "status", "submissionId", "submittedAt", "title", "updatedAt", "version",
+                "createdAt", "isCurrentlyPublished", "listingId", "location", "price", "pricingOptions", "propertyType",
+                "purpose", "rentalTerms", "representation", "status", "submissionId", "submittedAt", "title", "updatedAt",
+                "version",
             },
             PropertyNames(schemas.GetProperty("SubmitterSubmissionSummaryResponse")));
         Assert.Equal(
             new[]
             {
                 "createdAt", "decision", "description", "isCurrentlyPublished", "listingId", "location", "price",
-                "propertyType", "purpose", "representation", "status", "submissionId", "submittedAt", "title",
-                "updatedAt", "version",
+                "pricingOptions", "propertyType", "purpose", "rentalTerms", "representation", "status", "submissionId",
+                "submittedAt", "title", "updatedAt", "version",
             },
             PropertyNames(schemas.GetProperty("SubmitterSubmissionDetailResponse")));
         Assert.Equal(

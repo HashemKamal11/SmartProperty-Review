@@ -29,14 +29,14 @@ public sealed class PropertyReadOpenApiTests(ApiPostgreSqlFixture fixture)
                 .Select(parameter => parameter.GetProperty("name").GetString()!)
                 .Order(StringComparer.Ordinal)
                 .ToArray());
-        AssertResponses(list, "200", "400", "422");
+        AssertResponses(list, "200", "400", "401", "422");
 
         var getById = paths.GetProperty("/api/properties/{id}").GetProperty("get");
         var id = Assert.Single(getById.GetProperty("parameters").EnumerateArray());
         Assert.Equal("id", id.GetProperty("name").GetString());
         Assert.Equal("path", id.GetProperty("in").GetString());
         Assert.True(id.GetProperty("required").GetBoolean());
-        AssertResponses(getById, "200", "404");
+        AssertResponses(getById, "200", "401", "404");
 
         var json = document.RootElement.GetRawText();
         Assert.Contains("PropertyResponse", json, StringComparison.Ordinal);

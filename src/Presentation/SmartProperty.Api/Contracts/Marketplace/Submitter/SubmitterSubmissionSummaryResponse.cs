@@ -28,4 +28,6 @@ public sealed record SubmitterSubmissionSummaryResponse(
     DateTimeOffset CreatedAt,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? SubmittedAt,
     DateTimeOffset UpdatedAt,
-    bool IsCurrentlyPublished);
+    bool IsCurrentlyPublished,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PublicMoneyResponse>? PricingOptions = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PublicRentalTermsResponse? RentalTerms = null);

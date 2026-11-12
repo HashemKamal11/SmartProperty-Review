@@ -5,8 +5,8 @@ using SmartProperty.Domain.PropertyRegistry;
 namespace SmartProperty.Application.Marketplace.ListingSubmissions;
 
 /// <summary>
-/// One of the submitter's own listing submissions in full: every summary field plus the description and the review
-/// decision, if there is one.
+/// One of the submitter's own listing submissions in full: every summary field plus the description, the review
+/// decision, if there is one, and for a rental every pricing option and the rental terms.
 /// </summary>
 /// <remarks>
 /// The privacy rules of <see cref="SubmitterSubmissionSummary"/> apply unchanged.
@@ -27,7 +27,9 @@ public sealed record SubmitterSubmissionDetail(
     DateTimeOffset? SubmittedAt,
     DateTimeOffset UpdatedAt,
     bool IsCurrentlyPublished,
-    SubmitterSubmissionDecision? Decision);
+    SubmitterSubmissionDecision? Decision,
+    IReadOnlyList<PublicListingPrice>? PricingOptions = null,
+    PublicRentalTerms? RentalTerms = null);
 
 /// <summary>
 /// The outcome of an independent review, as the submitter may see it: whether it was approved, when it was decided,

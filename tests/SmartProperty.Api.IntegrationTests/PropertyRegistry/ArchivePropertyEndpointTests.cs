@@ -113,6 +113,8 @@ public sealed class ArchivePropertyEndpointTests : IDisposable
     {
         var property = await SeedPropertyAsync();
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyRead);
+        // Reading another owner's property needs an administrator (property.update).
+        _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyUpdate);
         using var client = AuthorizedClient();
 
         using var archive = await client.PostAsync(ArchiveRoute(property.Id), content: null);
@@ -127,17 +129,22 @@ public sealed class ArchivePropertyEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task ArchivedPropertyIsListedOnlyOnRequestAndReadableById()
+    public async Task ArchivedPropertyIsListedWithEveryStatusAndByStatusAndReadableById()
     {
         var property = await SeedPropertyAsync(new PropertyAddress("QZ"));
         _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyRead);
+        // Reading another owner's property needs an administrator (property.update).
+        _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyUpdate);
         using var client = AuthorizedClient();
 
         using var archive = await client.PostAsync(ArchiveRoute(property.Id), content: null);
         Assert.Equal(HttpStatusCode.OK, archive.StatusCode);
 
-        var list = (await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>($"{Route}?countryCode=QZ"))!;
-        Assert.DoesNotContain(list.Items, item => item.Id == property.Id);
+        var everyStatus = (await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>($"{Route}?countryCode=QZ"))!;
+        Assert.Contains(everyStatus.Items, item => item.Id == property.Id);
+
+        var activeOnly = (await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>($"{Route}?countryCode=QZ&status=Active"))!;
+        Assert.DoesNotContain(activeOnly.Items, item => item.Id == property.Id);
 
         var archivedOnly = (await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>(
             $"{Route}?countryCode=QZ&status=Archived"))!;

@@ -107,12 +107,12 @@ public sealed class GetPropertiesQueryHandlerTests
     }
 
     [Fact]
-    public async Task ANullStatusListsActivePropertiesOnly()
+    public async Task ANullStatusListsEveryStatus()
     {
         await Handle(new GetPropertiesQuery(null, null, null, null, null));
 
-        // Archived properties stay in the registry but are listed only when explicitly asked for.
-        Assert.Equal(PropertyStatus.Active, _properties.LastListCall!.Status);
+        // An owner or administrator sees Active and Archived properties together unless they ask for one status.
+        Assert.Null(_properties.LastListCall!.Status);
         Assert.Null(_properties.LastListCall.Type);
         Assert.Null(_properties.LastListCall.CountryCode);
     }

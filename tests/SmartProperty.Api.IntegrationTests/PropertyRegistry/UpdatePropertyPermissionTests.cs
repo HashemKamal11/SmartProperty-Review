@@ -89,7 +89,7 @@ public sealed class UpdatePropertyPermissionTests(ApiPostgreSqlFixture fixture)
         using var getById = await client.GetAsync($"/api/properties/{property.Id}");
 
         Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
-        // Reading is public, so these two are open to everyone.
+        // property.update makes the reader an administrator, who reads every property.
         Assert.Equal(HttpStatusCode.OK, list.StatusCode);
         Assert.Equal(HttpStatusCode.OK, getById.StatusCode);
     }

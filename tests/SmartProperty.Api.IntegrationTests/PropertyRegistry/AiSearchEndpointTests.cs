@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
+using SmartProperty.Application.Authorization;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.PropertyMatching;
 using SmartProperty.Api.Contracts.PropertyRegistry;
@@ -76,7 +77,10 @@ public sealed class AiSearchEndpointTests : IDisposable
 
         using var search = await client.PostAsJsonAsync(SearchRoute, new PropertySearchRequest("flat"));
         var body = (await search.Content.ReadFromJsonAsync<PropertySearchResponse>())!;
-        var byId = await client.GetStringAsync($"/api/properties/{ours}");
+        // The registry read needs a reader allowed to see the property: an administrator here.
+        _factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyUpdate);
+        using var admin = _factory.CreateAuthenticatedClient(Guid.NewGuid());
+        var byId = await admin.GetStringAsync($"/api/properties/{ours}");
 
         Assert.Equal(HttpStatusCode.OK, search.StatusCode);
         var mine = body.Items.Single(item => item.PropertyId == ours);

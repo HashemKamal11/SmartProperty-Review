@@ -53,7 +53,9 @@ internal static class SubmitterSubmissionMapper
             submission.CreatedAt,
             submission.SubmittedAt,
             submission.UpdatedAt,
-            submission.IsCurrentlyPublished);
+            submission.IsCurrentlyPublished,
+            PublicListingMapper.ToOptions(submission.PricingOptions),
+            PublicListingMapper.ToTerms(submission.RentalTerms));
     }
 
     public static SubmitterSubmissionDetailResponse ToDetailResponse(SubmitterSubmissionDetail submission)
@@ -86,7 +88,9 @@ internal static class SubmitterSubmissionMapper
             submission.SubmittedAt,
             submission.UpdatedAt,
             submission.IsCurrentlyPublished,
-            ToDecision(submission));
+            ToDecision(submission),
+            PublicListingMapper.ToOptions(submission.PricingOptions),
+            PublicListingMapper.ToTerms(submission.RentalTerms));
     }
 
     public static PagedResponse<SubmitterSubmissionSummaryResponse> ToPagedResponse(

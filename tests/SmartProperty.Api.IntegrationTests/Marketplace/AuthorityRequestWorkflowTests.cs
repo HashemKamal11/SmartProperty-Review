@@ -138,6 +138,13 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
         // The lawyer reads the package, the property and the deed.
         var package = await ReadAsync(await lawyer.GetAsync($"{StaffRoute}/{id}"));
         Assert.Equal(5_000_000m, package.GetProperty("saleListing").GetProperty("amount").GetDecimal());
+
+        // Each listing shows only the fields of its own purpose.
+        var sale = package.GetProperty("saleListing");
+        var rent = package.GetProperty("rentListing");
+        Assert.All(new[] { "rentPeriod", "pricingOptions", "rentalTerms" }, name => Assert.False(sale.TryGetProperty(name, out _), name));
+        Assert.All(new[] { "amount", "currency", "rentPeriod" }, name => Assert.False(rent.TryGetProperty(name, out _), name));
+        Assert.Equal(20_000m, rent.GetProperty("pricingOptions")[0].GetProperty("amount").GetDecimal());
         Assert.Equal(world.PropertyId, (await ReadAsync(await lawyer.GetAsync($"{StaffRoute}/{id}/property"))).GetProperty("id").GetGuid());
         Assert.Equal(Pdf, await (await lawyer.GetAsync($"{StaffRoute}/{id}/documents/{deedId}/file")).Content.ReadAsByteArrayAsync());
         Assert.Equal("ClamAV-test/1", (await ReadAsync(await lawyer.GetAsync($"{StaffRoute}/{id}/documents/{deedId}"))).GetProperty("document").GetProperty("scanEngine").GetString());

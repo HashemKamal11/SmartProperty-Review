@@ -230,14 +230,19 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
             ? new PublicListingPrice(amount, currency, period)
             : new PublicListingPrice(x.Amount, x.Currency, (RentPeriod?)x.RentPeriod);
 
-    private static IReadOnlyList<PublicListingPrice>? OptionsOf(PublicListingReadRow x)
+    private static IReadOnlyList<PublicListingPrice>? OptionsOf(PublicListingReadRow x) => ParsePricingOptions(x.PricingOptionsJson);
+
+    private static PublicRentalTerms? TermsOf(PublicListingReadRow x) => ParseRentalTerms(x.RentalTermsJson);
+
+    /// <summary>The pricing options of a content snapshot (<c>Payload.PricingOptions</c>), shortest period first (Daily, Weekly, Monthly, Yearly); null when there are none.</summary>
+    internal static IReadOnlyList<PublicListingPrice>? ParsePricingOptions(string? pricingOptionsJson)
     {
-        if (string.IsNullOrWhiteSpace(x.PricingOptionsJson))
+        if (string.IsNullOrWhiteSpace(pricingOptionsJson))
         {
             return null;
         }
 
-        using var document = JsonDocument.Parse(x.PricingOptionsJson);
+        using var document = JsonDocument.Parse(pricingOptionsJson);
 
         return document.RootElement.ValueKind != JsonValueKind.Array
             ? null
@@ -246,18 +251,25 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
                     option.GetProperty("Amount").GetDecimal(),
                     option.GetProperty("Currency").GetString()!,
                     (RentPeriod)option.GetProperty("Period").GetInt32()))
-                .OrderBy(option => option.RentPeriod)
+                .OrderBy(option => option.RentPeriod switch
+                {
+                    RentPeriod.Daily => 1,
+                    RentPeriod.Weekly => 2,
+                    RentPeriod.Monthly => 3,
+                    _ => 4,
+                })
                 .ToArray();
     }
 
-    private static PublicRentalTerms? TermsOf(PublicListingReadRow x)
+    /// <summary>The rental terms of a content snapshot (<c>Payload.RentalTerms</c>); null when there are none.</summary>
+    internal static PublicRentalTerms? ParseRentalTerms(string? rentalTermsJson)
     {
-        if (string.IsNullOrWhiteSpace(x.RentalTermsJson))
+        if (string.IsNullOrWhiteSpace(rentalTermsJson))
         {
             return null;
         }
 
-        using var document = JsonDocument.Parse(x.RentalTermsJson);
+        using var document = JsonDocument.Parse(rentalTermsJson);
         var terms = document.RootElement;
 
         if (terms.ValueKind != JsonValueKind.Object)

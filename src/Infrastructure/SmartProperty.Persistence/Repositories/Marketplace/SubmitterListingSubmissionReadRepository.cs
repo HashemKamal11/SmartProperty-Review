@@ -39,7 +39,9 @@ internal sealed class SubmitterListingSubmissionReadRepository(ApplicationDbCont
         s.submitted_at AS "SubmittedAt",
         s.updated_at AS "UpdatedAt",
         COALESCE(l.publication_status = 'Published' AND l.published_submission_id = s.id, false)
-            AS "IsCurrentlyPublished"
+            AS "IsCurrentlyPublished",
+        (s.content_snapshot->'Payload'->'PricingOptions')::text AS "PricingOptionsJson",
+        (s.content_snapshot->'Payload'->'RentalTerms')::text AS "RentalTermsJson"
         """;
 
     private const string ListingJoin = """
@@ -148,7 +150,7 @@ internal sealed class SubmitterListingSubmissionReadRepository(ApplicationDbCont
             summary.SubmissionId, summary.ListingId, summary.Purpose, summary.Version, summary.Status,
             summary.Title, Text(row.Description), summary.Price, summary.PropertyType, summary.Location,
             summary.Representation, summary.CreatedAt, summary.SubmittedAt, summary.UpdatedAt,
-            summary.IsCurrentlyPublished, decision);
+            summary.IsCurrentlyPublished, decision, summary.PricingOptions, summary.RentalTerms);
     }
 
     private static SubmitterSubmissionSummary ToSummary(SubmitterListingSubmissionReadRow row)
@@ -178,7 +180,9 @@ internal sealed class SubmitterListingSubmissionReadRepository(ApplicationDbCont
             new PublicListingPrice(row.Amount, Text(row.Currency), rentPeriod), propertyType,
             new PublicListingLocation(Text(row.Country), Text(row.Region), Text(row.City), Text(row.District)),
             (ListingRepresentationKind)representation, row.CreatedAt, row.SubmittedAt, row.UpdatedAt,
-            row.IsCurrentlyPublished);
+            row.IsCurrentlyPublished,
+            purpose == ListingPurpose.Rent ? PublicListingReadRepository.ParsePricingOptions(row.PricingOptionsJson) : null,
+            purpose == ListingPurpose.Rent ? PublicListingReadRepository.ParseRentalTerms(row.RentalTermsJson) : null);
     }
 
     private static void RequireActor(Guid actingUserId)

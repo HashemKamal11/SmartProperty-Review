@@ -344,6 +344,7 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetLocationsQuery, IReadOnlyList<LocationDetails>>, GetLocationsQueryHandler>();
         services.AddScoped<ICommandHandler<SearchPropertiesCommand, PropertySearchResult>, SearchPropertiesCommandHandler>();
         services.AddScoped<PropertyImageAccess>();
+        services.AddScoped<PropertyReadAccess>();
         services.AddScoped<SmartProperty.Application.Marketplace.AuthorityRequests.OwnerAuthorityRequests>();
         services.AddScoped<SmartProperty.Application.Marketplace.AuthorityRequests.StaffAuthorityRequests>();
         services.AddScoped<ICommandHandler<UploadPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>>, UploadPropertyImagesCommandHandler>();

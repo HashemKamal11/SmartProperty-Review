@@ -36,4 +36,5 @@ public sealed record PropertyListFilter(
     decimal? MinMatchPercentage = null,
     Guid? MatchUserId = null,
     IReadOnlyList<string>? SearchTerms = null,
-    PropertyListSortOrder Sort = PropertyListSortOrder.Relevance);
+    PropertyListSortOrder Sort = PropertyListSortOrder.Relevance,
+    Guid? OwnerUserId = null);

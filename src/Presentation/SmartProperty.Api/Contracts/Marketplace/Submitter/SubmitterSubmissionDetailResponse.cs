@@ -8,7 +8,8 @@ namespace SmartProperty.Api.Contracts.Marketplace.Submitter;
 /// One of the authenticated user's own submissions, in full.
 /// </summary>
 /// <remarks>
-/// The summary plus the description and the review outcome. <c>submittedAt</c> is omitted for a Draft and
+/// The summary plus the description and the review outcome, and for a rental every pricing option
+/// (<c>pricingOptions</c>, shortest period first: Daily, Weekly, Monthly, Yearly) and the rental terms. <c>submittedAt</c> is omitted for a Draft and
 /// <c>decision</c> until the submission has been decided. The same closed vocabulary as the summary applies: nothing
 /// that identifies a party, a user, a Workspace, a piece of evidence or a reviewer is ever part of this contract.
 /// </remarks>
@@ -28,4 +29,6 @@ public sealed record SubmitterSubmissionDetailResponse(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? SubmittedAt,
     DateTimeOffset UpdatedAt,
     bool IsCurrentlyPublished,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SubmitterSubmissionDecisionResponse? Decision);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SubmitterSubmissionDecisionResponse? Decision,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PublicMoneyResponse>? PricingOptions = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PublicRentalTermsResponse? RentalTerms = null);

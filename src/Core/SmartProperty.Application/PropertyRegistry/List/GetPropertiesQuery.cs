@@ -56,4 +56,5 @@ public sealed record GetPropertiesQuery(
     decimal? MinMatchPercentage = null,
     Guid? MatchUserId = null,
     string? Search = null,
-    PropertyListSortOrder? Sort = null) : IQuery<PagedList<PropertyDetails>>;
+    PropertyListSortOrder? Sort = null,
+    Guid? OwnerUserId = null) : IQuery<PagedList<PropertyDetails>>;

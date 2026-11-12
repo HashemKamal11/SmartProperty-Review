@@ -87,9 +87,9 @@ public sealed class ArchivePropertyPermissionTests(ApiPostgreSqlFixture fixture)
             new UpdatePropertyRequest("Apartment", Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
-        // Reading is public, so these two are open to everyone.
+        // Not an administrator and not the owner: an empty list, and the property is not found.
         Assert.Equal(HttpStatusCode.OK, list.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, getById.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, getById.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
     }
 

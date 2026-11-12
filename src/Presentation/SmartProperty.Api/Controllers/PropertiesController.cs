@@ -30,7 +30,9 @@ namespace SmartProperty.Api.Controllers;
 /// <remarks>
 /// Each action declares its own permission rather than the controller declaring one for all: the attribute allows
 /// multiples and every one must pass, so a controller-level requirement would silently be added to every action.
-/// Reading is public: listing and getting one property need no sign-in and no permission. Creating requires
+/// Reading needs a sign-in and is scoped by <see cref="PropertyReadAccess"/>: an administrator (<c>property.update</c>)
+/// reads every property, anyone else only the ones they registered; both see every status unless <c>status</c> is
+/// given. Visitors see properties only through published listings (<c>/api/public/marketplace/listings</c>). Creating requires
 /// <c>property.create</c> alone, updating <c>property.update</c> alone, and archiving <c>property.archive</c> alone.
 /// </remarks>
 [ApiController]
@@ -133,13 +135,15 @@ public sealed class PropertiesController : ControllerBase
     /// a match filter without a signed-in user) is a <c>422 validation.failed</c> from the use case.
     /// </remarks>
     [HttpGet]
-    [AllowAnonymous]
+    [Authorize]
     [ProducesResponseType<PagedResponse<PropertyResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> List(
         [FromServices] IQueryHandler<GetPropertiesQuery, PagedList<PropertyDetails>> handler,
         [FromServices] ICurrentUser currentUser,
+        [FromServices] PropertyReadAccess access,
         CancellationToken cancellationToken,
         [FromQuery(Name = "type")] PropertyType[]? types = null,
         [FromQuery] PropertyStatus? status = null,
@@ -154,6 +158,14 @@ public sealed class PropertiesController : ControllerBase
         [FromQuery(Name = "q")] string? search = null,
         [FromQuery] PropertyListSortOrder? sort = null)
     {
+        if (currentUser.UserId is not { } readerId)
+        {
+            return Unauthorized(ApiErrorResponseFactory.Unauthorized(HttpContext));
+        }
+
+        // An administrator lists every property; anyone else only the ones they registered.
+        var ownerScope = await access.OwnerScopeAsync(readerId, cancellationToken);
+
         var query = new GetPropertiesQuery(
             types,
             status,
@@ -167,7 +179,8 @@ public sealed class PropertiesController : ControllerBase
             minMatchPercentage,
             currentUser.UserId,
             search,
-            sort);
+            sort,
+            ownerScope);
 
         var result = await handler.Handle(query, cancellationToken);
 
@@ -190,16 +203,33 @@ public sealed class PropertiesController : ControllerBase
                 pagedList.TotalCount)));
     }
 
-    /// <summary>One property, whatever its status. An Archived property is returned, not hidden.</summary>
+    /// <summary>
+    /// One property, whatever its status (an Archived property is returned, not hidden). An administrator reads any
+    /// property; anyone else only one they registered, and someone else's is <c>404</c> so its existence is not revealed.
+    /// </summary>
     [HttpGet("{id:guid}")]
-    [AllowAnonymous]
+    [Authorize]
     [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(
         Guid id,
         [FromServices] IQueryHandler<GetPropertyByIdQuery, PropertyDetails> handler,
+        [FromServices] ICurrentUser currentUser,
+        [FromServices] PropertyReadAccess access,
         CancellationToken cancellationToken)
     {
+        if (currentUser.UserId is not { } readerId)
+        {
+            return Unauthorized(ApiErrorResponseFactory.Unauthorized(HttpContext));
+        }
+
+        if (!await access.CanReadAsync(readerId, id, cancellationToken))
+        {
+            var notFound = ApiErrorResponseFactory.FromError(PropertyReadAccess.NotFound, HttpContext);
+            return StatusCode(notFound.Status, notFound);
+        }
+
         var result = await handler.Handle(new GetPropertyByIdQuery(id), cancellationToken);
 
         if (result.IsFailure)
@@ -213,7 +243,8 @@ public sealed class PropertiesController : ControllerBase
 
     /// <summary>
     /// What the share button needs for one property: the link that opens it and its cover image. Anonymous. Only an
-    /// Active property can be shared.
+    /// Active property with a published marketplace listing can be shared: the public sees properties only through
+    /// their listings.
     /// </summary>
     /// <remarks>
     /// <c>url</c> is always absolute: <c>Share:PublicBaseUrl</c> when configured, otherwise the request origin; <c>path</c> is

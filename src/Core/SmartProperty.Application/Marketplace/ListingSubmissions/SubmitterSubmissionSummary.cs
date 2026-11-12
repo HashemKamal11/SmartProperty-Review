@@ -27,4 +27,6 @@ public sealed record SubmitterSubmissionSummary(
     DateTimeOffset CreatedAt,
     DateTimeOffset? SubmittedAt,
     DateTimeOffset UpdatedAt,
-    bool IsCurrentlyPublished);
+    bool IsCurrentlyPublished,
+    IReadOnlyList<PublicListingPrice>? PricingOptions = null,
+    PublicRentalTerms? RentalTerms = null);

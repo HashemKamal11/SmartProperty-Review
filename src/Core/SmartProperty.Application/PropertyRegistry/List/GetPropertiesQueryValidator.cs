@@ -103,7 +103,8 @@ internal static class GetPropertiesQueryValidator
 
         filter = new PropertyListFilter(
             types,
-            query.Status ?? PropertyStatus.Active,
+            // No status means every status: a reader sees their Active and Archived properties together.
+            query.Status,
             countryCode,
             district,
             query.AreaId,
@@ -112,7 +113,8 @@ internal static class GetPropertiesQueryValidator
             query.MinMatchPercentage,
             query.MatchUserId is { } userId && userId != Guid.Empty ? userId : null,
             searchTerms,
-            query.Sort ?? PropertyListSortOrder.Relevance);
+            query.Sort ?? PropertyListSortOrder.Relevance,
+            query.OwnerUserId is { } owner && owner != Guid.Empty ? owner : null);
 
         return null;
     }

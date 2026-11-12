@@ -3,7 +3,13 @@ using System.Net.Http.Json;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.PropertyRegistry;
 using SmartProperty.Api.IntegrationTests.Infrastructure;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Authorization;
+using SmartProperty.Application.Marketplace.PublicListings;
+using SmartProperty.Domain.Marketplace;
 using SmartProperty.Domain.PropertyRegistry;
 using Xunit;
 
@@ -19,11 +25,11 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
         new("Bootstrap:Enabled", "false")
     ];
 
-    // Reading is public. The unknown id is a 404, which also shows the request got past authorization.
+    // The registry is not public: visitors see properties through published listings only.
     [Theory]
-    [InlineData("/api/properties", HttpStatusCode.OK)]
-    [InlineData("/api/properties/11111111-1111-1111-1111-111111111111", HttpStatusCode.NotFound)]
-    public async Task AnonymousReadNeedsNoSignInAndNoPermission(string route, HttpStatusCode expected)
+    [InlineData("/api/properties", HttpStatusCode.Unauthorized)]
+    [InlineData("/api/properties/11111111-1111-1111-1111-111111111111", HttpStatusCode.Unauthorized)]
+    public async Task AnonymousReadIsRefused(string route, HttpStatusCode expected)
     {
         using var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
         using var client = factory.CreateClient();
@@ -36,7 +42,7 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
     [Theory]
     [InlineData("/api/properties", HttpStatusCode.OK)]
     [InlineData("/api/properties/11111111-1111-1111-1111-111111111111", HttpStatusCode.NotFound)]
-    public async Task ASignedInCallerWithoutPermissionCanReadToo(string route, HttpStatusCode expected)
+    public async Task ASignedInCallerWithoutPermissionReadsOnlyTheirOwn(string route, HttpStatusCode expected)
     {
         using var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
         using var client = factory.CreateAuthenticatedClient(Guid.NewGuid());
@@ -94,7 +100,7 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task ListWithoutStatusReturnsOnlyActivePropertiesAndStatusArchivedReturnsArchivedOnes()
+    public async Task ListWithoutStatusReturnsEveryStatusAndStatusArchivedReturnsArchivedOnes()
     {
         var active = NewProperty(PropertyType.Building, "XW", BaseTime);
         var archived = NewProperty(PropertyType.Building, "XW", BaseTime.AddHours(1));
@@ -107,9 +113,8 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
         var archivedOnly = await client.GetFromJsonAsync<PagedResponse<PropertyResponse>>(
             $"{Route}?countryCode=XW&status=Archived");
 
-        var listed = Assert.Single(byDefault!.Items);
-        Assert.Equal(active.Id, listed.Id);
-        Assert.Equal("Active", listed.Status);
+        Assert.Equal(new[] { archived.Id, active.Id }, byDefault!.Items.Select(item => item.Id).ToArray());
+        Assert.Equal(new[] { "Archived", "Active" }, byDefault.Items.Select(item => item.Status).ToArray());
         var archivedItem = Assert.Single(archivedOnly!.Items);
         Assert.Equal(archived.Id, archivedItem.Id);
         Assert.Equal("Archived", archivedItem.Status);
@@ -140,7 +145,8 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
         await SeedAsync(property);
         KeyValuePair<string, string?>[] noBaseUrl = [.. BootstrapDisabled, new("Share:PublicBaseUrl", "")];
         using var factory = new SmartPropertyApiFactory(fixture, configuration: noBaseUrl);
-        using var client = factory.CreateClient();
+        using var host = Advertising(factory, property.Id);
+        using var client = host.CreateClient();
 
         using var response = await client.GetAsync($"{Route}/{property.Id}/share");
 
@@ -163,7 +169,8 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
             new("Share:PropertyPath", "/listing/{id}")
         ];
         using var factory = new SmartPropertyApiFactory(fixture, configuration: configuration);
-        using var client = factory.CreateClient();
+        using var host = Advertising(factory, property.Id);
+        using var client = host.CreateClient();
 
         var body = await client.GetFromJsonAsync<System.Text.Json.JsonElement>($"{Route}/{property.Id}/share");
 
@@ -172,19 +179,23 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
     }
 
     [Fact]
-    public async Task ShareOfAnArchivedOrUnknownPropertyIs404()
+    public async Task ShareOfAnArchivedUnknownOrUnadvertisedPropertyIs404()
     {
         var archived = NewProperty(PropertyType.Villa, "XR", BaseTime);
         archived.Archive(BaseTime.AddDays(1));
-        await SeedAsync(archived);
+        var unadvertised = NewProperty(PropertyType.Villa, "XR", BaseTime);
+        await SeedAsync(archived, unadvertised);
         using var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
-        using var client = factory.CreateClient();
+        using var host = Advertising(factory, archived.Id);
+        using var client = host.CreateClient();
 
         using var archivedResponse = await client.GetAsync($"{Route}/{archived.Id}/share");
         using var unknownResponse = await client.GetAsync($"{Route}/{Guid.NewGuid()}/share");
+        using var unadvertisedResponse = await client.GetAsync($"{Route}/{unadvertised.Id}/share");
 
         Assert.Equal(HttpStatusCode.NotFound, archivedResponse.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, unknownResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, unadvertisedResponse.StatusCode);
     }
 
     [Fact]
@@ -250,11 +261,39 @@ public sealed class PropertyReadEndpointTests(ApiPostgreSqlFixture fixture)
         Assert.Equal("request.malformed", body.Code);
     }
 
+    // An administrator: property.update is what lets a reader see every property.
     private SmartPropertyApiFactory ReadAuthorizedFactory()
     {
         var factory = new SmartPropertyApiFactory(fixture, configuration: BootstrapDisabled);
         factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyRead);
+        factory.PermissionChecker.AllowedPermissionCodes.Add(PermissionCodes.PropertyUpdate);
         return factory;
+    }
+
+    // A host in which only the given properties have a published listing, so they alone can be shared.
+    private static WebApplicationFactory<Program> Advertising(SmartPropertyApiFactory factory, params Guid[] advertised) =>
+        factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddScoped<IPropertyListingsLookup>(_ => new AdvertisedListings(advertised))));
+
+    private sealed class AdvertisedListings(Guid[] advertised) : IPropertyListingsLookup
+    {
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<PublicListingSummary>>> GetCurrentAsync(
+            IReadOnlyCollection<Guid> propertyIds, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyDictionary<Guid, IReadOnlyList<PublicListingSummary>> result = propertyIds
+                .Where(advertised.Contains)
+                .ToDictionary(id => id, _ => (IReadOnlyList<PublicListingSummary>)
+                [
+                    new PublicListingSummary(Guid.NewGuid(), ListingPurpose.Sale, "Listed", new PublicListingPrice(1m, "EGP", null),
+                        PropertyType.Villa, new PublicListingLocation("EG", "Cairo", "Cairo", "Maadi"), DateTimeOffset.UtcNow),
+                ]);
+
+            return Task.FromResult(result);
+        }
+
+        public Task<IReadOnlyDictionary<Guid, PropertyListingReference>> GetByListingIdsAsync(
+            IReadOnlyCollection<Guid> listingIds, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, PropertyListingReference>>(new Dictionary<Guid, PropertyListingReference>());
     }
 
     private async Task SeedAsync(params Property[] properties)

@@ -55,7 +55,7 @@ internal static class PublicListingMapper
             ToBlocked(listing.BlockedRanges));
     }
 
-    private static IReadOnlyList<PublicMoneyResponse>? ToOptions(IReadOnlyList<PublicListingPrice>? options)
+    internal static IReadOnlyList<PublicMoneyResponse>? ToOptions(IReadOnlyList<PublicListingPrice>? options)
     {
         if (options is null)
         {
@@ -70,7 +70,7 @@ internal static class PublicListingMapper
             .ToArray();
     }
 
-    private static PublicRentalTermsResponse? ToTerms(PublicRentalTerms? terms)
+    internal static PublicRentalTermsResponse? ToTerms(PublicRentalTerms? terms)
     {
         if (terms is null)
         {
