@@ -23,7 +23,7 @@ public sealed class PropertyReadOpenApiTests(ApiPostgreSqlFixture fixture)
 
         var list = paths.GetProperty("/api/properties").GetProperty("get");
         Assert.Equal(
-            ["areaId", "countryCode", "district", "maxBedrooms", "minBedrooms", "minMatchPercentage", "page", "pageSize", "q", "sort", "status", "type"],
+            ["areaId", "countryCode", "district", "lang", "maxBedrooms", "minBedrooms", "minMatchPercentage", "page", "pageSize", "q", "sort", "status", "type"],
             list.GetProperty("parameters")
                 .EnumerateArray()
                 .Select(parameter => parameter.GetProperty("name").GetString()!)
@@ -32,7 +32,7 @@ public sealed class PropertyReadOpenApiTests(ApiPostgreSqlFixture fixture)
         AssertResponses(list, "200", "400", "401", "422");
 
         var getById = paths.GetProperty("/api/properties/{id}").GetProperty("get");
-        var id = Assert.Single(getById.GetProperty("parameters").EnumerateArray());
+        var id = Assert.Single(getById.GetProperty("parameters").EnumerateArray(), candidate => candidate.GetProperty("name").GetString() != "lang");
         Assert.Equal("id", id.GetProperty("name").GetString());
         Assert.Equal("path", id.GetProperty("in").GetString());
         Assert.True(id.GetProperty("required").GetBoolean());

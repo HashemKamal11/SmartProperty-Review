@@ -9,6 +9,7 @@ The backend currently provides JWT authentication, persisted permission authoriz
 | Area | Status | Notes |
 | --- | --- | --- |
 | API error contract and correlation IDs | Implemented | Standard error body and `X-Correlation-ID` header |
+| Arabic and English responses | Implemented | `?lang=ar` (or `en`) or `Accept-Language`; every response adds `display*` fields (names, statuses, types, error messages) in that language. See [Arabic and English Responses](docs/localization.md) |
 | Health checks | Implemented | `GET /health/live`; readiness requires PostgreSQL connectivity and no pending migrations |
 | User identity (`User`, `UserCredential`) | Implemented | New users start as `Pending` |
 | Workspaces and workspace access requests | Implemented | Registration creates a `Pending` request; authorized reviewers can list, approve, or reject it |
@@ -603,6 +604,7 @@ These are planned work items, not defects in the implemented features.
 | Document | Description |
 | --- | --- |
 | [API Contract Standard](docs/api-contract-standard.md) | Shared HTTP conventions: identifiers, dates, pagination, errors, status codes, and correlation IDs. |
+| [Arabic and English Responses](docs/localization.md) | Choosing the response language and the `display*` fields added to every response. |
 | [Identity Access Model](docs/identity-access-model.md) | Workspaces, memberships, roles, permissions, and the access request flow. |
 | [Authentication Model](docs/authentication-model.md) | Credentials, password hashing, tokens, configuration, the commit boundary, registration, and login. |
 | [Authorization Model](docs/authorization-model.md) | Authorization scopes, persisted permission resolution, protected review routes, Platform Admin bootstrap, and concurrent-review behavior. |

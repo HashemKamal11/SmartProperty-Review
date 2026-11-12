@@ -51,7 +51,7 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
 
         var parameters = list.GetProperty("parameters").EnumerateArray().ToArray();
         Assert.Equal(
-            new[] { "page", "pageSize", "purpose", "status" },
+            new[] { "lang", "page", "pageSize", "purpose", "status" },
             parameters.Select(parameter => parameter.GetProperty("name").GetString()!).Order(StringComparer.Ordinal).ToArray());
         Assert.All(parameters, parameter => Assert.Equal("query", parameter.GetProperty("in").GetString()));
         // 403 is a non-Active account (authentication.account_unavailable), not a missing permission.
@@ -64,7 +64,7 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
         using var document = await LoadDocumentAsync(mount: true);
         var detail = document.RootElement.GetProperty("paths").GetProperty(DetailPath).GetProperty("get");
 
-        var parameter = Assert.Single(detail.GetProperty("parameters").EnumerateArray());
+        var parameter = Assert.Single(detail.GetProperty("parameters").EnumerateArray(), candidate => candidate.GetProperty("name").GetString() != "lang");
         Assert.Equal("submissionId", parameter.GetProperty("name").GetString());
         Assert.Equal("path", parameter.GetProperty("in").GetString());
         Assert.True(parameter.GetProperty("required").GetBoolean());
@@ -91,7 +91,7 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
         Assert.Equal(
             new[]
             {
-                "createdAt", "isCurrentlyPublished", "listingId", "location", "price", "pricingOptions", "propertyType",
+                "createdAt", "displayPropertyType", "displayPurpose", "displayStatus", "isCurrentlyPublished", "listingId", "location", "price", "pricingOptions", "propertyType",
                 "purpose", "rentalTerms", "representation", "status", "submissionId", "submittedAt", "title", "updatedAt",
                 "version",
             },
@@ -99,7 +99,7 @@ public sealed class SubmitterListingSubmissionsOpenApiTests
         Assert.Equal(
             new[]
             {
-                "createdAt", "decision", "description", "isCurrentlyPublished", "listingId", "location", "price",
+                "createdAt", "decision", "description", "displayPropertyType", "displayPurpose", "displayStatus", "isCurrentlyPublished", "listingId", "location", "price",
                 "pricingOptions", "propertyType", "purpose", "rentalTerms", "representation", "status", "submissionId",
                 "submittedAt", "title", "updatedAt", "version",
             },
