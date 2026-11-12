@@ -212,7 +212,7 @@ public sealed class AuthContextEndpointTests
         using var document = JsonDocument.Parse(await client.GetStringAsync(Route));
 
         Assert.Equal(
-            ["platformPermissions", "platformRoles", "user", "workspaces"],
+            ["displayPlatformRoles", "platformPermissions", "platformRoles", "user", "workspaces"],
             PropertyNames(document.RootElement));
         Assert.Equal(
             ["email", "firstName", "id", "lastName"],

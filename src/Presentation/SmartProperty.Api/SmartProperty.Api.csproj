@@ -13,4 +13,7 @@
     <ProjectReference Include="..\..\Core\SmartProperty.Application\SmartProperty.Application.csproj" />
     <ProjectReference Include="..\..\Infrastructure\SmartProperty.Persistence\SmartProperty.Persistence.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Infrastructure/Localization/ArabicMessages.json" LogicalName="SmartProperty.Api.Infrastructure.Localization.ArabicMessages.json" />
+  </ItemGroup>
 </Project>

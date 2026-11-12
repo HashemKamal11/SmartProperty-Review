@@ -58,7 +58,7 @@ public sealed class AdminListingSubmissionReviewOpenApiTests
 
         var parameters = list.GetProperty("parameters").EnumerateArray().ToArray();
         Assert.Equal(
-            new[] { "page", "pageSize", "purpose", "status" },
+            new[] { "lang", "page", "pageSize", "purpose", "status" },
             parameters.Select(parameter => parameter.GetProperty("name").GetString()!).Order(StringComparer.Ordinal).ToArray());
         Assert.All(parameters, parameter => Assert.Equal("query", parameter.GetProperty("in").GetString()));
         AssertResponses(list, present: ["200", "400", "401", "403", "422"], absent: ["404"]);
@@ -70,7 +70,7 @@ public sealed class AdminListingSubmissionReviewOpenApiTests
         using var document = await LoadDocumentAsync(mount: true);
         var detail = document.RootElement.GetProperty("paths").GetProperty(DetailPath).GetProperty("get");
 
-        var parameter = Assert.Single(detail.GetProperty("parameters").EnumerateArray());
+        var parameter = Assert.Single(detail.GetProperty("parameters").EnumerateArray(), candidate => candidate.GetProperty("name").GetString() != "lang");
         Assert.Equal("submissionId", parameter.GetProperty("name").GetString());
         Assert.Equal("path", parameter.GetProperty("in").GetString());
         Assert.True(parameter.GetProperty("required").GetBoolean());
@@ -99,15 +99,15 @@ public sealed class AdminListingSubmissionReviewOpenApiTests
         Assert.Equal(
             new[]
             {
-                "allEvidenceClean", "evidenceCount", "listingId", "location", "ownerKind", "price", "propertyType",
-                "purpose", "representation", "status", "submissionId", "submittedAt", "title", "version",
+                "allEvidenceClean", "displayOwnerKind", "displayPropertyType", "displayPurpose", "displayStatus", "evidenceCount",
+                "listingId", "location", "ownerKind", "price", "propertyType", "purpose", "representation", "status", "submissionId", "submittedAt", "title", "version",
             },
             PropertyNames(schemas.GetProperty("ReviewQueueItemResponse")));
         Assert.Equal(
             new[]
             {
                 "allEvidenceClean", "authorityValidFrom", "authorityValidUntil", "createdAt", "decision", "description",
-                "evidenceCount", "isCurrentlyPublished", "listingId", "location", "ownerKind", "predecessorSubmissionId",
+                "displayOwnerKind", "displayPropertyType", "displayPurpose", "displayStatus", "evidenceCount", "isCurrentlyPublished", "listingId", "location", "ownerKind", "predecessorSubmissionId",
                 "price", "propertyId", "propertyType", "purpose", "representation", "status", "submissionId",
                 "submittedAt", "title", "updatedAt", "version",
             },

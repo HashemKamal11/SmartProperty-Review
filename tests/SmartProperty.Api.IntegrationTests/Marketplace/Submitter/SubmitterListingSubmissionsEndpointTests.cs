@@ -234,7 +234,7 @@ public sealed class SubmitterListingSubmissionsEndpointTests
         Assert.Equal(
             new[]
             {
-                "createdAt", "isCurrentlyPublished", "listingId", "location", "price", "propertyType", "purpose",
+                "createdAt", "displayPropertyType", "displayPurpose", "displayStatus", "isCurrentlyPublished", "listingId", "location", "price", "propertyType", "purpose",
                 "representation", "status", "submissionId", "submittedAt", "title", "updatedAt", "version",
             },
             SortedNames(items[0]));
@@ -445,7 +445,7 @@ public sealed class SubmitterListingSubmissionsEndpointTests
         Assert.Equal(
             new[]
             {
-                "createdAt", "decision", "description", "isCurrentlyPublished", "listingId", "location", "price",
+                "createdAt", "decision", "description", "displayPropertyType", "displayPurpose", "displayStatus", "isCurrentlyPublished", "listingId", "location", "price",
                 "propertyType", "purpose", "representation", "status", "submissionId", "submittedAt", "title",
                 "updatedAt", "version",
             },

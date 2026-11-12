@@ -268,7 +268,7 @@ public sealed class AdminListingSubmissionReviewEndpointTests
         Assert.Equal(
             new[]
             {
-                "allEvidenceClean", "evidenceCount", "listingId", "location", "ownerKind", "price", "propertyType",
+                "allEvidenceClean", "displayOwnerKind", "displayPropertyType", "displayPurpose", "displayStatus", "evidenceCount", "listingId", "location", "ownerKind", "price", "propertyType",
                 "purpose", "representation", "status", "submissionId", "submittedAt", "title", "version",
             },
             SortedNames(item));
@@ -465,7 +465,8 @@ public sealed class AdminListingSubmissionReviewEndpointTests
         Assert.Equal(
             new[]
             {
-                "allEvidenceClean", "authorityValidFrom", "createdAt", "description", "evidenceCount", "isCurrentlyPublished",
+                "allEvidenceClean", "authorityValidFrom", "createdAt", "description", "displayOwnerKind", "displayPropertyType",
+                "displayPurpose", "displayStatus", "evidenceCount", "isCurrentlyPublished",
                 "listingId", "location", "ownerKind", "price", "propertyId", "propertyType", "purpose", "representation",
                 "status", "submissionId", "submittedAt", "title", "updatedAt", "version",
             },

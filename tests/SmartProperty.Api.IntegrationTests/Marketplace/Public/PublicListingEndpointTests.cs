@@ -66,7 +66,7 @@ public sealed class PublicListingEndpointTests
 
         var sale = items[0];
         Assert.Equal(
-            new[] { "listingId", "location", "price", "propertyType", "publishedAt", "purpose", "title" },
+            new[] { "displayPropertyType", "displayPurpose", "listingId", "location", "price", "propertyType", "publishedAt", "purpose", "title" },
             SortedNames(sale));
         Assert.Equal("Sale", sale.GetProperty("purpose").GetString());
         Assert.Equal(new[] { "amount", "currency" }, SortedNames(sale.GetProperty("price")));
@@ -74,7 +74,7 @@ public sealed class PublicListingEndpointTests
 
         var rent = items[1];
         Assert.Equal("Rent", rent.GetProperty("purpose").GetString());
-        Assert.Equal(new[] { "amount", "currency", "rentPeriod" }, SortedNames(rent.GetProperty("price")));
+        Assert.Equal(new[] { "amount", "currency", "displayRentPeriod", "rentPeriod" }, SortedNames(rent.GetProperty("price")));
         Assert.Equal("Yearly", rent.GetProperty("price").GetProperty("rentPeriod").GetString());
     }
 
@@ -262,12 +262,12 @@ public sealed class PublicListingEndpointTests
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = document.RootElement;
         Assert.Equal(
-            new[] { "description", "listingId", "location", "price", "propertyType", "publishedAt", "purpose", "title" },
+            new[] { "description", "displayPropertyType", "displayPurpose", "listingId", "location", "price", "propertyType", "publishedAt", "purpose", "title" },
             SortedNames(root));
         Assert.Equal(ListingId.ToString(), root.GetProperty("listingId").GetString());
         Assert.Equal("Rent", root.GetProperty("purpose").GetString());
         Assert.Equal("Two bedrooms close to the centre.", root.GetProperty("description").GetString());
-        Assert.Equal(new[] { "amount", "currency", "rentPeriod" }, SortedNames(root.GetProperty("price")));
+        Assert.Equal(new[] { "amount", "currency", "displayRentPeriod", "rentPeriod" }, SortedNames(root.GetProperty("price")));
         Assert.Equal("Monthly", root.GetProperty("price").GetProperty("rentPeriod").GetString());
     }
 

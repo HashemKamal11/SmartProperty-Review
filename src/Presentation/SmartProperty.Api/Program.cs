@@ -9,6 +9,7 @@ using SmartProperty.Api.Infrastructure.Development;
 using SmartProperty.Api.Infrastructure.Storage;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Http;
+using SmartProperty.Api.Infrastructure.Localization;
 using SmartProperty.Api.Infrastructure.Marketplace;
 using SmartProperty.Api.Infrastructure.Security;
 using SmartProperty.Persistence;
@@ -57,9 +58,17 @@ builder.Services.AddOpenApi(options =>
 
         return Task.CompletedTask;
     });
+
+    // Every operation answers in Arabic or English: offer ?lang=ar|en in Scalar.
+    options.AddOperationTransformer((operation, _, _) =>
+    {
+        DisplayLanguageOpenApi.AddLanguageParameter(operation);
+        return Task.CompletedTask;
+    });
 });
 
 builder.Services.AddApiConventions();
+builder.Services.AddApiLocalization();
 builder.Services.AddDateTimeProvider();
 builder.Services.AddApiRateLimiting(builder.Configuration);
 builder.Services.AddApiAuthentication(builder.Configuration);
@@ -84,6 +93,9 @@ if (DemoModeServiceCollectionExtensions.IsActive(app.Services))
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<SecurityHeadersMiddleware>();
+
+// Before the exception handler, so every response, error bodies included, is in the requested language.
+app.UseApiLocalization();
 
 app.UseExceptionHandler(exceptionHandlerApp =>
 {

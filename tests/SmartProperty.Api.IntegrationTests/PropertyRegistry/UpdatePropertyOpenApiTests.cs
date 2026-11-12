@@ -29,7 +29,7 @@ public sealed class UpdatePropertyOpenApiTests(ApiPostgreSqlFixture fixture)
             update.GetProperty("security").EnumerateArray().SelectMany(value => value.EnumerateObject()),
             value => value.Name == "Bearer");
 
-        var id = Assert.Single(update.GetProperty("parameters").EnumerateArray());
+        var id = Assert.Single(update.GetProperty("parameters").EnumerateArray(), candidate => candidate.GetProperty("name").GetString() != "lang");
         Assert.Equal("id", id.GetProperty("name").GetString());
         Assert.Equal("path", id.GetProperty("in").GetString());
         Assert.True(id.GetProperty("required").GetBoolean());

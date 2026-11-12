@@ -55,7 +55,7 @@ public sealed class PublicListingOpenApiTests
         Assert.Equal(
             new[]
             {
-                "availableFrom", "availableTo", "city", "countryCode", "currency", "district", "maxPrice", "minPrice", "page", "pageSize",
+                "availableFrom", "availableTo", "city", "countryCode", "currency", "district", "lang", "maxPrice", "minPrice", "page", "pageSize",
                 "propertyType", "purpose", "region", "rentPeriod", "sort",
             },
             list.GetProperty("parameters")
@@ -76,7 +76,7 @@ public sealed class PublicListingOpenApiTests
         using var document = await LoadDocumentAsync();
         var detail = document.RootElement.GetProperty("paths").GetProperty(DetailPath).GetProperty("get");
 
-        var parameter = Assert.Single(detail.GetProperty("parameters").EnumerateArray());
+        var parameter = Assert.Single(detail.GetProperty("parameters").EnumerateArray(), candidate => candidate.GetProperty("name").GetString() != "lang");
         Assert.Equal("listingId", parameter.GetProperty("name").GetString());
         Assert.Equal("path", parameter.GetProperty("in").GetString());
         Assert.True(parameter.GetProperty("required").GetBoolean());
@@ -99,7 +99,7 @@ public sealed class PublicListingOpenApiTests
 
         var money = schemas.GetProperty("PublicMoneyResponse").GetProperty("properties");
         Assert.Equal(
-            new[] { "amount", "currency", "rentPeriod" },
+            new[] { "amount", "currency", "displayRentPeriod", "rentPeriod" },
             money.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToArray());
     }
 

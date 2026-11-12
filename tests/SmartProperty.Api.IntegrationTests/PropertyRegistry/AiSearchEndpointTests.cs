@@ -87,12 +87,13 @@ public sealed class AiSearchEndpointTests : IDisposable
         Assert.NotNull(mine.Property);
         Assert.Equal(ours, mine.Property.Id);
         // The same JSON as the by-id endpoint, field for field.
-        Assert.Equal(byId, System.Text.Json.JsonSerializer.Serialize(
-            mine.Property,
-            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
-            {
-                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
-            }));
+        // Serialized as the API does, display fields included.
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+        {
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        };
+        SmartProperty.Api.Infrastructure.Localization.DisplayFieldsModifier.Apply(options);
+        Assert.Equal(byId, System.Text.Json.JsonSerializer.Serialize(mine.Property, options));
         Assert.Null(body.Items.Single(item => item.PropertyId is null).Property);
     }
 
