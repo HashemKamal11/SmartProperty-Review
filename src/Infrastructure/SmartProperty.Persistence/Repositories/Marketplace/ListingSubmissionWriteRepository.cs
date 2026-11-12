@@ -499,7 +499,8 @@ internal sealed class ListingSubmissionWriteRepository(ApplicationDbContext cont
         }
         catch (DbUpdateConcurrencyException exception) when (exception.Entries.Count > 0
             && exception.Entries.All(entry => entry.Entity is
-                ListingSubmission or PropertyListing or PurchaseRequest or RentalRequest or PropertyCommitment))
+                ListingSubmission or PropertyListing or PurchaseRequest or RentalRequest or PropertyCommitment
+                    or AuthorityRequest or PropertyAuthorityGrant))
         {
             await AbandonAsync();
 
@@ -542,6 +543,8 @@ internal sealed class ListingSubmissionWriteRepository(ApplicationDbContext cont
                 => ListingWriteConflictKind.RequestAlreadyOpen,
             (PostgresErrorCodes.ExclusionViolation, RentalOverlapConstraint) => ListingWriteConflictKind.DatesUnavailable,
             (PostgresErrorCodes.ExclusionViolation, SingleSaleConstraint) => ListingWriteConflictKind.PropertyAlreadyCommitted,
+            // An authority approval that lost the race for the one grant in force is a stale decision, nothing more.
+            (PostgresErrorCodes.UniqueViolation, "ux_marketplace_authority_grants_active") => ListingWriteConflictKind.StaleRevision,
             _ => null
         };
     }

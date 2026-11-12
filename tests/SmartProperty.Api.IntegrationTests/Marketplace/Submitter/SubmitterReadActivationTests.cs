@@ -197,13 +197,13 @@ public sealed class SubmitterReadActivationTests
             Assert.True(scope.ServiceProvider.GetService(handler!) is not null, $"{type.Name} must have a registered handler.");
         }
 
-        // The two trusted sources have no production implementation that can answer: evidence verification and reviewer
-        // independence are documented blockers, and the registered ones refuse. A fake that answers is for tests only.
+        // The two trusted sources are the real ones: evidence is the owner's malware-scanned authority documents, and
+        // independence comes from the recorded relationships. Neither invents an answer.
         Assert.Equal(
-            "UnavailableEvidenceAssessmentProvider",
+            "AuthorityDocumentEvidenceProvider",
             scope.ServiceProvider.GetRequiredService<SmartProperty.Application.Abstractions.Marketplace.IEvidenceAssessmentProvider>().GetType().Name);
         Assert.Equal(
-            "UnavailableReviewerIndependenceProvider",
+            "RecordedRelationshipIndependenceProvider",
             scope.ServiceProvider.GetRequiredService<SmartProperty.Application.Abstractions.Marketplace.IReviewerIndependenceProvider>().GetType().Name);
         Assert.Equal(
             "PlatformReviewDecisionAuthorizer",

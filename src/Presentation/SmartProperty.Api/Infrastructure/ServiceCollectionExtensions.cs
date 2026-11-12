@@ -344,6 +344,8 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<IQueryHandler<GetLocationsQuery, IReadOnlyList<LocationDetails>>, GetLocationsQueryHandler>();
         services.AddScoped<ICommandHandler<SearchPropertiesCommand, PropertySearchResult>, SearchPropertiesCommandHandler>();
         services.AddScoped<PropertyImageAccess>();
+        services.AddScoped<SmartProperty.Application.Marketplace.AuthorityRequests.OwnerAuthorityRequests>();
+        services.AddScoped<SmartProperty.Application.Marketplace.AuthorityRequests.StaffAuthorityRequests>();
         services.AddScoped<ICommandHandler<UploadPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>>, UploadPropertyImagesCommandHandler>();
         services.AddScoped<ICommandHandler<DeletePropertyImageCommand, DeletePropertyImageResult>, DeletePropertyImageCommandHandler>();
         services.AddScoped<ICommandHandler<ReorderPropertyImagesCommand, IReadOnlyList<PropertyImageDetails>>, ReorderPropertyImagesCommandHandler>();
@@ -423,14 +425,9 @@ internal static class ServiceCollectionExtensions
             .AddScoped<IQueryHandler<GetReviewSubmissionQuery, ReviewSubmissionDetail>,
                 GetReviewSubmissionQueryHandler>();
 
-        // The owner's advertisement workflow and the administrator's decisions. Fail-closed seams: with no trusted
-        // evidence provider and no reviewer-independence provider configured, attaching evidence, submitting,
-        // approving and every decision are refused; rejecting needs no evidence but still needs independence. Grants
-        // are read, never issued, by these handlers. Test hosts replace the two seams with fakes; production does not.
-        services.TryAddScoped<SmartProperty.Application.Abstractions.Marketplace.IEvidenceAssessmentProvider,
-            SmartProperty.Api.Infrastructure.Marketplace.UnavailableEvidenceAssessmentProvider>();
-        services.TryAddScoped<SmartProperty.Application.Abstractions.Marketplace.IReviewerIndependenceProvider,
-            SmartProperty.Api.Infrastructure.Marketplace.UnavailableReviewerIndependenceProvider>();
+        // The owner's advertisement workflow and the administrator's decisions. The evidence and independence sources are
+        // registered by AddAuthorityWorkflow: the owner's documents, scanned by ClamAV, and the recorded relationships.
+        // Neither invents an answer; an unscanned document or an unknown relationship is refused.
         services.AddScoped<IReviewDecisionAuthorizer, PlatformReviewDecisionAuthorizer>();
 
         services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create.CreateListingDraftCommand,

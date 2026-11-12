@@ -374,9 +374,9 @@ public sealed class SubmitterSubmissionContractPrivacyTests
         Assert.Same(typeof(SmartProperty.Persistence.AssemblyMarker).Assembly, provider.GetRequiredService<IListingSubmissionWriteRepository>().GetType().Assembly);
         Assert.Same(typeof(SmartProperty.Persistence.AssemblyMarker).Assembly, provider.GetRequiredService<IListingSubmissionAuditRecorder>().GetType().Assembly);
 
-        // Evidence verification has no real provider yet, so the registered one can never answer. A listing can be
-        // drafted without evidence but cannot gain evidence, be submitted or be published until a trusted provider exists.
-        Assert.Equal("UnavailableEvidenceAssessmentProvider", provider.GetRequiredService<IEvidenceAssessmentProvider>().GetType().Name);
+        // Evidence is the owner's malware-scanned authority documents: an id resolves only to a Clean document version
+        // on an authority request of this owner for this property that has passed legal review.
+        Assert.Equal("AuthorityDocumentEvidenceProvider", provider.GetRequiredService<IEvidenceAssessmentProvider>().GetType().Name);
     }
 
     [Fact]
@@ -400,9 +400,9 @@ public sealed class SubmitterSubmissionContractPrivacyTests
             "PlatformReviewDecisionAuthorizer",
             provider.GetRequiredService<SmartProperty.Application.Abstractions.Authorization.IReviewDecisionAuthorizer>().GetType().Name);
 
-        // Reviewer independence has no real provider yet: the registered one establishes nothing, so every decision is
-        // refused as unverifiable until a verified registry of identities and legal parties replaces it.
-        Assert.Equal("UnavailableReviewerIndependenceProvider", provider.GetRequiredService<IReviewerIndependenceProvider>().GetType().Name);
+        // Reviewer independence comes from the recorded relationships (verified accounts, approved owner profile,
+        // shared workspaces); an organisation owner stays unknown and is refused.
+        Assert.Equal("RecordedRelationshipIndependenceProvider", provider.GetRequiredService<IReviewerIndependenceProvider>().GetType().Name);
     }
 
     [Fact]

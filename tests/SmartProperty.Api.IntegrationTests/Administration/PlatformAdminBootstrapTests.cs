@@ -148,7 +148,10 @@ public sealed class PlatformAdminBootstrapTests(ApiPostgreSqlFixture fixture)
                 PermissionCodes.PropertyUpdate,
                 PermissionCodes.WorkspaceAccessRequestsReview
             ],
-            attachedCodes.Order(StringComparer.Ordinal).ToArray());
+            // The staff role catalogue (run by other tests on this shared database) adds the administrator's
+            // marketplace permissions to the same role; bootstrap itself attaches exactly the eight above.
+            attachedCodes.Except(SmartProperty.Application.Identity.StaffRoles.MarketplaceStaffRoleCatalog.AdministratorPermissions)
+                .Order(StringComparer.Ordinal).ToArray());
 
         // The collection shares one database, so another test may have created the row first; bootstrap must reuse
         // it rather than add a second.

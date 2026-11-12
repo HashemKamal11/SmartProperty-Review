@@ -32,14 +32,24 @@ internal sealed class LocalDiskImageStorage : IImageStorage
     private readonly string _root;
 
     public LocalDiskImageStorage(IOptions<ImageStorageOptions> options, IHostEnvironment environment)
+        : this(ResolveRoot(options?.Value.RootPath ?? throw new ArgumentNullException(nameof(options)), environment))
     {
-        ArgumentNullException.ThrowIfNull(options);
+    }
+
+    /// <summary>A store rooted at an absolute directory; also the engine of the private document storage.</summary>
+    internal LocalDiskImageStorage(string absoluteRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(absoluteRoot);
+        _root = Path.GetFullPath(absoluteRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    internal static string ResolveRoot(string configured, IHostEnvironment environment)
+    {
         ArgumentNullException.ThrowIfNull(environment);
 
-        var configured = options.Value.RootPath;
         var combined = Path.IsPathRooted(configured) ? configured : Path.Combine(environment.ContentRootPath, configured);
 
-        _root = Path.GetFullPath(combined).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return Path.GetFullPath(combined).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     /// <summary>The absolute root directory, for tests and diagnostics.</summary>

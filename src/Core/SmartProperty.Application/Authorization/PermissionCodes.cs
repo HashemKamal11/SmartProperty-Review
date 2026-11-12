@@ -153,10 +153,17 @@ public static class PermissionCodes
 
     /// <summary>
     /// Change the administrator-controlled marketplace settings, today the signing window of accepted requests.
-    /// Platform-scoped. Definition-only like the authority codes: the platform administrator bootstrap does not create
-    /// or assign it yet, so an administrator must be given it explicitly until that is added.
+    /// Platform-scoped. The staff role catalogue attaches it to the Platform Admin role at every start.
     /// </summary>
     public const string MarketplaceSettingsManage = "marketplace.settings.manage";
 
     public const string MarketplaceSettingsManageDescription = "Change the administrator-controlled marketplace settings.";
+
+    /// <summary>
+    /// Assign and remove platform staff roles that are not administration itself, today the Legal Reviewer role.
+    /// Platform-scoped; held by the Platform Admin role through the staff role catalogue.
+    /// </summary>
+    public const string PlatformStaffManage = "platform.staff.manage";
+
+    public const string PlatformStaffManageDescription = "Assign and remove platform staff roles such as Legal Reviewer.";
 }

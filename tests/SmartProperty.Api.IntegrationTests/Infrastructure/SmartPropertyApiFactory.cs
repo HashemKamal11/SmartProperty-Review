@@ -46,6 +46,9 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
     /// <summary>Where this host stores uploaded images, so no test writes to a real path.</summary>
     public string ImageRoot { get; } = Path.Combine(Path.GetTempPath(), "smartproperty-images-" + Guid.NewGuid().ToString("N"));
 
+    /// <summary>Where this host stores legal documents.</summary>
+    public string DocumentRoot { get; } = Path.Combine(Path.GetTempPath(), "smartproperty-documents-" + Guid.NewGuid().ToString("N"));
+
     /// <param name="database">The collection fixture's migrated PostgreSQL database.</param>
     /// <param name="usePersistencePermissionChecker">
     /// True to leave the production permission checker in place and resolve permissions from the database.
@@ -129,6 +132,9 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
                 new KeyValuePair<string, string?>("RateLimiting:Enabled", "false"),
                 new KeyValuePair<string, string?>("Bootstrap:PlatformAdminEmail", string.Empty),
                 new KeyValuePair<string, string?>("ImageStorage:RootPath", ImageRoot),
+                new KeyValuePair<string, string?>("DocumentStorage:RootPath", DocumentRoot),
+                // The staff role catalogue changes the Platform Admin role; tests that need it run it explicitly.
+                new KeyValuePair<string, string?>("StaffRoles:ProvisionOnStartup", "false"),
                 .. extraConfiguration
             ];
 
@@ -185,6 +191,17 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
+
+        if (disposing && Directory.Exists(DocumentRoot))
+        {
+            try
+            {
+                Directory.Delete(DocumentRoot, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
 
         if (disposing && Directory.Exists(ImageRoot))
         {

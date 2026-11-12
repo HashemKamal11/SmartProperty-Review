@@ -93,8 +93,8 @@ public sealed class DemoModeTests(ApiPostgreSqlFixture fixture)
         using var client = factory.CreateClient();
         using var scope = factory.Services.CreateScope();
 
-        Assert.Equal("UnavailableEvidenceAssessmentProvider", scope.ServiceProvider.GetRequiredService<IEvidenceAssessmentProvider>().GetType().Name);
-        Assert.Equal("UnavailableReviewerIndependenceProvider", scope.ServiceProvider.GetRequiredService<IReviewerIndependenceProvider>().GetType().Name);
+        Assert.Equal("AuthorityDocumentEvidenceProvider", scope.ServiceProvider.GetRequiredService<IEvidenceAssessmentProvider>().GetType().Name);
+        Assert.Equal("RecordedRelationshipIndependenceProvider", scope.ServiceProvider.GetRequiredService<IReviewerIndependenceProvider>().GetType().Name);
 
         using var response = await client.PostAsync("/api/development/evidence", new MultipartFormDataContent());
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -109,8 +109,8 @@ public sealed class DemoModeTests(ApiPostgreSqlFixture fixture)
         using var factory = Factory(environment, enabled: false);
         using var scope = factory.Services.CreateScope();
 
-        Assert.Equal("UnavailableEvidenceAssessmentProvider", scope.ServiceProvider.GetRequiredService<IEvidenceAssessmentProvider>().GetType().Name);
-        Assert.Equal("UnavailableReviewerIndependenceProvider", scope.ServiceProvider.GetRequiredService<IReviewerIndependenceProvider>().GetType().Name);
+        Assert.Equal("AuthorityDocumentEvidenceProvider", scope.ServiceProvider.GetRequiredService<IEvidenceAssessmentProvider>().GetType().Name);
+        Assert.Equal("RecordedRelationshipIndependenceProvider", scope.ServiceProvider.GetRequiredService<IReviewerIndependenceProvider>().GetType().Name);
     }
 
     // ---- helpers

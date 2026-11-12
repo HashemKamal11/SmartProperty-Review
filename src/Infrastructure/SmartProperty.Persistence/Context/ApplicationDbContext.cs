@@ -50,6 +50,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<PropertyCommitment> PropertyCommitments => Set<PropertyCommitment>();
     public DbSet<MarketplaceSettings> MarketplaceSettings => Set<MarketplaceSettings>();
     public DbSet<PropertyAuthorityGrant> PropertyAuthorityGrants => Set<PropertyAuthorityGrant>();
+    public DbSet<AuthorityRequest> AuthorityRequests => Set<AuthorityRequest>();
+    public DbSet<AuthorityRequestDocument> AuthorityRequestDocuments => Set<AuthorityRequestDocument>();
+    public DbSet<AuthorityRequestDecision> AuthorityRequestDecisions => Set<AuthorityRequestDecision>();
 
     public override int SaveChanges() => SaveChanges(true);
 
@@ -208,6 +211,25 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
                     if (wasDraft && (entry.Property("SubmittedAssessments").IsModified || entry.Property("SubmittedAt").IsModified)
                         && !Equals(entry.Property("Status").CurrentValue, ListingSubmissionStatus.PendingReview))
                         throw new InvalidOperationException("Assessment assignment requires the submission transition.");
+                }
+            }
+            if (entry.Entity is AuthorityRequestDecision && entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Authority request decisions are append-only.");
+            if (entry.Entity is AuthorityRequestDocument)
+            {
+                if (entry.State == EntityState.Deleted)
+                    throw new InvalidOperationException("Authority request document versions are history and cannot be deleted.");
+                if (entry.State == EntityState.Modified)
+                {
+                    // What was uploaded never changes; only its scan outcome, its place (quarantine to clean) and whether
+                    // it is still in force do.
+                    foreach (var name in new[] { "Id", "RequestId", "DocumentId", "VersionNumber", "Type", "ContentType",
+                                 "FileName", "SizeBytes", "Sha256", "UploadedByUserId", "UploadedAt" })
+                        if (entry.Property(name).IsModified) throw new InvalidOperationException("An uploaded document version is immutable.");
+                    if (entry.Property("SupersededAt").IsModified && entry.Property("SupersededAt").OriginalValue is not null)
+                        throw new InvalidOperationException("A superseded version stays superseded.");
+                    if (entry.Property("RemovedAt").IsModified && entry.Property("RemovedAt").OriginalValue is not null)
+                        throw new InvalidOperationException("A removed document stays removed.");
                 }
             }
             if (entry.Entity is PropertyAuthorityGrant)

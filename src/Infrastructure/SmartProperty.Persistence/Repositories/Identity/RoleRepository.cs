@@ -138,6 +138,14 @@ internal sealed class RoleRepository(ApplicationDbContext dbContext) : IRoleRepo
         return true;
     }
 
+    public async Task<IReadOnlyList<Guid>> ListAssignedUserIdsAsync(Guid roleId, CancellationToken cancellationToken = default)
+    {
+        return await dbContext.UserPlatformRoles.AsNoTracking()
+            .Where(assignment => assignment.RoleId == roleId)
+            .Select(assignment => assignment.UserId)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<bool> IsAssignedToMembershipAsync(
         Guid workspaceMembershipId,
         Guid roleId,

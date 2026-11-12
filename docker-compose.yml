@@ -28,6 +28,24 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # ClamAV's daemon. Scans every uploaded legal document over TCP (INSTREAM) before it can be read or approved. Not
+  # published to the host. Signature updates (freshclam) run inside the container; the first start downloads the
+  # databases and can take a few minutes, during which documents simply wait in quarantine. Needs about 1.5-3 GB of RAM.
+  clamav:
+    image: clamav/clamav:${CLAMAV_IMAGE_TAG:-stable}
+    environment:
+      # Must be at least the upload limit (10 MB) plus framing.
+      CLAMD_CONF_StreamMaxLength: 32M
+    volumes:
+      - clamav_db:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s
+    restart: unless-stopped
+
   migrator:
     <<: *smartproperty-image
     build: *smartproperty-build
@@ -67,6 +85,19 @@ services:
       AiSearch__TimeoutSeconds: ${AI_SEARCH_TIMEOUT_SECONDS:-30}
       # Where uploaded property photos are stored: a mounted volume, so they outlive the container.
       ImageStorage__RootPath: ${IMAGE_STORAGE_PATH:-/data/images}
+      # Legal documents (deeds, authorizations, licenses): a separate, private, persistent volume. Never served statically;
+      # bytes leave only through the authorized download endpoints. Back it up together with the database (see docs).
+      DocumentStorage__RootPath: /data/documents
+      # Malware scanning of every uploaded document by ClamAV (clamd). Without a host nothing is scanned, documents stay
+      # quarantined (PendingScan) and no authority request can be submitted.
+      MalwareScanning__ClamAvHost: ${CLAMAV_HOST:-clamav}
+      MalwareScanning__ClamAvPort: ${CLAMAV_PORT:-3310}
+      MalwareScanning__TimeoutSeconds: ${CLAMAV_TIMEOUT_SECONDS:-120}
+      MalwareScanning__MaxAttempts: ${SCAN_MAX_ATTEMPTS:-5}
+      MalwareScanning__RetryBaseDelaySeconds: ${SCAN_RETRY_BASE_DELAY_SECONDS:-30}
+      MalwareScanning__RetryMaxDelayMinutes: ${SCAN_RETRY_MAX_DELAY_MINUTES:-30}
+      # Provisions the Legal Reviewer role and the administrator's marketplace permissions at every start (idempotent).
+      StaffRoles__ProvisionOnStartup: "true"
       Bootstrap__Enabled: ${BOOTSTRAP_ENABLED:-false}
       Bootstrap__PlatformAdminEmail: ${BOOTSTRAP_PLATFORM_ADMIN_EMAIL:-}
       # TEMPORARY: true marks a registered phone number as verified without sending an SMS. Keep false once SMS works.
@@ -86,6 +117,7 @@ services:
       Share__PropertyPath: ${SHARE_PROPERTY_PATH:-/properties/{id}}
     volumes:
       - ${IMAGE_STORAGE_HOST_PATH:-./Storage}:/data/images
+      - documents_data:/data/documents
     ports:
       - "${API_PORT:-5000}:8080"
     depends_on:
@@ -93,7 +125,14 @@ services:
         condition: service_healthy
       migrator:
         condition: service_completed_successfully
+      # Started with the API, but not awaited: uploads are accepted and wait in quarantine until clamd is ready.
+      clamav:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  # Legal documents. Persistent and private; include it in backups.
+  documents_data:
+  # ClamAV signature databases, so a restart does not download them again.
+  clamav_db:

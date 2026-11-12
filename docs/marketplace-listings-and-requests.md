@@ -6,10 +6,12 @@ zone. It has no price, no transaction type and no availability. Everything comme
 This page is the working description of the marketplace API. The decisions behind it and the progress log are in
 `Docs/Property-Listing-Separation-Design.md`.
 
-> **Not production-ready end to end.** Three things the workflow needs have no real implementation yet and fail closed:
-> **who may advertise** (property authority grants have no issuing endpoint), **evidence verification** (no trusted
-> provider) and **reviewer independence** (no verified registry of identities and legal parties). See
-> [What is not finished](#what-is-not-finished).
+> **Advertising authority is now a real workflow.** Who may advertise is decided by an authority request: the owner's
+> documents are malware-scanned by ClamAV, a legal reviewer approves, and a different platform administrator gives the
+> final approval, which issues the grants and publishes the listings atomically. Evidence is the owner's scanned
+> documents; reviewer independence comes from the recorded relationships plus a recorded no-conflict confirmation. See
+> [authority-documents-and-review.md](authority-documents-and-review.md). Organisation owners remain unsupported
+> (independence unknown, refused).
 
 ## The model
 

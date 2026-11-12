@@ -92,10 +92,10 @@ internal static class DemoModeServiceCollectionExtensions
         // Decided when a provider is resolved, from the validated options, never from a flag read earlier.
         services.Replace(ServiceDescriptor.Scoped<IEvidenceAssessmentProvider>(provider => IsActive(provider)
             ? ActivatorUtilities.CreateInstance<SimulatedEvidenceAssessmentProvider>(provider)
-            : ActivatorUtilities.CreateInstance<SmartProperty.Api.Infrastructure.Marketplace.UnavailableEvidenceAssessmentProvider>(provider)));
+            : provider.GetRequiredService<SmartProperty.Application.Marketplace.AuthorityRequests.AuthorityDocumentEvidenceProvider>()));
         services.Replace(ServiceDescriptor.Scoped<IReviewerIndependenceProvider>(provider => IsActive(provider)
             ? ActivatorUtilities.CreateInstance<RelationshipReviewerIndependenceProvider>(provider)
-            : ActivatorUtilities.CreateInstance<SmartProperty.Api.Infrastructure.Marketplace.UnavailableReviewerIndependenceProvider>(provider)));
+            : ActivatorUtilities.CreateInstance<SmartProperty.Api.Infrastructure.Marketplace.RecordedRelationshipIndependenceProvider>(provider)));
 
         // The fixture endpoint is not merely guarded: outside demo mode it is removed from the application model, so it
         // has no route and does not appear in the OpenAPI document.

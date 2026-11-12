@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<ILocationRepository, LocationRepository>();
         services.AddScoped<IFavoritePropertyRepository, FavoritePropertyRepository>();
         services.AddScoped<IOwnerProfileRepository, OwnerProfileRepository>();
+        services.AddScoped<IAuthorityRequestRepository, Repositories.Marketplace.AuthorityRequestRepository>();
         services.AddScoped<IPropertyComparisonRepository, PropertyComparisonRepository>();
         services.AddScoped<IPropertyImageRepository, PropertyImageRepository>();
         services.AddScoped<IPropertyMatchRepository, PropertyMatchRepository>();

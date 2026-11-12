@@ -334,7 +334,9 @@ public sealed class AdminReviewContractPrivacyTests
         Assert.Equal(approved, actual);
         Assert.Equal(
             new[] { "POST api/admin/marketplace/listing-submissions/{submissionId:guid}/approve", "POST api/admin/marketplace/listing-submissions/{submissionId:guid}/reject" },
-            actual.Where(line => line.EndsWith("/approve", StringComparison.Ordinal) || line.EndsWith("/reject", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray());
+            actual.Where(line => line.Contains("/listing-submissions/", StringComparison.Ordinal)
+                    && (line.EndsWith("/approve", StringComparison.Ordinal) || line.EndsWith("/reject", StringComparison.Ordinal)))
+                .Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]

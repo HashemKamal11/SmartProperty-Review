@@ -232,4 +232,7 @@ internal sealed class FakeRoleRepository : IRoleRepository
 
         return Task.FromResult(removed);
     }
+
+    public Task<IReadOnlyList<Guid>> ListAssignedUserIdsAsync(Guid roleId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<Guid>>(_userAssignments.Where(assignment => assignment.RoleId == roleId).Select(assignment => assignment.UserId).ToArray());
 }

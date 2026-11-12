@@ -724,8 +724,9 @@ public sealed class AdminListingSubmissionReviewEndpointTests
             .Where(line => line.Contains(" api/admin/marketplace", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        // The two review reads, the two decisions and the signing-window setting.
-        Assert.Equal(6, approved.Length);
+        // The two review reads, the two decisions and the signing-window setting (6), plus advertising authority:
+        // three request reads, three request decisions, the grant list and revocation (8).
+        Assert.Equal(14, approved.Length);
         Assert.Equal(approved, actual);
     }
 

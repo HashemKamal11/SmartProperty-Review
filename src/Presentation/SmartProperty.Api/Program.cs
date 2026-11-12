@@ -9,6 +9,7 @@ using SmartProperty.Api.Infrastructure.Development;
 using SmartProperty.Api.Infrastructure.Storage;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Api.Infrastructure.Http;
+using SmartProperty.Api.Infrastructure.Marketplace;
 using SmartProperty.Api.Infrastructure.Security;
 using SmartProperty.Persistence;
 
@@ -68,6 +69,8 @@ builder.Services.AddAiSearch(builder.Configuration);
 builder.Services.AddImageStorage(builder.Configuration);
 builder.Services.AddApplicationHandlers();
 builder.Services.AddPlatformAdminBootstrap(builder.Configuration);
+// After the bootstrap: its hosted service must create the Platform Admin role before the staff role catalogue runs.
+builder.Services.AddAuthorityWorkflow(builder.Configuration);
 builder.Services.AddDemoMode();
 
 var app = builder.Build();
@@ -114,6 +117,11 @@ app.MapControllers();
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
     Predicate = _ => false
+});
+
+app.MapHealthChecks("/health/scanner", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("scanner")
 });
 
 app.MapHealthChecks("/health/ready", new HealthCheckOptions

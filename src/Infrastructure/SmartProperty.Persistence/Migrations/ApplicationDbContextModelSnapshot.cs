@@ -515,6 +515,379 @@ namespace SmartProperty.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.AuthorityRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Capacity")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("capacity");
+
+                    b.Property<string>("CompletionRequestReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("completion_request_reason");
+
+                    b.Property<DateTimeOffset?>("CompletionRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completion_requested_at");
+
+                    b.Property<string>("CompletionRequestedAtStage")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("completion_requested_at_stage");
+
+                    b.Property<Guid?>("CompletionRequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("completion_requested_by_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("GrantValidUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("grant_valid_until");
+
+                    b.Property<DateTimeOffset?>("IssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("issued_at");
+
+                    b.Property<Guid?>("IssuedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issued_by_user_id");
+
+                    b.Property<string>("LegalReviewNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("legal_review_note");
+
+                    b.Property<DateTimeOffset?>("LegalReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("legal_reviewed_at");
+
+                    b.Property<Guid?>("LegalReviewedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("legal_reviewed_by_user_id");
+
+                    b.Property<string>("OwnershipDocumentNumber")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ownership_document_number");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<DateTimeOffset?>("RejectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("rejected_at");
+
+                    b.Property<string>("RejectedAtStage")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("rejected_at_stage");
+
+                    b.Property<Guid?>("RejectedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rejected_by_user_id");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("rejection_reason");
+
+                    b.Property<Guid?>("RentGrantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rent_grant_id");
+
+                    b.Property<string>("RentListingContent")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("rent_listing_content");
+
+                    b.Property<Guid>("RequesterProfileId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requester_profile_id");
+
+                    b.Property<Guid>("RequesterUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requester_user_id");
+
+                    b.Property<bool>("RequestsRent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requests_rent");
+
+                    b.Property<bool>("RequestsSale")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requests_sale");
+
+                    b.Property<DateTimeOffset?>("ReviewedPropertyUpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_property_updated_at");
+
+                    b.Property<Guid?>("SaleGrantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sale_grant_id");
+
+                    b.Property<string>("SaleListingContent")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("sale_listing_content");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.Property<DateTimeOffset?>("WithdrawnAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("withdrawn_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompletionRequestedByUserId");
+
+                    b.HasIndex("IssuedByUserId");
+
+                    b.HasIndex("LegalReviewedByUserId");
+
+                    b.HasIndex("PropertyId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_authority_requests_open")
+                        .HasFilter("status IN ('Draft', 'PendingLegalReview', 'PendingIssuance')");
+
+                    b.HasIndex("RejectedByUserId");
+
+                    b.HasIndex("RequesterUserId", "CreatedAt");
+
+                    b.HasIndex("Status", "SubmittedAt");
+
+                    b.ToTable("authority_requests", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_capacity", "(capacity IS NULL AND ownership_document_number IS NULL AND brokerage_license_number IS NULL AND agency_name IS NULL AND property_owner_name IS NULL AND status IN ('Draft', 'Withdrawn')) OR (capacity = 'Owner' AND length(btrim(ownership_document_number)) > 0 AND brokerage_license_number IS NULL AND agency_name IS NULL AND property_owner_name IS NULL) OR (capacity = 'IndividualRepresentative' AND length(btrim(ownership_document_number)) > 0 AND length(btrim(brokerage_license_number)) > 0 AND length(btrim(agency_name)) > 0 AND length(btrim(property_owner_name)) > 0)");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_grants", "(status = 'Approved') = (sale_grant_id IS NOT NULL OR rent_grant_id IS NOT NULL) AND (status <> 'Approved' OR ((sale_grant_id IS NOT NULL) = requests_sale AND (rent_grant_id IS NOT NULL) = requests_rent))");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_independence", "(legal_reviewed_by_user_id IS NULL OR legal_reviewed_by_user_id <> requester_user_id) AND (issued_by_user_id IS NULL OR (issued_by_user_id <> requester_user_id AND issued_by_user_id <> legal_reviewed_by_user_id)) AND (rejected_by_user_id IS NULL OR rejected_by_user_id <> requester_user_id) AND (completion_requested_by_user_id IS NULL OR completion_requested_by_user_id <> requester_user_id)");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_legal_review", "(legal_reviewed_by_user_id IS NULL) = (legal_reviewed_at IS NULL) AND (legal_reviewed_by_user_id IS NULL) = (reviewed_property_updated_at IS NULL) AND (status NOT IN ('PendingIssuance', 'Approved') OR legal_reviewed_by_user_id IS NOT NULL) AND (status NOT IN ('Draft', 'PendingLegalReview') OR legal_reviewed_by_user_id IS NULL)");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_listings", "(requests_sale OR sale_listing_content IS NULL) AND (requests_rent OR rent_listing_content IS NULL) AND (status IN ('Draft', 'Withdrawn') OR ((NOT requests_sale OR sale_listing_content IS NOT NULL) AND (NOT requests_rent OR rent_listing_content IS NOT NULL)))");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_outcomes", "(status = 'Approved') = (issued_by_user_id IS NOT NULL AND issued_at IS NOT NULL AND grant_valid_until IS NOT NULL) AND (status = 'Rejected') = (rejected_by_user_id IS NOT NULL AND rejected_at IS NOT NULL AND rejection_reason IS NOT NULL AND rejected_at_stage IN ('PendingLegalReview', 'PendingIssuance')) AND (rejected_by_user_id IS NOT NULL OR (rejected_at IS NULL AND rejection_reason IS NULL AND rejected_at_stage IS NULL)) AND ((completion_requested_by_user_id IS NULL AND completion_requested_at IS NULL AND completion_request_reason IS NULL AND completion_requested_at_stage IS NULL) OR (completion_requested_by_user_id IS NOT NULL AND completion_requested_at IS NOT NULL AND completion_request_reason IS NOT NULL AND completion_requested_at_stage IN ('PendingLegalReview', 'PendingIssuance'))) AND (status = 'Withdrawn') = (withdrawn_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_purposes", "requests_sale OR requests_rent");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_stages", "(status = 'Draft' AND submitted_at IS NULL) OR status = 'Withdrawn' OR (status IN ('PendingLegalReview', 'PendingIssuance', 'Approved', 'Rejected') AND submitted_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_status", "status IN ('Draft', 'PendingLegalReview', 'PendingIssuance', 'Approved', 'Rejected', 'Withdrawn')");
+                        });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.AuthorityRequestDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<bool>("AttestedNoConflict")
+                        .HasColumnType("boolean")
+                        .HasColumnName("attested_no_conflict");
+
+                    b.PrimitiveCollection<Guid[]>("DocumentVersionIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("document_version_ids");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<int>("RequestVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("request_version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("RequestId", "At");
+
+                    b.ToTable("authority_request_decisions", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_authority_request_decisions_kind", "kind IN ('Submitted', 'LegalApproved', 'LegalCompletionRequested', 'LegalRejected', 'AdminApproved', 'AdminCompletionRequested', 'AdminRejected', 'Withdrawn')");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_request_decisions_staff", "(kind IN ('Submitted', 'Withdrawn') OR attested_no_conflict) AND (kind NOT IN ('LegalCompletionRequested', 'LegalRejected', 'AdminCompletionRequested', 'AdminRejected') OR length(btrim(reason)) > 0)");
+                        });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.AuthorityRequestDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("content_type");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("file_name");
+
+                    b.Property<DateTimeOffset?>("NextScanAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_scan_at");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<int>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("row_version");
+
+                    b.Property<int>("ScanAttempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("scan_attempts");
+
+                    b.Property<string>("ScanDetail")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("scan_detail");
+
+                    b.Property<string>("ScanEngine")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("scan_engine");
+
+                    b.Property<string>("ScanStatus")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("scan_status");
+
+                    b.Property<DateTimeOffset?>("ScannedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scanned_at");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<DateTimeOffset?>("SupersededAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("superseded_at");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("document_type");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.Property<Guid>("UploadedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("uploaded_by_user_id");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("version_number");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_authority_request_documents_current")
+                        .HasFilter("superseded_at IS NULL AND removed_at IS NULL");
+
+                    b.HasIndex("NextScanAt")
+                        .HasFilter("scan_status = 'PendingScan'");
+
+                    b.HasIndex("RequestId");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("UploadedByUserId");
+
+                    b.HasIndex("DocumentId", "VersionNumber")
+                        .IsUnique();
+
+                    b.ToTable("authority_request_documents", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_authority_request_documents_content", "content_type IN ('image/jpeg', 'image/png', 'image/webp', 'application/pdf') AND size_bytes > 0 AND size_bytes <= 10485760");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_request_documents_scan", "scan_status IN ('PendingScan', 'Clean', 'Rejected', 'ScanFailed') AND scan_attempts >= 0 AND ((scan_status = 'PendingScan') = (next_scan_at IS NOT NULL)) AND (scan_status <> 'Clean' OR (scanned_at IS NOT NULL AND storage_key LIKE 'documents/%')) AND (scan_status = 'Clean' OR storage_key NOT LIKE 'documents/%')");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_request_documents_type", "document_type IN ('TitleDeed', 'SaleContract', 'UtilityBill', 'Other', 'Authorization', 'BrokerageLicense')");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_request_documents_version", "version_number >= 1 AND sha256 ~ '^[0-9A-F]{64}$'");
+                        });
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.ListingReviewDecision", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2138,6 +2511,104 @@ namespace SmartProperty.Persistence.Migrations
                     b.Navigation("Area");
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.AuthorityRequest", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("CompletionRequestedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("IssuedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("LegalReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RejectedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RequesterUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.OwnsOne("SmartProperty.Domain.Marketplace.AuthorityRepresentative", "Representative", b1 =>
+                        {
+                            b1.Property<Guid>("AuthorityRequestId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<string>("AgencyName")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("agency_name");
+
+                            b1.Property<string>("BrokerageLicenseNumber")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("character varying(64)")
+                                .HasColumnName("brokerage_license_number");
+
+                            b1.Property<string>("PropertyOwnerName")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("property_owner_name");
+
+                            b1.HasKey("AuthorityRequestId");
+
+                            b1.ToTable("authority_requests", "marketplace");
+
+                            b1.WithOwner()
+                                .HasForeignKey("AuthorityRequestId");
+                        });
+
+                    b.Navigation("Representative");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.AuthorityRequestDecision", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Marketplace.AuthorityRequest", null)
+                        .WithMany("Decisions")
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.AuthorityRequestDocument", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Marketplace.AuthorityRequest", null)
+                        .WithMany("Documents")
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("UploadedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.ListingReviewDecision", b =>
                 {
                     b.HasOne("SmartProperty.Domain.Marketplace.ListingSubmission", null)
@@ -2513,6 +2984,13 @@ namespace SmartProperty.Persistence.Migrations
                         .HasForeignKey("view_id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.AuthorityRequest", b =>
+                {
+                    b.Navigation("Decisions");
+
+                    b.Navigation("Documents");
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.ListingSubmission", b =>

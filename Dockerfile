@@ -41,7 +41,9 @@ COPY --from=build /publish/migrator /app/migrator
 
 # Uploaded property photos are kept here. Created and handed to the app user before the switch to it, so a volume mounted
 # at this path (docker-compose.yml) starts out writable by the non-root user.
-RUN mkdir -p /data/images && chown $APP_UID /data/images
+# Legal documents get their own directory (and their own volume). Both are created and handed to the app user before the
+# switch to it, so a named volume mounted there starts out writable by the non-root user.
+RUN mkdir -p /data/images /data/documents && chown $APP_UID /data/images /data/documents
 
 # APP_UID is defined by the aspnet base image; running as that non-root user is the
 # documented default for .NET containers and works on the unprivileged port 8080.
