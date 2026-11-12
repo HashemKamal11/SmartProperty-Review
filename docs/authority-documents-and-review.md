@@ -35,6 +35,7 @@ Separation of duties is enforced in the Domain, the database and the API:
 | `PUT /{id}/listings/{Sale\|Rent}` (listing-draft body) | Price and terms, validated against the property now. `evidenceIds` is ignored |
 | `PUT /{id}` `{capacity, ownershipDocumentNumber, brokerageLicenseNumber?, agencyName?, propertyOwnerName?}` | Capacity and details |
 | `POST /{id}/documents` multipart: `file`, `documentType` | Upload. **201** with the document: `documentId`, `versionId`, `sha256`, `scanStatus: "PendingScan"` |
+| `POST /{id}/documents/batch` multipart: repeated `files` and `documentTypes` (same order, or one type for all) | Upload several at once, all or nothing (at most 10 documents in force per request, 10 MB each). **201** with the array of documents, in the order sent |
 | `GET /{id}/documents[?includeHistory=true]` | Documents in force (or every version ever stored) |
 | `GET /{id}/documents/{documentId}` | One document with all its versions |
 | `PUT /{id}/documents/{documentId}` multipart: `file` | Replace (same type). **201** with version N+1; earlier versions are kept |

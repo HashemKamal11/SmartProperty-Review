@@ -214,6 +214,52 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task SeveralDocumentsGoInOneCallAllOrNothingAndEachIsScanned()
+    {
+        var world = await SeedAsync();
+        using var owner = Client(world.Owner);
+        var id = await CreateAsync(owner, world, ["Sale"], details: true);
+        (await owner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Sale", SaleContent())).Dispose();
+
+        // One bad file (not a document) refuses the whole batch and stores nothing.
+        using var refused = await UploadBatchAsync(owner, id,
+            ("TitleDeed", "deed-1.png", Png), ("TitleDeed", "deed-2.pdf", Pdf), ("Other", "notes.txt", Encoding.ASCII.GetBytes("plain text")));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, refused.StatusCode);
+        Assert.Empty((await ReadAsync(await owner.GetAsync($"{OwnerRoute}/{id}/documents"))).EnumerateArray());
+        Assert.Empty(Directory.EnumerateFiles(_root.DocumentRoot, "*", SearchOption.AllDirectories));
+
+        // The types must match the files one for one (or be a single type for all).
+        using var mismatched = await UploadBatchAsync(owner, id, types: ["TitleDeed", "Other"], ("TitleDeed", "a.pdf", Pdf), ("TitleDeed", "b.pdf", Pdf), ("TitleDeed", "c.pdf", Pdf));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, mismatched.StatusCode);
+
+        // Images and PDFs together, each with its own type.
+        using var created = await UploadBatchAsync(owner, id,
+            ("TitleDeed", "deed-page-1.png", Png), ("TitleDeed", "deed-page-2.png", Png), ("UtilityBill", "bill.pdf", Pdf), ("Other", "plan.pdf", SecondPdf));
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var documents = await ReadAsync(created);
+        Assert.Equal(["TitleDeed", "TitleDeed", "UtilityBill", "Other"], Strings(documents, "type"));
+        Assert.All(documents.EnumerateArray(), document => Assert.Equal("PendingScan", document.GetProperty("scanStatus").GetString()));
+        Assert.Equal(4, documents.EnumerateArray().Select(document => document.GetProperty("documentId").GetGuid()).Distinct().Count());
+
+        Assert.Equal(4, (await ScanAsync()).Clean);
+        Assert.Empty(Strings((await ReadAsync(await owner.GetAsync($"{OwnerRoute}/{id}"))).GetProperty("missing")));
+
+        // The cap (10) counts what the request already carries: 4 + 7 is one too many.
+        var tooMany = Enumerable.Range(0, 7).Select(index => ("Other", $"extra-{index}.pdf", Pdf)).ToArray();
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await UploadBatchAsync(owner, id, tooMany)).StatusCode);
+        Assert.Equal(4, (await ReadAsync(await owner.GetAsync($"{OwnerRoute}/{id}/documents"))).GetArrayLength());
+
+        // Types written as API clients send array fields (a JSON array per value) are understood too.
+        using var asJson = await UploadBatchAsync(owner, id, types: ["[\"UtilityBill\"]", "[\"Other\"]"], ("", "bill-2.pdf", Pdf), ("", "misc.pdf", SecondPdf));
+        Assert.Equal(HttpStatusCode.Created, asJson.StatusCode);
+        Assert.Equal(["UtilityBill", "Other"], Strings(await ReadAsync(asJson), "type"));
+        await ScanAsync();
+
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"{OwnerRoute}/{id}/submit", null)).StatusCode);
+        Assert.Equal("authority_requests.not_editable", await CodeAsync(await UploadBatchAsync(owner, id, ("Other", "late.pdf", Pdf))));
+    }
+
+    [Fact]
     public async Task WithoutAScannerNothingIsCleanAndAnOutageEndsInScanFailedWhichCanBeRescanned()
     {
         var world = await SeedAsync();
@@ -539,6 +585,30 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
         form.Add(new StringContent(type), "documentType");
 
         return client.PostAsync($"{OwnerRoute}/{requestId}/documents", form);
+    }
+
+    private static Task<HttpResponseMessage> UploadBatchAsync(
+        HttpClient client, Guid requestId, params (string Type, string Name, byte[] Bytes)[] files) =>
+        UploadBatchAsync(client, requestId, files.Select(file => file.Type).ToArray(), files);
+
+    private static Task<HttpResponseMessage> UploadBatchAsync(
+        HttpClient client, Guid requestId, string[] types, params (string Type, string Name, byte[] Bytes)[] files)
+    {
+        var form = new MultipartFormDataContent();
+
+        foreach (var (_, name, bytes) in files)
+        {
+            var file = new ByteArrayContent(bytes);
+            file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            form.Add(file, "files", name);
+        }
+
+        foreach (var type in types)
+        {
+            form.Add(new StringContent(type), "documentTypes");
+        }
+
+        return client.PostAsync($"{OwnerRoute}/{requestId}/documents/batch", form);
     }
 
     private static Task<HttpResponseMessage> ReplaceAsync(HttpClient client, Guid requestId, Guid documentId, string name, byte[] bytes)

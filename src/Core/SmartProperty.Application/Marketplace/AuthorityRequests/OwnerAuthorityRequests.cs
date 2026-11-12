@@ -270,6 +270,108 @@ public sealed class OwnerAuthorityRequests(
     }
 
     /// <summary>
+    /// Attaches several new documents to a draft in one go: all of them or none. Each file gets the same checks as
+    /// <see cref="AddDocumentAsync"/> and is quarantined pending its own malware scan. <paramref name="documentTypes"/>
+    /// names the type of each file in the same order, or holds one type that applies to every file.
+    /// </summary>
+    public async Task<Result<IReadOnlyList<AuthorityDocumentView>>> AddDocumentsAsync(
+        Guid requestId,
+        IReadOnlyList<AuthorityDocumentUpload> uploads,
+        IReadOnlyList<string?> documentTypes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(uploads);
+        ArgumentNullException.ThrowIfNull(documentTypes);
+
+        var loaded = await LoadOwnAsync(requestId, cancellationToken);
+
+        if (loaded.IsFailure)
+        {
+            return Result<IReadOnlyList<AuthorityDocumentView>>.Failure(loaded.Error!);
+        }
+
+        var request = loaded.Value;
+
+        if (uploads.Count == 0)
+        {
+            return Result<IReadOnlyList<AuthorityDocumentView>>.Failure(AuthorityRequestErrors.Validation(
+                "At least one file is required in the 'files' field."));
+        }
+
+        if (documentTypes.Count != uploads.Count && documentTypes.Count != 1)
+        {
+            return Result<IReadOnlyList<AuthorityDocumentView>>.Failure(AuthorityRequestErrors.Validation(
+                $"Send one 'documentTypes' value per file, in the same order ({uploads.Count} files, {documentTypes.Count} types), or a single value for all of them."));
+        }
+
+        var types = new AuthorityDocumentType[uploads.Count];
+
+        for (var index = 0; index < uploads.Count; index++)
+        {
+            var text = documentTypes.Count == 1 ? documentTypes[0] : documentTypes[index];
+
+            if (!TryParseName(text, out types[index]))
+            {
+                return Result<IReadOnlyList<AuthorityDocumentView>>.Failure(AuthorityRequestErrors.Validation(
+                    $"documentTypes[{index}] must be TitleDeed, SaleContract, Authorization, BrokerageLicense, UtilityBill or Other."));
+            }
+        }
+
+        if (request.Status != AuthorityRequestStatus.Draft)
+        {
+            return Result<IReadOnlyList<AuthorityDocumentView>>.Failure(AuthorityRequestErrors.NotEditable);
+        }
+
+        if (request.CurrentDocuments.Count + uploads.Count > AuthorityRequest.MaxDocuments)
+        {
+            return Result<IReadOnlyList<AuthorityDocumentView>>.Failure(AuthorityRequestErrors.Validation(
+                $"A request may carry at most {AuthorityRequest.MaxDocuments} documents; it has {request.CurrentDocuments.Count} and {uploads.Count} were sent."));
+        }
+
+        // One file at a time is read, checked and quarantined, so only one is held in memory. Any failure removes
+        // every file already stored by this call, so nothing is left behind unrecorded.
+        var versions = new List<AuthorityRequestDocument>(uploads.Count);
+        var now = clock.UtcNow;
+
+        try
+        {
+            for (var index = 0; index < uploads.Count; index++)
+            {
+                var prepared = await PrepareVersionAsync(request, Guid.NewGuid(), 1, types[index], uploads[index], now, cancellationToken);
+
+                if (prepared.IsFailure)
+                {
+                    await DeleteQuietlyAsync(versions.Select(version => version.StorageKey));
+
+                    return Result<IReadOnlyList<AuthorityDocumentView>>.Failure(prepared.Error!);
+                }
+
+                versions.Add(prepared.Value);
+            }
+
+            foreach (var version in versions)
+            {
+                request.AddDocument(version, now);
+            }
+
+            if (!await repository.TrySaveAsync(cancellationToken))
+            {
+                await DeleteQuietlyAsync(versions.Select(version => version.StorageKey));
+
+                return Result<IReadOnlyList<AuthorityDocumentView>>.Failure(AuthorityRequestErrors.ConcurrentChange);
+            }
+        }
+        catch
+        {
+            await DeleteQuietlyAsync(versions.Select(version => version.StorageKey));
+            throw;
+        }
+
+        return Result<IReadOnlyList<AuthorityDocumentView>>.Success(
+            versions.Select(version => AuthorityDocumentView.From(request, version, forStaff: false)).ToArray());
+    }
+
+    /// <summary>
     /// Replaces the version in force of a draft's document with a new file of the same type. The earlier version and
     /// its bytes are kept, superseded, so what was reviewed before stays on record.
     /// </summary>
@@ -572,34 +674,16 @@ public sealed class OwnerAuthorityRequests(
         bool replace,
         CancellationToken cancellationToken)
     {
-        var read = await ReadUploadAsync(upload, cancellationToken);
-
-        if (read.IsFailure)
-        {
-            return Result<AuthorityDocumentView>.Failure(read.Error!);
-        }
-
-        var (bytes, contentType) = read.Value;
-        var owner = request.RequesterUserId;
         var now = clock.UtcNow;
-        var versionId = Guid.NewGuid();
-        var extension = contentType == AuthorityRequestDocument.Pdf ? ".pdf" : PropertyImage.ExtensionOf(contentType);
+        var prepared = await PrepareVersionAsync(request, documentId, versionNumber, type, upload, now, cancellationToken);
 
-        // A generated name in the quarantine area; the client's name is kept only as a label.
-        var key = $"{AuthorityDocumentScanProcessor.QuarantinePrefix}{request.Id:N}/{versionId:N}{extension}";
-        var version = new AuthorityRequestDocument(
-            versionId, request.Id, documentId, versionNumber, type, key, contentType, upload.FileName, bytes.LongLength,
-            Convert.ToHexString(SHA256.HashData(bytes)), owner, now);
+        if (prepared.IsFailure)
+        {
+            return Result<AuthorityDocumentView>.Failure(prepared.Error!);
+        }
 
-        try
-        {
-            using var content = new MemoryStream(bytes, writable: false);
-            await storage.SaveAsync(key, content, cancellationToken);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return Result<AuthorityDocumentView>.Failure(AuthorityRequestErrors.StorageUnavailable);
-        }
+        var version = prepared.Value;
+        var key = version.StorageKey;
 
         try
         {
@@ -627,6 +711,52 @@ public sealed class OwnerAuthorityRequests(
         }
 
         return Result<AuthorityDocumentView>.Success(AuthorityDocumentView.From(request, version, forStaff: false));
+    }
+
+    /// <summary>
+    /// Reads and checks one upload, stores it privately under a generated name in quarantine, and returns the version
+    /// to record (not yet added to the request). On failure nothing is stored.
+    /// </summary>
+    private async Task<Result<AuthorityRequestDocument>> PrepareVersionAsync(
+        AuthorityRequest request,
+        Guid documentId,
+        int versionNumber,
+        AuthorityDocumentType type,
+        AuthorityDocumentUpload upload,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var read = await ReadUploadAsync(upload, cancellationToken);
+
+        if (read.IsFailure)
+        {
+            return Result<AuthorityRequestDocument>.Failure(read.Error!);
+        }
+
+        var (bytes, contentType) = read.Value;
+        var versionId = Guid.NewGuid();
+        var extension = contentType == AuthorityRequestDocument.Pdf ? ".pdf" : PropertyImage.ExtensionOf(contentType);
+
+        // A generated name in the quarantine area; the client's name is kept only as a label.
+        var key = $"{AuthorityDocumentScanProcessor.QuarantinePrefix}{request.Id:N}/{versionId:N}{extension}";
+        var version = new AuthorityRequestDocument(
+            versionId, request.Id, documentId, versionNumber, type, key, contentType, upload.FileName, bytes.LongLength,
+            Convert.ToHexString(SHA256.HashData(bytes)), request.RequesterUserId, now);
+
+        try
+        {
+            using var content = new MemoryStream(bytes, writable: false);
+            await storage.SaveAsync(key, content, cancellationToken);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A partly written file must not stay behind.
+            await DeleteQuietlyAsync(key);
+
+            return Result<AuthorityRequestDocument>.Failure(AuthorityRequestErrors.StorageUnavailable);
+        }
+
+        return Result<AuthorityRequestDocument>.Success(version);
     }
 
     internal static bool TryParseName<TEnum>(string? text, out TEnum value)
@@ -810,6 +940,14 @@ public sealed class OwnerAuthorityRequests(
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // Best effort; the outcome already reported is the one that matters.
+        }
+    }
+
+    private async Task DeleteQuietlyAsync(IEnumerable<string> keys)
+    {
+        foreach (var key in keys.ToArray())
+        {
+            await DeleteQuietlyAsync(key);
         }
     }
 }

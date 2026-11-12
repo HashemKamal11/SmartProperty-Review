@@ -48,6 +48,7 @@ internal static class MarketplaceRouteInventory
         "PUT api/marketplace/me/authority-requests/{requestId:guid}",
         "PUT api/marketplace/me/authority-requests/{requestId:guid}/listings/{purpose}",
         "POST api/marketplace/me/authority-requests/{requestId:guid}/documents",
+        "POST api/marketplace/me/authority-requests/{requestId:guid}/documents/batch",
         "DELETE api/marketplace/me/authority-requests/{requestId:guid}/documents/{documentId:guid}",
         "GET api/marketplace/me/authority-requests/{requestId:guid}/documents/{documentId:guid}/file",
         "GET api/marketplace/me/authority-requests/{requestId:guid}/documents",

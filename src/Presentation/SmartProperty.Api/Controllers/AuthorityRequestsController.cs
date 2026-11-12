@@ -52,7 +52,7 @@ public sealed record RevokeGrantRequest(long? ExpectedVersion);
 /// </summary>
 /// <remarks>
 /// Flow: <c>POST</c> (Draft, with the purposes) → <c>PUT {id}/listings/{purpose}</c> (price and terms) →
-/// <c>PUT {id}</c> (capacity and details) → <c>POST {id}/documents</c> (one per file; each is malware-scanned) →
+/// <c>PUT {id}</c> (capacity and details) → <c>POST {id}/documents</c> (one file) or <c>POST {id}/documents/batch</c> (several; each is malware-scanned) →
 /// <c>POST {id}/submit</c> once <c>missing</c> is empty. A request a reviewer asked to complete is a draft again, with
 /// <c>completionRequestReason</c>; a rejected one is final. Only the user who registered the property can start a
 /// request, and only with an approved owner profile.
@@ -63,6 +63,9 @@ public sealed record RevokeGrantRequest(long? ExpectedVersion);
 public sealed class AuthorityRequestsController(OwnerAuthorityRequests requests) : ControllerBase
 {
     internal const long MaxUploadBytes = 11L * 1024 * 1024;
+
+    /// <summary>The most one batch upload may carry: the document limit times the per-file limit, with room for the form.</summary>
+    internal const long MaxBatchUploadBytes = 101L * 1024 * 1024;
 
     /// <summary>What the owner can attach, with what each document is, in English and Arabic. Public.</summary>
     [HttpGet("~/api/marketplace/authority-document-types")]
@@ -164,6 +167,102 @@ public sealed class AuthorityRequestsController(OwnerAuthorityRequests requests)
             requestId, new AuthorityDocumentUpload(documentType, file.FileName, content, file.Length), cancellationToken);
 
         return result.IsFailure ? Fail(result.Error!) : StatusCode(StatusCodes.Status201Created, result.Value);
+    }
+
+    /// <summary>
+    /// Attaches several documents to a draft in one call: <c>multipart/form-data</c> with the files in the repeated
+    /// <c>files</c> field and their types in the repeated <c>documentTypes</c> field, in the same order (or one
+    /// <c>documentTypes</c> value for all the files). Each file has the same rules as the single upload (PDF, JPEG, PNG
+    /// or WebP, at most 10 MB, type detected from the content), and a request carries at most 10 documents. All the files
+    /// are added or none is. 201 with the documents, each <c>PendingScan</c> until its own malware scan.
+    /// </summary>
+    [HttpPost("{requestId:guid}/documents/batch")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxBatchUploadBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxBatchUploadBytes)]
+    [ProducesResponseType<IReadOnlyList<AuthorityDocumentView>>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> AddDocuments(
+        Guid requestId,
+        IFormFileCollection files,
+        [FromForm] List<string?>? documentTypes,
+        CancellationToken cancellationToken)
+    {
+        // IFormFileCollection (not List<IFormFile>) so the OpenAPI document describes multipart/form-data with file
+        // pickers. It holds every file in the form; only the 'files' field is taken.
+        var named = files.GetFiles("files");
+
+        if (named.Count == 0 || named.Count != files.Count)
+        {
+            return Fail(AuthorityRequestErrors.Validation(named.Count == 0
+                ? "At least one file is required in the 'files' field."
+                : "Send every file in the 'files' field."));
+        }
+
+        var streams = new List<Stream>(named.Count);
+
+        try
+        {
+            var uploads = new List<AuthorityDocumentUpload>(named.Count);
+
+            foreach (var file in named)
+            {
+                var stream = file.OpenReadStream();
+                streams.Add(stream);
+                uploads.Add(new AuthorityDocumentUpload(null, file.FileName, stream, file.Length));
+            }
+
+            var result = await requests.AddDocumentsAsync(
+                requestId, uploads, ExpandDocumentTypes(documentTypes), cancellationToken);
+
+            return result.IsFailure ? Fail(result.Error!) : StatusCode(StatusCodes.Status201Created, result.Value);
+        }
+        finally
+        {
+            foreach (var stream in streams)
+            {
+                await stream.DisposeAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The document types as sent: each form value is one type, a JSON array of types (<c>["TitleDeed"]</c>, which
+    /// API clients such as Scalar send for array fields) or a comma-separated list. The result keeps the order.
+    /// </summary>
+    internal static IReadOnlyList<string?> ExpandDocumentTypes(IReadOnlyList<string?>? values)
+    {
+        var types = new List<string?>();
+
+        foreach (var value in values ?? [])
+        {
+            var text = value?.Trim();
+
+            if (text is ['[', .., ']'])
+            {
+                try
+                {
+                    types.AddRange(System.Text.Json.JsonSerializer.Deserialize<string?[]>(text) ?? []);
+                    continue;
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // Not a JSON array of strings: kept as it is, and refused as an unknown type.
+                }
+            }
+
+            if (text is not null && text.Contains(','))
+            {
+                types.AddRange(text.Split(',', StringSplitOptions.TrimEntries));
+                continue;
+            }
+
+            types.Add(text);
+        }
+
+        return types;
     }
 
     /// <summary>The documents in force; <c>includeHistory=true</c> lists every version ever stored.</summary>
