@@ -23,6 +23,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<OneTimeCode> OneTimeCodes => Set<OneTimeCode>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceAccessRequest> WorkspaceAccessRequests => Set<WorkspaceAccessRequest>();
+    public DbSet<WorkspaceRegistrationRequest> WorkspaceRegistrationRequests => Set<WorkspaceRegistrationRequest>();
     public DbSet<WorkspaceMembership> WorkspaceMemberships => Set<WorkspaceMembership>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();

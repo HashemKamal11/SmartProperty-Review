@@ -2306,6 +2306,73 @@ namespace SmartProperty.Persistence.Migrations
                     b.ToTable("workspace_membership_roles", "identity");
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.Workspaces.WorkspaceRegistrationRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ApplicantUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("applicant_user_id");
+
+                    b.Property<string>("CommercialRegistrationNumber")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("commercial_registration_number");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("company_name");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("rejection_reason");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by_user_id");
+
+                    b.Property<string>("Status")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("WorkspaceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("workspace_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicantUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_identity_workspace_registration_requests_pending_applicant")
+                        .HasFilter("status = 'Pending'");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("WorkspaceId");
+
+                    b.HasIndex("Status", "RequestedAt")
+                        .HasDatabaseName("ix_identity_workspace_registration_requests_status_requested_at");
+
+                    b.ToTable("workspace_registration_requests", "identity");
+                });
+
             modelBuilder.Entity("SmartProperty.Persistence.Entities.Marketplace.ListingDraftDiscardAudit", b =>
                 {
                     b.Property<Guid>("EventId")
@@ -2954,6 +3021,25 @@ namespace SmartProperty.Persistence.Migrations
                         .HasForeignKey("WorkspaceMembershipId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Workspaces.WorkspaceRegistrationRequest", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("ApplicantUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.Workspaces.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("property_amenities", b =>

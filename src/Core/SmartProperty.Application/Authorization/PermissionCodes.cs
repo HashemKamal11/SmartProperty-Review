@@ -20,7 +20,7 @@ namespace SmartProperty.Application.Authorization;
 /// </remarks>
 public static class PermissionCodes
 {
-    // Definition only: no bootstrap provisioning or implicit Platform Admin grants.
+    // Not created by the bootstrap; the staff role catalogue attaches both to the Platform Admin role.
     public const string WorkspaceAdminRead = "workspace.admin.read";
     public const string WorkspaceAdminReadDescription = "Read the administrative workspace directory and details.";
     public const string WorkspaceAdminCreate = "workspace.admin.create";
@@ -166,4 +166,13 @@ public static class PermissionCodes
     public const string PlatformStaffManage = "platform.staff.manage";
 
     public const string PlatformStaffManageDescription = "Assign and remove platform staff roles such as Legal Reviewer.";
+
+    /// <summary>
+    /// Read, approve and reject the requests companies make for their own workspace. Platform-scoped: approving one
+    /// creates a workspace, so nothing held inside a workspace satisfies it. Held by the Platform Admin role (see the
+    /// staff role catalogue).
+    /// </summary>
+    public const string WorkspaceRegistrationsReview = "workspace.registrations.review";
+
+    public const string WorkspaceRegistrationsReviewDescription = "Read, approve and reject workspace registration requests.";
 }

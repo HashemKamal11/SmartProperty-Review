@@ -34,6 +34,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "identity.workspace_access_requests",
             "identity.workspace_membership_roles",
             "identity.workspace_memberships",
+            "identity.workspace_registration_requests",
             "platform.workspaces"
         ];
 
@@ -77,7 +78,8 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ux_identity_roles_workspace_name",
             "ux_identity_users_email",
             "ux_identity_users_phone_number",
-            "ux_identity_workspace_memberships_user_workspace"
+            "ux_identity_workspace_memberships_user_workspace",
+            "ux_identity_workspace_registration_requests_pending_applicant"
         ];
 
         var actual = await QueryStringsAsync(

@@ -183,3 +183,92 @@ no endpoint reads a single member yet); 401; 403; 409 `users.email_already_exist
 
 Workspace Admin roles created before `workspace.members.create` existed do not hold it. Granting it to them is a
 separate, explicitly approved data change; nothing provisions it automatically.
+
+## Company workspace registration (2026-11-15)
+
+There are two ways to get a workspace:
+
+1. **The platform administrator creates it** with `POST /api/admin/workspaces` and an `admin` block (above).
+2. **A company registers and a platform administrator approves.** This section.
+
+Platform Admin now holds `workspace.admin.read`, `workspace.admin.create` and `workspace.registrations.review`
+through the staff role catalogue, which runs at every start, so a freshly bootstrapped administrator can use both
+paths with no hand-written grant.
+
+### Applicant endpoints
+
+| Method and route | Auth | Success |
+| --- | --- | --- |
+| POST /api/auth/register-workspace | anonymous (auth rate limit) | 201 |
+| POST /api/workspace-registrations | signed in, Active account | 201 request |
+| GET /api/workspace-registrations/mine | signed in | 200 array, newest first |
+
+`POST /api/auth/register-workspace` (company sign-up screen):
+
+```json
+{
+  "email": "owner@acme.com",
+  "password": "********",
+  "firstName": "Sara",
+  "lastName": "Owner",
+  "phoneNumber": "+201012345678",
+  "companyName": "Acme Realty",
+  "commercialRegistrationNumber": "CR-1010"
+}
+```
+
+The account fields follow `POST /api/auth/register` exactly: the account is created Pending and the phone and email
+codes are sent. Verify them with the usual `verify-phone`/`verify-email` endpoints; the account then becomes Active
+and can sign in as an ordinary user. The response adds the request:
+
+```json
+{
+  "userId": "...", "status": "Pending",
+  "phoneVerificationExpiresAt": "...", "emailVerificationExpiresAt": "...",
+  "registrationRequestId": "...", "registrationStatus": "Pending"
+}
+```
+
+`POST /api/workspace-registrations` takes `{"companyName", "commercialRegistrationNumber"}` for an account that
+already exists (for example, an individual user who later registers a company).
+
+Rules: `companyName` is required, 1–200 characters after trimming, with no control characters.
+`commercialRegistrationNumber` is optional, at most 64 characters. An account may have only one Pending request
+(409 `workspace_registrations.pending_request_exists`); after a rejection it may apply again.
+
+### Platform administrator endpoints (`workspace.registrations.review`)
+
+| Method and route | Success |
+| --- | --- |
+| GET /api/admin/workspace-registrations?status=Pending&page=1&pageSize=10 | 200 paginated, oldest first; status defaults to Pending |
+| GET /api/admin/workspace-registrations/{id} | 200 request |
+| POST /api/admin/workspace-registrations/{id}/approve | 200 `{requestId, status, workspaceId, workspaceName, applicantUserId, membershipId}` |
+| POST /api/admin/workspace-registrations/{id}/reject with `{"reason": "..."}` | 200 request |
+
+A request item:
+
+```json
+{
+  "id": "...", "companyName": "Acme Realty", "commercialRegistrationNumber": "CR-1010",
+  "status": "Pending", "requestedAt": "...", "reviewedAt": null, "reviewedByUserId": null,
+  "rejectionReason": null, "workspaceId": null,
+  "applicant": { "userId": "...", "email": "...", "firstName": "...", "lastName": "...",
+                 "phoneNumber": "...", "status": "Active", "contactVerified": true }
+}
+```
+
+**Approve** creates a workspace named after the company and makes the applicant its admin, with the same
+`Workspace Admin` role (`workspace.read`, `workspace.members.create`) as the administrator-created path. Everything
+is saved together. It fails with 409:
+
+- `workspace_registrations.contact_not_verified`: the applicant has not verified the phone and email yet (show
+  `applicant.contactVerified` in the queue);
+- `workspace_registrations.applicant_unavailable`: the account is Suspended or Deactivated (never revived);
+- `workspace_registrations.already_reviewed`: already decided, including when two reviewers act at once;
+- `workspace_registrations.concurrent_change`: a rare race on permission rows; retry.
+
+**Reject** needs a reason of 1–1000 characters (422 `validation.failed` otherwise), records it for the applicant,
+and creates nothing. Decisions are final.
+
+Storage: `identity.workspace_registration_requests` (migration `WorkspaceRegistrationRequests`), with a partial unique
+index allowing one Pending request per applicant, and the status column as a concurrency token.

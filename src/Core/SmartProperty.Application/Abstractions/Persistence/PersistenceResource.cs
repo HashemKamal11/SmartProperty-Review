@@ -25,5 +25,7 @@ public enum PersistenceResource
     /// <summary>
     /// A one-time code whose failed-attempt count or state changed between loading it and saving a guess.
     /// </summary>
-    OneTimeCode = 4
+    OneTimeCode = 4,
+
+    WorkspaceRegistrationRequest = 5
 }

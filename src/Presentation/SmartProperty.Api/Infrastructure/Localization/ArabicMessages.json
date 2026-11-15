@@ -583,5 +583,18 @@
   "{label} is not a supported document. Only PDF, JPEG, PNG and WebP files are accepted.": "{label} ليس مستندًا مدعومًا. لا تُقبل إلا ملفات PDF وJPEG وPNG وWebP.",
   "{label} is not a supported image. Only JPEG, PNG, and WebP files are accepted.": "{label} ليس صورة مدعومة. لا تُقبل إلا ملفات JPEG وPNG وWebP.",
   "{normalized} already exists; nothing was changed.": "{normalized} موجود بالفعل؛ لم يتغير شيء.",
-  "{noun} codes must not be blank.": "يجب ألا تكون رموز {noun} فارغة."
+  "{noun} codes must not be blank.": "يجب ألا تكون رموز {noun} فارغة.",
+  "The workspace registration request was not found.": "لم يتم العثور على طلب تسجيل مساحة العمل.",
+  "You already have a workspace registration request waiting for review.": "لديك بالفعل طلب تسجيل مساحة عمل بانتظار المراجعة.",
+  "Your account must be active to register a workspace.": "يجب أن يكون حسابك نشطًا لتسجيل مساحة عمل.",
+  "This workspace registration request has already been reviewed.": "تمت مراجعة طلب تسجيل مساحة العمل هذا بالفعل.",
+  "The applicant has not verified their phone number and email yet.": "لم يتحقق مقدم الطلب من رقم هاتفه وبريده الإلكتروني بعد.",
+  "The applicant's account cannot be made a workspace admin in its current state.": "لا يمكن جعل حساب مقدم الطلب مسؤولًا عن مساحة العمل في حالته الحالية.",
+  "Another change was saved at the same time. Try again.": "تم حفظ تغيير آخر في الوقت نفسه. حاول مرة أخرى.",
+  "Company name is required.": "اسم الشركة مطلوب.",
+  "Company name must not contain control characters.": "يجب ألا يحتوي اسم الشركة على أحرف تحكم.",
+  "Company name must not exceed {WorkspaceRegistrationRequest.CompanyNameMaxLength} characters.": "يجب ألا يتجاوز اسم الشركة {WorkspaceRegistrationRequest.CompanyNameMaxLength} حرفًا.",
+  "Commercial registration number must not contain control characters.": "يجب ألا يحتوي رقم السجل التجاري على أحرف تحكم.",
+  "Commercial registration number must not exceed {WorkspaceRegistrationRequest.CommercialRegistrationNumberMaxLength} characters.": "يجب ألا يتجاوز رقم السجل التجاري {WorkspaceRegistrationRequest.CommercialRegistrationNumberMaxLength} حرفًا.",
+  "A rejection reason of 1 to {WorkspaceRegistrationRequest.RejectionReasonMaxLength} characters is required.": "يلزم سبب رفض يتراوح طوله بين 1 و{WorkspaceRegistrationRequest.RejectionReasonMaxLength} حرفًا."
 }

@@ -67,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<IMarketplaceSettingsRepository, MarketplaceSettingsRepository>();
         services.AddScoped<IListingSubmissionAuditRecorder>(provider => provider.GetRequiredService<ListingSubmissionWriteRepository>());
         services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();
+        services.AddScoped<IWorkspaceRegistrationRequestRepository, WorkspaceRegistrationRequestRepository>();
         services.AddScoped<IWorkspaceMembershipRepository, WorkspaceMembershipRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IPermissionRepository, PermissionRepository>();

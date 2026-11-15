@@ -62,6 +62,49 @@ public sealed class AuthController : ControllerBase
         return StatusCode(StatusCodes.Status201Created, response);
     }
 
+    /// <summary>
+    /// Company sign-up. Registers the applicant exactly like <c>register</c> (Pending account, phone and email codes)
+    /// and records a Pending workspace registration request. The workspace is created only when a platform
+    /// administrator approves it; the applicant follows it with <c>GET /api/workspace-registrations/mine</c>.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("register-workspace")]
+    public async Task<IActionResult> RegisterWorkspace(
+        [FromBody] SmartProperty.Api.Contracts.Workspaces.RegisterWorkspaceRequest request,
+        [FromServices] ICommandHandler<
+            SmartProperty.Application.WorkspaceRegistrations.Register.RegisterWorkspaceCommand,
+            SmartProperty.Application.WorkspaceRegistrations.Register.RegisterWorkspaceResult> handler,
+        CancellationToken cancellationToken)
+    {
+        var command = new SmartProperty.Application.WorkspaceRegistrations.Register.RegisterWorkspaceCommand(
+            request.Email ?? string.Empty,
+            request.Password ?? string.Empty,
+            request.FirstName ?? string.Empty,
+            request.LastName ?? string.Empty,
+            request.PhoneNumber ?? string.Empty,
+            request.CompanyName ?? string.Empty,
+            request.CommercialRegistrationNumber);
+
+        var result = await handler.Handle(command, cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        var registration = result.Value;
+
+        return StatusCode(StatusCodes.Status201Created, new SmartProperty.Api.Contracts.Workspaces.RegisterWorkspaceResponse(
+            registration.UserId,
+            registration.UserStatus.ToString(),
+            registration.PhoneVerificationExpiresAt,
+            registration.EmailVerificationExpiresAt,
+            registration.RegistrationRequestId,
+            registration.RegistrationStatus.ToString()));
+    }
+
     // The account is identified by its email: the caller has no token yet, and the one-time code is the proof.
     [AllowAnonymous]
     [HttpPost("verify-phone")]

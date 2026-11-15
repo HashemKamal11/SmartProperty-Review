@@ -20,8 +20,9 @@ public sealed record StaffRoleCatalogResult(int PermissionsCreated, bool LegalRe
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>Platform Admin</b> (created by the bootstrap; left alone when it does not exist yet) additionally holds the
-/// administrator's side: issue, read and revoke authority grants, manage the marketplace settings, and manage staff
-/// (assign legal reviewers). It deliberately does <b>not</b> hold the legal review permission.</item>
+/// administrator's side: issue, read and revoke authority grants, manage the marketplace settings, manage staff
+/// (assign legal reviewers), create and read workspaces, and approve or reject workspace registration requests. It
+/// deliberately does <b>not</b> hold the legal review permission.</item>
 /// <item><b>Legal Reviewer</b> holds exactly the legal review permission and the read permission. It is assigned to
 /// people by a platform administrator through the staff API.</item>
 /// </list>
@@ -45,7 +46,11 @@ public sealed class MarketplaceStaffRoleCatalog(
         PermissionCodes.MarketplaceAuthorityGrantsRead,
         PermissionCodes.MarketplaceAuthorityGrantsRevoke,
         PermissionCodes.MarketplaceSettingsManage,
-        PermissionCodes.PlatformStaffManage
+        PermissionCodes.PlatformStaffManage,
+        // Workspaces: create one with its admin, read the directory, and decide company registration requests.
+        PermissionCodes.WorkspaceAdminRead,
+        PermissionCodes.WorkspaceAdminCreate,
+        PermissionCodes.WorkspaceRegistrationsReview
     ];
 
     public static IReadOnlyList<string> LegalReviewerPermissions { get; } =
@@ -61,7 +66,10 @@ public sealed class MarketplaceStaffRoleCatalog(
         [PermissionCodes.MarketplaceAuthorityGrantsRevoke] = PermissionCodes.MarketplaceAuthorityGrantsRevokeDescription,
         [PermissionCodes.MarketplaceSettingsManage] = PermissionCodes.MarketplaceSettingsManageDescription,
         [PermissionCodes.PlatformStaffManage] = PermissionCodes.PlatformStaffManageDescription,
-        [PermissionCodes.MarketplaceAuthorityLegalReviewsRecord] = PermissionCodes.MarketplaceAuthorityLegalReviewsRecordDescription
+        [PermissionCodes.MarketplaceAuthorityLegalReviewsRecord] = PermissionCodes.MarketplaceAuthorityLegalReviewsRecordDescription,
+        [PermissionCodes.WorkspaceAdminRead] = PermissionCodes.WorkspaceAdminReadDescription,
+        [PermissionCodes.WorkspaceAdminCreate] = PermissionCodes.WorkspaceAdminCreateDescription,
+        [PermissionCodes.WorkspaceRegistrationsReview] = PermissionCodes.WorkspaceRegistrationsReviewDescription
     };
 
     public Task<StaffRoleCatalogResult> EnsureAsync(CancellationToken cancellationToken = default) =>

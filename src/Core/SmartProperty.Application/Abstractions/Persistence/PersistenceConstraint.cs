@@ -69,5 +69,7 @@ public enum PersistenceConstraint
     /// <summary>
     /// A comparison list has one property per position, which is what caps it at three.
     /// </summary>
-    PropertyComparisonPosition = 13
+    PropertyComparisonPosition = 13,
+
+    WorkspaceRegistrationPendingApplicant = 14
 }
