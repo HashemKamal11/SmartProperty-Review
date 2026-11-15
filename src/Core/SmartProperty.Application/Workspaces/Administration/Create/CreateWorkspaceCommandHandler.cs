@@ -4,7 +4,6 @@ using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
 using SmartProperty.Application.Authentication.Register;
-using SmartProperty.Application.Authorization;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Identity;
 using SmartProperty.Domain.Workspaces;
@@ -47,23 +46,11 @@ public sealed class CreateWorkspaceCommandHandler(
             user.Activate(now);
             adminUserId = user.Id;
 
-            // The admin reads the workspace and creates its member accounts; nothing else is granted.
-            var adminPermissions = new[]
-            {
-                await GetOrAddPermissionAsync(PermissionCodes.WorkspaceRead, PermissionCodes.WorkspaceReadDescription, cancellationToken),
-                await GetOrAddPermissionAsync(PermissionCodes.WorkspaceMembersCreate, PermissionCodes.WorkspaceMembersCreateDescription, cancellationToken),
-            };
-            var role = new Role(Guid.NewGuid(), WorkspaceRoles.AdminRoleName, RoleScope.Workspace, workspace.Id, now);
-            var membership = new WorkspaceMembership(Guid.NewGuid(), user.Id, workspace.Id, now);
-
             await workspaces.AddAsync(workspace, cancellationToken);
             await users.AddAsync(user, cancellationToken);
             await credentials.AddAsync(new UserCredential(user.Id, passwordHasher.Hash(admin.Password!), now), cancellationToken);
-            await roles.AddAsync(role, cancellationToken);
-            foreach (var permission in adminPermissions)
-                await roles.AddPermissionAsync(new RolePermission(role.Id, permission.Id), cancellationToken);
-            await memberships.AddAsync(membership, cancellationToken);
-            await roles.AddMembershipAssignmentAsync(new WorkspaceMembershipRole(membership.Id, role.Id), cancellationToken);
+            await new WorkspaceAdminProvisioner(memberships, roles, permissions)
+                .ProvisionAsync(workspace.Id, user.Id, now, cancellationToken);
         }
         else
         {
@@ -83,16 +70,5 @@ public sealed class CreateWorkspaceCommandHandler(
 
         return Result<CreateWorkspaceResult>.Success(
             new(workspace.Id, workspace.Name, workspace.CreatedAt, workspace.UpdatedAt, adminUserId));
-    }
-
-    private async Task<Permission> GetOrAddPermissionAsync(string code, string description, CancellationToken cancellationToken)
-    {
-        var permission = await permissions.GetByCodeAsync(code, cancellationToken);
-        if (permission is null)
-        {
-            permission = new Permission(Guid.NewGuid(), code, description);
-            await permissions.AddAsync(permission, cancellationToken);
-        }
-        return permission;
     }
 }

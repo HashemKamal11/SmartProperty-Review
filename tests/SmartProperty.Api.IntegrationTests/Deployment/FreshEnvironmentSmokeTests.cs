@@ -46,7 +46,9 @@ public sealed class FreshEnvironmentSmokeTests(ApiPostgreSqlFixture fixture)
             configuration:
             [
                 new KeyValuePair<string, string?>("Bootstrap:Enabled", "true"),
-                new KeyValuePair<string, string?>("Bootstrap:PlatformAdminEmail", email)
+                new KeyValuePair<string, string?>("Bootstrap:PlatformAdminEmail", email),
+                // As in production: the staff role catalogue runs after the bootstrap.
+                new KeyValuePair<string, string?>("StaffRoles:ProvisionOnStartup", "true")
             ]);
 
         using (var startupClient = secondStart.CreateClient())
@@ -63,6 +65,13 @@ public sealed class FreshEnvironmentSmokeTests(ApiPostgreSqlFixture fixture)
                 "/api/admin/workspace-access-requests?pageNumber=1&pageSize=20");
 
             Assert.Equal(HttpStatusCode.OK, adminResponse.StatusCode);
+
+            // The bootstrapped administrator also creates workspaces and reviews company registrations, with no
+            // hand-written grant (the staff role catalogue attaches both to the Platform Admin role).
+            using var workspaces = await adminClient.GetAsync("/api/admin/workspaces");
+            Assert.Equal(HttpStatusCode.OK, workspaces.StatusCode);
+            using var registrations = await adminClient.GetAsync("/api/admin/workspace-registrations");
+            Assert.Equal(HttpStatusCode.OK, registrations.StatusCode);
         }
 
         await using var context = ApiPostgreSqlFixture.CreateContext(connectionString);

@@ -61,6 +61,11 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
             return PersistenceResource.WorkspaceAccessRequest;
         }
 
+        if (entityType == typeof(WorkspaceRegistrationRequest))
+        {
+            return PersistenceResource.WorkspaceRegistrationRequest;
+        }
+
         if (entityType == typeof(OneTimeCode))
         {
             return PersistenceResource.OneTimeCode;
@@ -101,6 +106,8 @@ internal sealed class UnitOfWork(ApplicationDbContext dbContext) : IUnitOfWork
             RolePermissionConfiguration.PrimaryKeyName => PersistenceConstraint.RolePermissionKey,
             WorkspaceMembershipRoleConfiguration.PrimaryKeyName =>
                 PersistenceConstraint.WorkspaceMembershipRoleKey,
+            WorkspaceRegistrationRequestConfiguration.PendingApplicantUniqueIndexName =>
+                PersistenceConstraint.WorkspaceRegistrationPendingApplicant,
             _ => null
         };
     }

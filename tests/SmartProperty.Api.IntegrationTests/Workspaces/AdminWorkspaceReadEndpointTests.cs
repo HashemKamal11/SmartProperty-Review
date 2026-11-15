@@ -55,11 +55,15 @@ public sealed class AdminWorkspaceReadEndpointTests(ApiPostgreSqlFixture fixture
         var user = await scenario.RegisterActiveUserAsync(setup);
         if (kind == "role-name")
         {
+            // A role's name never authorizes; only its permissions do. (The real Platform Admin role now holds the
+            // workspace.admin permissions through the staff role catalogue, so a permissionless admin-sounding
+            // platform role is used here instead.)
+            const string roleName = "Workspace Admin";
             await using var db = fixture.CreateContext();
-            var role = new Role(Guid.NewGuid(), "Platform Admin", RoleScope.Platform, null, DateTimeOffset.UtcNow);
+            var role = new Role(Guid.NewGuid(), roleName, RoleScope.Platform, null, DateTimeOffset.UtcNow);
             // Reuse the role if another fixture scenario already created it, without adding grants.
             var existing = Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
-                db.Roles, x => x.Scope == RoleScope.Platform && x.Name == "Platform Admin");
+                db.Roles, x => x.Scope == RoleScope.Platform && x.Name == roleName);
             var found = await existing;
             if (found is null) db.Roles.Add(role);
             db.UserPlatformRoles.Add(new UserPlatformRole(user.UserId, found?.Id ?? role.Id));

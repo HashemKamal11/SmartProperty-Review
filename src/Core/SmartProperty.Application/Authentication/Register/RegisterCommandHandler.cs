@@ -4,9 +4,7 @@ using SmartProperty.Application.Abstractions.Notifications;
 using SmartProperty.Application.Abstractions.Persistence;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
-using SmartProperty.Application.Authentication.OneTimeCodes;
 using SmartProperty.Common.Results;
-using SmartProperty.Domain.Identity;
 
 namespace SmartProperty.Application.Authentication.Register;
 
@@ -28,6 +26,15 @@ public sealed class RegisterCommandHandler(
     IUnitOfWork unitOfWork)
     : ICommandHandler<RegisterCommand, RegisterResult>
 {
+    private readonly PendingAccountRegistrar _registrar = new(
+        userRepository,
+        userCredentialRepository,
+        oneTimeCodeRepository,
+        passwordHasher,
+        smsSender,
+        emailSender,
+        contactVerificationPolicy);
+
     public async Task<Result<RegisterResult>> Handle(
         RegisterCommand command,
         CancellationToken cancellationToken = default)
@@ -39,97 +46,31 @@ public sealed class RegisterCommandHandler(
             return Result<RegisterResult>.Failure(validationError);
         }
 
-        var registeredAt = dateTimeProvider.UtcNow;
+        var staged = await _registrar.StageAsync(command, dateTimeProvider.UtcNow, cancellationToken);
 
-        // Constructed before the duplicate checks so the lookups use the email and phone number exactly as User
-        // normalizes and stores them. Nothing is tracked until every check has passed.
-        var user = new User(
-            Guid.NewGuid(),
-            command.Email,
-            command.FirstName,
-            command.LastName,
-            registeredAt,
-            command.PhoneNumber);
-
-        // Rejects an already registered email or phone number before hashing. A concurrent registration can
-        // still pass these checks; the unique indexes then reject the save, which is handled below.
-        if (await userRepository.GetByEmailAsync(user.Email, cancellationToken) is not null)
+        if (staged.IsFailure)
         {
-            return Result<RegisterResult>.Failure(RegisterErrors.EmailAlreadyExists);
+            return Result<RegisterResult>.Failure(staged.Error!);
         }
-
-        if (await userRepository.GetByPhoneNumberAsync(user.PhoneNumber!, cancellationToken) is not null)
-        {
-            return Result<RegisterResult>.Failure(RegisterErrors.PhoneNumberAlreadyExists);
-        }
-
-        var credential = new UserCredential(user.Id, passwordHasher.Hash(command.Password), registeredAt);
-
-        // With auto-verification on, the phone is trusted as entered: no code is issued and no SMS is sent.
-        var autoVerifyPhone = contactVerificationPolicy.AutoVerifyPhone;
-        string? phoneCode = null;
-        OneTimeCode? phoneVerification = null;
-
-        if (autoVerifyPhone)
-        {
-            user.VerifyPhone(registeredAt);
-        }
-        else
-        {
-            phoneCode = OneTimeCodePolicy.GenerateCode();
-            phoneVerification = OneTimeCodePolicy.Issue(
-                user.Id,
-                OneTimeCodePurpose.PhoneVerification,
-                phoneCode,
-                registeredAt);
-        }
-
-        var emailCode = OneTimeCodePolicy.GenerateCode();
-        var emailVerification = OneTimeCodePolicy.Issue(
-            user.Id,
-            OneTimeCodePurpose.EmailVerification,
-            emailCode,
-            registeredAt);
-
-        await userRepository.AddAsync(user, cancellationToken);
-        await userCredentialRepository.AddAsync(credential, cancellationToken);
-        if (phoneVerification is not null)
-        {
-            await oneTimeCodeRepository.AddAsync(phoneVerification, cancellationToken);
-        }
-
-        await oneTimeCodeRepository.AddAsync(emailVerification, cancellationToken);
 
         try
         {
             await unitOfWork.SaveChangesAsync(cancellationToken);
         }
         catch (UniqueConstraintViolationException exception)
-            when (exception.Constraint == PersistenceConstraint.UserEmail)
+            when (PendingAccountRegistrar.TranslateSaveCollision(exception) is not null)
         {
-            // The save was rejected as a whole, so the outcome matches the duplicate check above.
-            return Result<RegisterResult>.Failure(RegisterErrors.EmailAlreadyExists);
-        }
-        catch (UniqueConstraintViolationException exception)
-            when (exception.Constraint == PersistenceConstraint.UserPhoneNumber)
-        {
-            return Result<RegisterResult>.Failure(RegisterErrors.PhoneNumberAlreadyExists);
+            // The save was rejected as a whole, so the outcome matches the duplicate checks.
+            return Result<RegisterResult>.Failure(PendingAccountRegistrar.TranslateSaveCollision(exception)!);
         }
 
-        // Sent only after the registration is committed, so a rejected registration never texts or emails anyone.
-        // If a send fails the account still exists, and the caller can request another code.
-        if (phoneCode is not null)
-        {
-            await smsSender.SendAsync(user.PhoneNumber!, OneTimeCodePolicy.BuildPhoneMessage(phoneCode), cancellationToken);
-        }
-
-        var (subject, body) = OneTimeCodePolicy.BuildEmailVerificationMessage(emailCode);
-        await emailSender.SendAsync(user.Email, subject, body, cancellationToken);
+        var account = staged.Value;
+        await _registrar.SendCodesAsync(account, cancellationToken);
 
         return Result<RegisterResult>.Success(new RegisterResult(
-            user.Id,
-            user.Status,
-            phoneVerification?.ExpiresAt,
-            emailVerification.ExpiresAt));
+            account.User.Id,
+            account.User.Status,
+            account.PhoneVerificationExpiresAt,
+            account.EmailVerificationExpiresAt));
     }
 }

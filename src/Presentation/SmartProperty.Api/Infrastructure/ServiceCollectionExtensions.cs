@@ -392,6 +392,36 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<CreateWorkspaceCommand, CreateWorkspaceResult>, CreateWorkspaceCommandHandler>();
         services.AddScoped<ICommandHandler<CreateWorkspaceMemberCommand, CreateWorkspaceMemberResult>, CreateWorkspaceMemberCommandHandler>();
 
+        // Company workspace registration: sign-up or apply, then a platform administrator approves or rejects.
+        services.AddScoped<
+            ICommandHandler<SmartProperty.Application.WorkspaceRegistrations.Register.RegisterWorkspaceCommand,
+                SmartProperty.Application.WorkspaceRegistrations.Register.RegisterWorkspaceResult>,
+            SmartProperty.Application.WorkspaceRegistrations.Register.RegisterWorkspaceCommandHandler>();
+        services.AddScoped<
+            ICommandHandler<SmartProperty.Application.WorkspaceRegistrations.Apply.ApplyForWorkspaceCommand,
+                SmartProperty.Application.WorkspaceRegistrations.WorkspaceRegistrationView>,
+            SmartProperty.Application.WorkspaceRegistrations.Apply.ApplyForWorkspaceCommandHandler>();
+        services.AddScoped<
+            IQueryHandler<SmartProperty.Application.WorkspaceRegistrations.Mine.GetMyWorkspaceRegistrationsQuery,
+                IReadOnlyList<SmartProperty.Application.WorkspaceRegistrations.WorkspaceRegistrationView>>,
+            SmartProperty.Application.WorkspaceRegistrations.Mine.GetMyWorkspaceRegistrationsQueryHandler>();
+        services.AddScoped<
+            IQueryHandler<SmartProperty.Application.WorkspaceRegistrations.Review.GetWorkspaceRegistrationsQuery,
+                PagedList<SmartProperty.Application.WorkspaceRegistrations.WorkspaceRegistrationView>>,
+            SmartProperty.Application.WorkspaceRegistrations.Review.GetWorkspaceRegistrationsQueryHandler>();
+        services.AddScoped<
+            IQueryHandler<SmartProperty.Application.WorkspaceRegistrations.Review.GetWorkspaceRegistrationQuery,
+                SmartProperty.Application.WorkspaceRegistrations.WorkspaceRegistrationView>,
+            SmartProperty.Application.WorkspaceRegistrations.Review.GetWorkspaceRegistrationQueryHandler>();
+        services.AddScoped<
+            ICommandHandler<SmartProperty.Application.WorkspaceRegistrations.Review.ApproveWorkspaceRegistrationCommand,
+                SmartProperty.Application.WorkspaceRegistrations.Review.ApproveWorkspaceRegistrationResult>,
+            SmartProperty.Application.WorkspaceRegistrations.Review.ApproveWorkspaceRegistrationCommandHandler>();
+        services.AddScoped<
+            ICommandHandler<SmartProperty.Application.WorkspaceRegistrations.Review.RejectWorkspaceRegistrationCommand,
+                SmartProperty.Application.WorkspaceRegistrations.WorkspaceRegistrationView>,
+            SmartProperty.Application.WorkspaceRegistrations.Review.RejectWorkspaceRegistrationCommandHandler>();
+
         // The anonymous public marketplace. Both handlers need IPublicListingReadRepository, which Persistence
         // registers; a host without that registration does not start in Development.
         services
