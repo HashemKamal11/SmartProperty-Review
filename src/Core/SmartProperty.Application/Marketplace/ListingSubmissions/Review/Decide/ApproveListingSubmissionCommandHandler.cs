@@ -85,6 +85,7 @@ public sealed class ApproveListingSubmissionCommandHandler(
         if (!eligibility.IsEligible
             || !property.IsActive
             || property.HasMarketplaceReservation
+            || property.AwaitingOwnershipTransfer
             || !DraftAuthority.IsStillValid(submission.Authority, eligibility.Authority!, now)
             || !CanonicalListingContent.Matches(submission.Content, property))
         {

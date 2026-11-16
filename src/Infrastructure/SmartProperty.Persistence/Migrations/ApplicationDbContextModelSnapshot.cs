@@ -560,6 +560,12 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("issued_by_user_id");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
                     b.Property<string>("LegalReviewNote")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
@@ -577,6 +583,10 @@ namespace SmartProperty.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("ownership_document_number");
+
+                    b.Property<Guid?>("PreviousOwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("previous_owner_user_id");
 
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid")
@@ -628,6 +638,10 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("reviewed_property_updated_at");
 
+                    b.Property<Guid?>("SaleCommitmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sale_commitment_id");
+
                     b.Property<Guid?>("SaleGrantId")
                         .HasColumnType("uuid")
                         .HasColumnName("sale_grant_id");
@@ -667,12 +681,21 @@ namespace SmartProperty.Persistence.Migrations
 
                     b.HasIndex("LegalReviewedByUserId");
 
+                    b.HasIndex("PreviousOwnerUserId");
+
                     b.HasIndex("PropertyId")
                         .IsUnique()
                         .HasDatabaseName("ux_marketplace_authority_requests_open")
-                        .HasFilter("status IN ('Draft', 'PendingLegalReview', 'PendingIssuance')");
+                        .HasFilter("status IN ('Draft', 'PendingLegalReview', 'PendingIssuance') AND kind = 'Listing'");
 
                     b.HasIndex("RejectedByUserId");
+
+                    b.HasIndex("SaleCommitmentId");
+
+                    b.HasIndex("PropertyId", "RequesterUserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_authority_requests_open_transfer")
+                        .HasFilter("status IN ('Draft', 'PendingLegalReview', 'PendingIssuance') AND kind = 'OwnershipTransfer'");
 
                     b.HasIndex("RequesterUserId", "CreatedAt");
 
@@ -686,11 +709,15 @@ namespace SmartProperty.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_marketplace_authority_requests_independence", "(legal_reviewed_by_user_id IS NULL OR legal_reviewed_by_user_id <> requester_user_id) AND (issued_by_user_id IS NULL OR (issued_by_user_id <> requester_user_id AND issued_by_user_id <> legal_reviewed_by_user_id)) AND (rejected_by_user_id IS NULL OR rejected_by_user_id <> requester_user_id) AND (completion_requested_by_user_id IS NULL OR completion_requested_by_user_id <> requester_user_id)");
 
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_kind", "(kind = 'Listing' AND previous_owner_user_id IS NULL AND sale_commitment_id IS NULL) OR (kind = 'OwnershipTransfer' AND (previous_owner_user_id IS NULL OR previous_owner_user_id <> requester_user_id))");
+
                             t.HasCheckConstraint("ck_marketplace_authority_requests_legal_review", "(legal_reviewed_by_user_id IS NULL) = (legal_reviewed_at IS NULL) AND (legal_reviewed_by_user_id IS NULL) = (reviewed_property_updated_at IS NULL) AND (status NOT IN ('PendingIssuance', 'Approved') OR legal_reviewed_by_user_id IS NOT NULL) AND (status NOT IN ('Draft', 'PendingLegalReview') OR legal_reviewed_by_user_id IS NULL)");
 
                             t.HasCheckConstraint("ck_marketplace_authority_requests_listings", "(requests_sale OR sale_listing_content IS NULL) AND (requests_rent OR rent_listing_content IS NULL) AND (status IN ('Draft', 'Withdrawn') OR ((NOT requests_sale OR sale_listing_content IS NOT NULL) AND (NOT requests_rent OR rent_listing_content IS NOT NULL)))");
 
                             t.HasCheckConstraint("ck_marketplace_authority_requests_outcomes", "(status = 'Approved') = (issued_by_user_id IS NOT NULL AND issued_at IS NOT NULL AND grant_valid_until IS NOT NULL) AND (status = 'Rejected') = (rejected_by_user_id IS NOT NULL AND rejected_at IS NOT NULL AND rejection_reason IS NOT NULL AND rejected_at_stage IN ('PendingLegalReview', 'PendingIssuance')) AND (rejected_by_user_id IS NOT NULL OR (rejected_at IS NULL AND rejection_reason IS NULL AND rejected_at_stage IS NULL)) AND ((completion_requested_by_user_id IS NULL AND completion_requested_at IS NULL AND completion_request_reason IS NULL AND completion_requested_at_stage IS NULL) OR (completion_requested_by_user_id IS NOT NULL AND completion_requested_at IS NOT NULL AND completion_request_reason IS NOT NULL AND completion_requested_at_stage IN ('PendingLegalReview', 'PendingIssuance'))) AND (status = 'Withdrawn') = (withdrawn_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_previous_owner_independence", "previous_owner_user_id IS NULL OR ((legal_reviewed_by_user_id IS NULL OR legal_reviewed_by_user_id <> previous_owner_user_id) AND (issued_by_user_id IS NULL OR issued_by_user_id <> previous_owner_user_id) AND (rejected_by_user_id IS NULL OR rejected_by_user_id <> previous_owner_user_id) AND (completion_requested_by_user_id IS NULL OR completion_requested_by_user_id <> previous_owner_user_id))");
 
                             t.HasCheckConstraint("ck_marketplace_authority_requests_purposes", "requests_sale OR requests_rent");
 
@@ -750,9 +777,9 @@ namespace SmartProperty.Persistence.Migrations
 
                     b.ToTable("authority_request_decisions", "marketplace", t =>
                         {
-                            t.HasCheckConstraint("ck_marketplace_authority_request_decisions_kind", "kind IN ('Submitted', 'LegalApproved', 'LegalCompletionRequested', 'LegalRejected', 'AdminApproved', 'AdminCompletionRequested', 'AdminRejected', 'Withdrawn')");
+                            t.HasCheckConstraint("ck_marketplace_authority_request_decisions_kind", "kind IN ('Submitted', 'LegalApproved', 'LegalCompletionRequested', 'LegalRejected', 'AdminApproved', 'AdminCompletionRequested', 'AdminRejected', 'Withdrawn', 'ClosedOwnershipTransferred')");
 
-                            t.HasCheckConstraint("ck_marketplace_authority_request_decisions_staff", "(kind IN ('Submitted', 'Withdrawn') OR attested_no_conflict) AND (kind NOT IN ('LegalCompletionRequested', 'LegalRejected', 'AdminCompletionRequested', 'AdminRejected') OR length(btrim(reason)) > 0)");
+                            t.HasCheckConstraint("ck_marketplace_authority_request_decisions_staff", "(kind IN ('Submitted', 'Withdrawn', 'ClosedOwnershipTransferred') OR attested_no_conflict) AND (kind NOT IN ('LegalCompletionRequested', 'LegalRejected', 'AdminCompletionRequested', 'AdminRejected', 'ClosedOwnershipTransferred') OR length(btrim(reason)) > 0)");
                         });
                 });
 
@@ -1456,6 +1483,63 @@ namespace SmartProperty.Persistence.Migrations
                             t.HasCheckConstraint("ck_marketplace_property_reservations_purpose", "reserved_purpose IN ('Sale', 'Rent')");
 
                             t.HasCheckConstraint("ck_marketplace_property_reservations_winner", "(reserved_purpose = 'Sale' AND purchase_winner_id IS NOT NULL AND purchase_winner_id = winning_request_id AND rental_winner_id IS NULL) OR (reserved_purpose = 'Rent' AND rental_winner_id IS NOT NULL AND rental_winner_id = winning_request_id AND purchase_winner_id IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.PropertyOwnershipTransfer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AuthorityRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("authority_request_id");
+
+                    b.Property<Guid>("IssuedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("issued_by_user_id");
+
+                    b.Property<Guid>("NewOwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("new_owner_user_id");
+
+                    b.Property<Guid?>("PreviousOwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("previous_owner_user_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<Guid?>("SaleCommitmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sale_commitment_id");
+
+                    b.Property<DateTimeOffset>("TransferredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("transferred_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_marketplace_ownership_transfers");
+
+                    b.HasIndex("AuthorityRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_marketplace_ownership_transfers_request");
+
+                    b.HasIndex("IssuedByUserId");
+
+                    b.HasIndex("NewOwnerUserId");
+
+                    b.HasIndex("PreviousOwnerUserId");
+
+                    b.HasIndex("SaleCommitmentId");
+
+                    b.HasIndex("PropertyId", "TransferredAt");
+
+                    b.ToTable("property_ownership_transfers", "marketplace", t =>
+                        {
+                            t.HasCheckConstraint("ck_marketplace_ownership_transfers_parties", "(previous_owner_user_id IS NULL OR previous_owner_user_id <> new_owner_user_id) AND issued_by_user_id <> new_owner_user_id AND (previous_owner_user_id IS NULL OR issued_by_user_id <> previous_owner_user_id)");
                         });
                 });
 
@@ -2605,6 +2689,11 @@ namespace SmartProperty.Persistence.Migrations
                         .HasForeignKey("LegalReviewedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousOwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
                         .WithMany()
                         .HasForeignKey("PropertyId")
@@ -2621,6 +2710,11 @@ namespace SmartProperty.Persistence.Migrations
                         .HasForeignKey("RequesterUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Marketplace.PropertyCommitment", null)
+                        .WithMany()
+                        .HasForeignKey("SaleCommitmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.OwnsOne("SmartProperty.Domain.Marketplace.AuthorityRepresentative", "Representative", b1 =>
                         {
@@ -2858,6 +2952,43 @@ namespace SmartProperty.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_marketplace_property_reservations_listing");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Marketplace.PropertyOwnershipTransfer", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Marketplace.AuthorityRequest", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorityRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("IssuedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("NewOwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousOwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SmartProperty.Domain.PropertyRegistry.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SmartProperty.Domain.Marketplace.PropertyCommitment", null)
+                        .WithMany()
+                        .HasForeignKey("SaleCommitmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.Marketplace.PurchaseRequest", b =>

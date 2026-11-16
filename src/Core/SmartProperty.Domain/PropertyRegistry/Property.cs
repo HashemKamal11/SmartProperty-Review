@@ -119,6 +119,33 @@ public sealed class Property
     public DateTimeOffset UpdatedAt { get; private set; }
 
     /// <summary>
+    /// Registers the property to its new owner after an approved ownership transfer. The property keeps its identity and
+    /// its whole history; only who controls it changes.
+    /// </summary>
+    public void TransferOwnership(Guid newOwnerUserId, DateTimeOffset updatedAt)
+    {
+        if (newOwnerUserId == Guid.Empty)
+        {
+            throw new ArgumentException("The new owner is required.", nameof(newOwnerUserId));
+        }
+
+        if (Status != PropertyStatus.Active)
+        {
+            throw new InvalidOperationException("Only an active property changes owner.");
+        }
+
+        if (OwnerUserId == newOwnerUserId)
+        {
+            throw new InvalidOperationException("The property is already registered to this owner.");
+        }
+
+        ValidateUpdatedAt(updatedAt);
+
+        OwnerUserId = newOwnerUserId;
+        UpdatedAt = updatedAt;
+    }
+
+    /// <summary>
     /// Retires the property from active use. Archiving is the only removal the registry supports; a property
     /// record is never destroyed, because other modules reference it as the canonical asset.
     /// </summary>

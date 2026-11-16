@@ -99,6 +99,12 @@ public sealed class OwnerAuthorityRequests(
             return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.OwnerNotApproved);
         }
 
+        // Sold through the platform: the seller no longer advertises it; only the buyer's ownership transfer reopens it.
+        if (await repository.IsAwaitingOwnershipTransferAsync(propertyId, cancellationToken))
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.SoldAwaitingTransfer);
+        }
+
         if (await repository.HasOpenRequestAsync(propertyId, cancellationToken))
         {
             return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.AlreadyOpen);
@@ -113,6 +119,140 @@ public sealed class OwnerAuthorityRequests(
         }
 
         var request = new AuthorityRequest(Guid.NewGuid(), propertyId, owner.UserId, profile.Id, sale, rent, now);
+
+        return await SaveNewAsync(request, details, capacity, cancellationToken);
+    }
+
+    /// <summary>
+    /// Starts a request to take over the ownership of a property registered to someone else: the caller bought it, on
+    /// the platform or outside it, and proves it with ownership documents. It goes through the same wizard and the same
+    /// two reviews; on approval the property is registered to the caller and advertised from the same listing, so its
+    /// history stays with it.
+    /// </summary>
+    /// <remarks>
+    /// The caller needs an approved owner profile and must not already own the property. A platform sale to the caller
+    /// is linked automatically. Refused while a sale or rental is in force. One open claim per caller and property; a
+    /// claim never blocks the owner's own requests.
+    /// </remarks>
+    public async Task<Result<AuthorityRequestView>> CreateOwnershipTransferAsync(
+        Guid propertyId,
+        IReadOnlyList<string>? purposes,
+        AuthorityRequestDetailsInput? details,
+        CancellationToken cancellationToken = default)
+    {
+        var claimant = await ActingWriter.ResolveAsync(currentUser, users, cancellationToken);
+
+        if (claimant.Error is { } accountError)
+        {
+            return Result<AuthorityRequestView>.Failure(accountError);
+        }
+
+        if (!TryParsePurposes(purposes, out var sale, out var rent))
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.Validation(
+                "Name the purposes to request: \"Sale\", \"Rent\", or both, each once."));
+        }
+
+        var capacity = default(ListingRepresentationKind);
+
+        if (details?.Capacity is not null && !TryParseCapacity(details.Capacity, out capacity))
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.Validation(
+                "capacity must be Owner or IndividualRepresentative."));
+        }
+
+        var property = propertyId == Guid.Empty ? null : await properties.GetByIdAsync(propertyId, cancellationToken);
+
+        if (property is null)
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.PropertyNotFound);
+        }
+
+        if (property.OwnerUserId == claimant.UserId)
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.AlreadyPropertyOwner);
+        }
+
+        if (property.Status != PropertyStatus.Active)
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.PropertyNotActive);
+        }
+
+        var profile = await ownerProfiles.GetByUserIdAsync(claimant.UserId, cancellationToken);
+
+        if (profile is null || profile.Status != OwnerVerificationStatus.Approved)
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.OwnerNotApproved);
+        }
+
+        var now = clock.UtcNow;
+
+        if (await repository.HasCommitmentInForceAsync(propertyId, now, cancellationToken))
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.CommitmentInForce);
+        }
+
+        if (await repository.HasOpenTransferRequestAsync(propertyId, claimant.UserId, cancellationToken))
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.TransferAlreadyOpen);
+        }
+
+        var platformSaleId = await repository.FindUntransferredSaleAsync(propertyId, claimant.UserId, cancellationToken);
+        var request = AuthorityRequest.ForOwnershipTransfer(
+            Guid.NewGuid(), propertyId, claimant.UserId, profile.Id, sale, rent, property.OwnerUserId, platformSaleId, now);
+
+        return await SaveNewAsync(request, details, capacity, cancellationToken);
+    }
+
+    /// <summary>
+    /// The history of a property the caller owns now: its ownership changes and every version that was published,
+    /// whoever published it. Public facts only; a property the caller does not own is not found.
+    /// </summary>
+    public async Task<Result<PropertyHistoryView>> GetPropertyHistoryAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        var caller = await ActingWriter.ResolveAsync(currentUser, users, cancellationToken);
+
+        if (caller.Error is { } accountError)
+        {
+            return Result<PropertyHistoryView>.Failure(accountError);
+        }
+
+        var property = propertyId == Guid.Empty ? null : await properties.GetByIdAsync(propertyId, cancellationToken);
+
+        if (property is null || property.OwnerUserId != caller.UserId)
+        {
+            return Result<PropertyHistoryView>.Failure(AuthorityRequestErrors.PropertyNotFound);
+        }
+
+        var transfers = await repository.ListOwnershipTransfersAsync(propertyId, cancellationToken);
+        var versions = await repository.ListPublishedVersionsAsync(propertyId, cancellationToken);
+
+        return Result<PropertyHistoryView>.Success(new PropertyHistoryView(
+            propertyId,
+            transfers
+                .Select(transfer => new OwnershipChangeView(
+                    transfer.TransferredAt, transfer.NewOwnerUserId == caller.UserId, transfer.SaleCommitmentId is not null))
+                .ToArray(),
+            versions
+                .Select(version => new PublishedListingVersionView(
+                    version.ListingId,
+                    version.Purpose.ToString(),
+                    version.Version,
+                    version.Status.ToString(),
+                    version.ReviewDecision?.DecidedAt,
+                    version.Content.Title,
+                    version.Content.Description,
+                    version.Content.Amount,
+                    version.Content.Currency,
+                    version.Content.RentPeriod?.ToString(),
+                    version.Authority.ActingUserId == caller.UserId))
+                .ToArray()));
+    }
+
+    private async Task<Result<AuthorityRequestView>> SaveNewAsync(
+        AuthorityRequest request, AuthorityRequestDetailsInput? details, ListingRepresentationKind capacity, CancellationToken cancellationToken)
+    {
+        var now = request.CreatedAt;
 
         if (details?.Capacity is not null)
         {
@@ -130,7 +270,7 @@ public sealed class OwnerAuthorityRequests(
 
         return await repository.TrySaveAsync(cancellationToken)
             ? Result<AuthorityRequestView>.Success(AuthorityRequestView.From(request, forStaff: false))
-            : Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.AlreadyOpen);
+            : Result<AuthorityRequestView>.Failure(request.IsOwnershipTransfer ? AuthorityRequestErrors.TransferAlreadyOpen : AuthorityRequestErrors.AlreadyOpen);
     }
 
     /// <summary>Changes the capacity and details of a draft. Documents already attached stay.</summary>

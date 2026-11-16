@@ -9,6 +9,11 @@ namespace SmartProperty.Application.Abstractions.Persistence.Repositories;
 /// Location and property type for a listing come from here, never from a request. The registry allows a missing
 /// region, city or district, while a listing requires all of them, so those are nullable on purpose: a caller that
 /// finds one missing refuses to build a listing rather than inventing a value.
+/// <para>
+/// <see cref="AwaitingOwnershipTransfer"/> is true when the property was sold through the platform (a completed sale)
+/// and no ownership transfer has been approved since: the seller may no longer advertise it, and only an approved
+/// ownership transfer lets anyone advertise it again.
+/// </para>
 /// </remarks>
 public sealed record LockedPropertyView(
     Guid PropertyId,
@@ -19,4 +24,5 @@ public sealed record LockedPropertyView(
     string? Region,
     string? City,
     string? District,
-    string? TimeZoneId = null);
+    string? TimeZoneId = null,
+    bool AwaitingOwnershipTransfer = false);

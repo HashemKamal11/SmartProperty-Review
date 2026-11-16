@@ -276,6 +276,23 @@ public sealed class PropertyTests
         Assert.Equal(CreatedAt, property.UpdatedAt);
     }
 
+    [Fact]
+    public void AnActivePropertyIsTransferredToADifferentOwnerAndKeepsItsIdentity()
+    {
+        var property = CreateProperty();
+        var newOwner = Guid.NewGuid();
+
+        property.TransferOwnership(newOwner, CreatedAt.AddDays(1));
+
+        Assert.Equal(newOwner, property.OwnerUserId);
+        Assert.Equal(CreatedAt.AddDays(1), property.UpdatedAt);
+        Assert.Throws<InvalidOperationException>(() => property.TransferOwnership(newOwner, CreatedAt.AddDays(2)));
+        Assert.Throws<ArgumentException>(() => property.TransferOwnership(Guid.Empty, CreatedAt.AddDays(2)));
+
+        property.Archive(CreatedAt.AddDays(3));
+        Assert.Throws<InvalidOperationException>(() => property.TransferOwnership(Guid.NewGuid(), CreatedAt.AddDays(4)));
+    }
+
     private static Property CreateProperty(
         Guid? id = null,
         PropertyType type = PropertyType.Land,

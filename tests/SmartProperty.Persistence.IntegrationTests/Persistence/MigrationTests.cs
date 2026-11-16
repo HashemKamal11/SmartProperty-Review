@@ -29,6 +29,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string AuthorityDocumentsMigration = "20261112083723_AuthorityDocumentsScanningAndDecisions";
     private const string WorkspaceRegistrationRequestsMigration = "20261115133416_WorkspaceRegistrationRequests";
     private const string ListingAutomaticRelistMigration = "20261115151313_ListingAutomaticRelist";
+    private const string PropertyOwnershipTransferMigration = "20261116093444_PropertyOwnershipTransfer";
     private const string AddressNumbersMigration = "20261111122028_RelaxOwnerAddressNumbers";
     private const string NationalIdCountriesMigration = "20261111092923_SupportEgyptAndUaeNationalIds";
     private const string RequestsAndCommitmentsMigration = "20261110115157_AddRequestDetailsAndCommitments";
@@ -62,7 +63,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheListingAutomaticRelistMigration()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithThePropertyOwnershipTransferMigration()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -75,7 +76,8 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(ListingAutomaticRelistMigration, applied[^1]);
+        Assert.Equal(PropertyOwnershipTransferMigration, applied[^1]);
+        Assert.Contains(ListingAutomaticRelistMigration, applied);
         Assert.Contains(WorkspaceRegistrationRequestsMigration, applied);
         Assert.Contains(AuthorityDocumentsMigration, applied);
         Assert.Contains(AuthorityRequestsMigration, applied);

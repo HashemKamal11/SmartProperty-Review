@@ -28,7 +28,40 @@ public interface IAuthorityRequestRepository
     Task<(IReadOnlyList<AuthorityRequest> Items, int TotalCount)> ListForStaffAsync(
         AuthorityRequestStatus? status, int skip, int take, CancellationToken cancellationToken = default);
 
+    /// <summary>Whether the property has an open listing request (ownership-transfer requests are not counted).</summary>
     Task<bool> HasOpenRequestAsync(Guid propertyId, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether this claimant already has an open ownership-transfer request for this property.</summary>
+    Task<bool> HasOpenTransferRequestAsync(Guid propertyId, Guid requesterUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Every open request of any kind on the property, with documents and decisions, tracked.</summary>
+    Task<IReadOnlyList<AuthorityRequest>> GetOpenRequestsForPropertyAsync(Guid propertyId, CancellationToken cancellationToken = default);
+
+    /// <summary>Every never-revoked grant on the property, of any grantee, tracked.</summary>
+    Task<IReadOnlyList<PropertyAuthorityGrant>> GetUnrevokedGrantsForPropertyAsync(Guid propertyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The latest completed platform sale of the property to this buyer that no ownership transfer has followed yet,
+    /// or null.
+    /// </summary>
+    Task<Guid?> FindUntransferredSaleAsync(Guid propertyId, Guid buyerUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether the property was sold through the platform and no ownership transfer has followed yet.</summary>
+    Task<bool> IsAwaitingOwnershipTransferAsync(Guid propertyId, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether a sale or rental is still in force on the property at this moment (an overdue signature is not).</summary>
+    Task<bool> HasCommitmentInForceAsync(Guid propertyId, DateTimeOffset at, CancellationToken cancellationToken = default);
+
+    /// <summary>The property's ownership transfers, oldest first. Not tracked.</summary>
+    Task<IReadOnlyList<PropertyOwnershipTransfer>> ListOwnershipTransfersAsync(Guid propertyId, CancellationToken cancellationToken = default);
+
+    void AddOwnershipTransfer(PropertyOwnershipTransfer transfer);
+
+    /// <summary>
+    /// Every listing version of the property that was ever approved and published (now Approved or Superseded), with
+    /// its review decision, oldest first. Not tracked.
+    /// </summary>
+    Task<IReadOnlyList<ListingSubmission>> ListPublishedVersionsAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>Grants of this user on this property that were never revoked, whether still valid or expired. Not tracked.</summary>
     Task<IReadOnlyList<PropertyAuthorityGrant>> GetUnrevokedGrantsAsync(

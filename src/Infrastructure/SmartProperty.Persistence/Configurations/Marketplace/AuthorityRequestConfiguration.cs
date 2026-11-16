@@ -11,6 +11,9 @@ internal sealed class AuthorityRequestConfiguration : IEntityTypeConfiguration<A
     /// <summary>At most one open request (draft, legal review or issuance) per property.</summary>
     public const string OpenRequestUniqueIndexName = "ux_marketplace_authority_requests_open";
 
+    /// <summary>At most one open ownership-transfer request per claimant and property.</summary>
+    public const string OpenTransferUniqueIndexName = "ux_marketplace_authority_requests_open_transfer";
+
     public void Configure(EntityTypeBuilder<AuthorityRequest> builder)
     {
         builder.ToTable("authority_requests", "marketplace", table =>
@@ -19,6 +22,19 @@ internal sealed class AuthorityRequestConfiguration : IEntityTypeConfiguration<A
                 "ck_marketplace_authority_requests_status",
                 "status IN ('Draft', 'PendingLegalReview', 'PendingIssuance', 'Approved', 'Rejected', 'Withdrawn')");
             table.HasCheckConstraint("ck_marketplace_authority_requests_purposes", "requests_sale OR requests_rent");
+
+            // Only an ownership transfer names a previous owner or a platform sale, and never its own requester.
+            table.HasCheckConstraint(
+                "ck_marketplace_authority_requests_kind",
+                "(kind = 'Listing' AND previous_owner_user_id IS NULL AND sale_commitment_id IS NULL)"
+                + " OR (kind = 'OwnershipTransfer' AND (previous_owner_user_id IS NULL OR previous_owner_user_id <> requester_user_id))");
+            table.HasCheckConstraint(
+                "ck_marketplace_authority_requests_previous_owner_independence",
+                "previous_owner_user_id IS NULL OR ("
+                + "(legal_reviewed_by_user_id IS NULL OR legal_reviewed_by_user_id <> previous_owner_user_id)"
+                + " AND (issued_by_user_id IS NULL OR issued_by_user_id <> previous_owner_user_id)"
+                + " AND (rejected_by_user_id IS NULL OR rejected_by_user_id <> previous_owner_user_id)"
+                + " AND (completion_requested_by_user_id IS NULL OR completion_requested_by_user_id <> previous_owner_user_id))");
 
             // Chosen during the draft, required from submission on. An owner gives only the deed number; a
             // representative also gives the license, the agency and the owner.
@@ -82,6 +98,10 @@ internal sealed class AuthorityRequestConfiguration : IEntityTypeConfiguration<A
         builder.Property(request => request.PropertyId).HasColumnName("property_id").IsRequired();
         builder.Property(request => request.RequesterUserId).HasColumnName("requester_user_id").IsRequired();
         builder.Property(request => request.RequesterProfileId).HasColumnName("requester_profile_id").IsRequired();
+        builder.Property(request => request.Kind).HasColumnName("kind").HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(request => request.PreviousOwnerUserId).HasColumnName("previous_owner_user_id");
+        builder.Property(request => request.SaleCommitmentId).HasColumnName("sale_commitment_id");
+        builder.Ignore(request => request.IsOwnershipTransfer);
         builder.Property(request => request.RequestsSale).HasColumnName("requests_sale").IsRequired();
         builder.Property(request => request.RequestsRent).HasColumnName("requests_rent").IsRequired();
         builder.Property(request => request.Capacity).HasColumnName("capacity").HasConversion<string>().HasMaxLength(32);
@@ -150,10 +170,20 @@ internal sealed class AuthorityRequestConfiguration : IEntityTypeConfiguration<A
         builder.HasOne<User>().WithMany().HasForeignKey(request => request.RejectedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<User>().WithMany().HasForeignKey(request => request.CompletionRequestedByUserId).OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne<User>().WithMany().HasForeignKey(request => request.PreviousOwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<PropertyCommitment>().WithMany().HasForeignKey(request => request.SaleCommitmentId).OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(request => request.PropertyId)
             .IsUnique()
-            .HasFilter("status IN ('Draft', 'PendingLegalReview', 'PendingIssuance')")
+            .HasFilter("status IN ('Draft', 'PendingLegalReview', 'PendingIssuance') AND kind = 'Listing'")
             .HasDatabaseName(OpenRequestUniqueIndexName);
+
+        // Ownership claims never block the owner's own requests (nor each other's claimants): one open claim per
+        // claimant and property, so a false claim cannot stop the real owner.
+        builder.HasIndex(request => new { request.PropertyId, request.RequesterUserId })
+            .IsUnique()
+            .HasFilter("status IN ('Draft', 'PendingLegalReview', 'PendingIssuance') AND kind = 'OwnershipTransfer'")
+            .HasDatabaseName(OpenTransferUniqueIndexName);
 
         // The staff queue filters by status and reads in submission order; the owner lists their own.
         builder.HasIndex(request => new { request.Status, request.SubmittedAt });
@@ -235,13 +265,13 @@ internal sealed class AuthorityRequestDecisionConfiguration : IEntityTypeConfigu
             table.HasCheckConstraint(
                 "ck_marketplace_authority_request_decisions_kind",
                 "kind IN ('Submitted', 'LegalApproved', 'LegalCompletionRequested', 'LegalRejected', 'AdminApproved',"
-                + " 'AdminCompletionRequested', 'AdminRejected', 'Withdrawn')");
+                + " 'AdminCompletionRequested', 'AdminRejected', 'Withdrawn', 'ClosedOwnershipTransferred')");
 
             // Every staff decision carries the reviewer's no-conflict confirmation; rejections and completion requests a reason.
             table.HasCheckConstraint(
                 "ck_marketplace_authority_request_decisions_staff",
-                "(kind IN ('Submitted', 'Withdrawn') OR attested_no_conflict)"
-                + " AND (kind NOT IN ('LegalCompletionRequested', 'LegalRejected', 'AdminCompletionRequested', 'AdminRejected')"
+                "(kind IN ('Submitted', 'Withdrawn', 'ClosedOwnershipTransferred') OR attested_no_conflict)"
+                + " AND (kind NOT IN ('LegalCompletionRequested', 'LegalRejected', 'AdminCompletionRequested', 'AdminRejected', 'ClosedOwnershipTransferred')"
                 + " OR length(btrim(reason)) > 0)");
         });
 

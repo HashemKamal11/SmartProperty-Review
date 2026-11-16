@@ -286,6 +286,53 @@ public sealed class AuthorityRequestTests
         Assert.Equal(AuthorityRequest.MaxDocuments, request.CurrentDocuments.Count);
     }
 
+    // ---- ownership transfer
+
+    [Fact]
+    public void AnOwnershipTransferNamesSomeoneElseAsThePreviousOwnerAndNeverLetsThemDecide()
+    {
+        var previous = Guid.NewGuid();
+        var sale = Guid.NewGuid();
+
+        Assert.Throws<ArgumentException>(() => AuthorityRequest.ForOwnershipTransfer(
+            Guid.NewGuid(), Guid.NewGuid(), Requester, Guid.NewGuid(), true, false, Requester, null, T0));
+        Assert.Throws<ArgumentException>(() => AuthorityRequest.ForOwnershipTransfer(
+            Guid.NewGuid(), Guid.NewGuid(), Requester, Guid.NewGuid(), true, false, previous, Guid.Empty, T0));
+
+        var transfer = AuthorityRequest.ForOwnershipTransfer(
+            Guid.NewGuid(), Guid.NewGuid(), Requester, Guid.NewGuid(), true, false, previous, sale, T0);
+        transfer.UpdateDetails(ListingRepresentationKind.Owner, "C-1", null, T0);
+        transfer.SetListingContent(ListingPurpose.Sale, "{\"title\":\"x\"}", T0);
+        AddClean(transfer, AuthorityDocumentType.SaleContract);
+        transfer.Submit(T0.AddMinutes(1));
+
+        Assert.Equal(AuthorityRequestKind.OwnershipTransfer, transfer.Kind);
+        Assert.Equal(previous, transfer.PreviousOwnerUserId);
+        Assert.Equal(sale, transfer.SaleCommitmentId);
+        Assert.Equal(AuthorityRequestKind.Listing, New().Kind);
+        Assert.Throws<InvalidOperationException>(() => transfer.ApproveLegalReview(previous, null, T0, true, T0.AddMinutes(2)));
+        Assert.Throws<InvalidOperationException>(() => transfer.Reject(previous, "no", true, T0.AddMinutes(2)));
+    }
+
+    [Fact]
+    public void ATransferClosesADraftAsWithdrawnAndAWaitingRequestAsRejectedWithTheFixedReason()
+    {
+        var draft = New();
+        var waiting = Complete();
+
+        draft.CloseForOwnershipTransfer(Issuer, T0.AddHours(1));
+        waiting.CloseForOwnershipTransfer(Issuer, T0.AddHours(1));
+
+        Assert.Equal(AuthorityRequestStatus.Withdrawn, draft.Status);
+        Assert.Equal(AuthorityRequestStatus.Rejected, waiting.Status);
+        Assert.Equal(AuthorityRequest.OwnershipTransferredReason, waiting.RejectionReason);
+        Assert.Equal(AuthorityRequestStatus.PendingLegalReview, waiting.RejectedAtStage);
+        Assert.Equal(AuthorityDecisionKind.ClosedOwnershipTransferred, waiting.Decisions[^1].Kind);
+        Assert.Equal(Issuer, waiting.Decisions[^1].ActorUserId);
+        Assert.Throws<InvalidOperationException>(() => waiting.CloseForOwnershipTransfer(Issuer, T0.AddHours(2)));
+        Assert.Throws<InvalidOperationException>(() => New().CloseForOwnershipTransfer(Requester, T0.AddHours(1)));
+    }
+
     private static AuthorityRequest New(bool sale = true, bool rent = false) =>
         new(Guid.NewGuid(), Guid.NewGuid(), Requester, Guid.NewGuid(), sale, rent, T0);
 

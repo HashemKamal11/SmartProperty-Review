@@ -76,6 +76,11 @@ public static class DisplayValues
         ("AdminApproved", "Approved by admin", "اعتمده المسؤول"),
         ("AdminCompletionRequested", "Completion requested by admin", "طلب المسؤول استكمال البيانات"),
         ("AdminRejected", "Rejected by admin", "رفضه المسؤول"),
+        ("ClosedOwnershipTransferred", "Closed: ownership transferred", "أُغلق: تم نقل الملكية"),
+
+        // Kinds of authority request
+        ("Listing", "Listing", "إعلان"),
+        ("OwnershipTransfer", "Ownership transfer", "نقل ملكية"),
         ("Handover", "Handover", "التسليم"),
         ("Return", "Return", "الإرجاع"),
 

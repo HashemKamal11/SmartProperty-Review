@@ -51,7 +51,24 @@ public enum AuthorityDecisionKind
     AdminApproved = 5,
     AdminCompletionRequested = 6,
     AdminRejected = 7,
-    Withdrawn = 8
+    Withdrawn = 8,
+
+    /// <summary>Closed because another request transferred the ownership of the property. Recorded by the issuer.</summary>
+    ClosedOwnershipTransferred = 9
+}
+
+/// <summary>What a request is for.</summary>
+public enum AuthorityRequestKind
+{
+    /// <summary>The property's registered owner (or their representative) asks to advertise it.</summary>
+    Listing = 1,
+
+    /// <summary>
+    /// Someone who acquired the property asks to become its owner here and advertise it. On approval the property is
+    /// registered to the requester, everything that rested on the previous ownership is closed, and the property keeps
+    /// its history.
+    /// </summary>
+    OwnershipTransfer = 2
 }
 
 /// <summary>
@@ -175,7 +192,49 @@ public sealed class AuthorityRequest
         Status = AuthorityRequestStatus.Draft;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
+        Kind = AuthorityRequestKind.Listing;
     }
+
+    /// <summary>
+    /// A request to take over the ownership of a property registered to someone else (or to no one), bought on the
+    /// platform (<paramref name="saleCommitmentId"/>) or outside it (null).
+    /// </summary>
+    public static AuthorityRequest ForOwnershipTransfer(
+        Guid id,
+        Guid propertyId,
+        Guid requesterUserId,
+        Guid requesterProfileId,
+        bool requestsSale,
+        bool requestsRent,
+        Guid? previousOwnerUserId,
+        Guid? saleCommitmentId,
+        DateTimeOffset createdAt)
+    {
+        if (previousOwnerUserId == requesterUserId || previousOwnerUserId == Guid.Empty || saleCommitmentId == Guid.Empty)
+        {
+            throw new ArgumentException("The previous owner must be someone else, and given ids must not be empty.");
+        }
+
+        return new AuthorityRequest(id, propertyId, requesterUserId, requesterProfileId, requestsSale, requestsRent, createdAt)
+        {
+            Kind = AuthorityRequestKind.OwnershipTransfer,
+            PreviousOwnerUserId = previousOwnerUserId,
+            SaleCommitmentId = saleCommitmentId
+        };
+    }
+
+    /// <summary>The fixed text recorded on requests closed by an ownership transfer.</summary>
+    public const string OwnershipTransferredReason = "Ownership of the property was transferred to another owner.";
+
+    public AuthorityRequestKind Kind { get; private set; }
+
+    /// <summary>For an ownership transfer: who the property was registered to when the request started (null: no one).</summary>
+    public Guid? PreviousOwnerUserId { get; private set; }
+
+    /// <summary>For an ownership transfer of a platform sale: the completed sale commitment in which the requester bought it.</summary>
+    public Guid? SaleCommitmentId { get; private set; }
+
+    public bool IsOwnershipTransfer => Kind == AuthorityRequestKind.OwnershipTransfer;
 
     public Guid Id { get; private set; }
     public Guid PropertyId { get; private set; }
@@ -572,6 +631,41 @@ public sealed class AuthorityRequest
             reviewerUserId, text, attestedNoConflict, at);
     }
 
+    /// <summary>
+    /// Closes an open request because another request transferred the property's ownership: a draft is withdrawn, a
+    /// request awaiting a decision is rejected with <see cref="OwnershipTransferredReason"/>. Recorded by the issuer of
+    /// the transfer, who must not be this requester.
+    /// </summary>
+    public void CloseForOwnershipTransfer(Guid issuerUserId, DateTimeOffset at)
+    {
+        if (!IsOpen)
+        {
+            throw new InvalidOperationException("Only an open request can be closed.");
+        }
+
+        if (issuerUserId == Guid.Empty || issuerUserId == RequesterUserId)
+        {
+            throw new InvalidOperationException("The transfer's issuer closes the request, never its requester.");
+        }
+
+        if (Status == AuthorityRequestStatus.Draft)
+        {
+            Status = AuthorityRequestStatus.Withdrawn;
+            WithdrawnAt = at;
+        }
+        else
+        {
+            RejectionReason = OwnershipTransferredReason;
+            RejectedByUserId = issuerUserId;
+            RejectedAt = at;
+            RejectedAtStage = Status;
+            Status = AuthorityRequestStatus.Rejected;
+        }
+
+        Touch(at);
+        Record(AuthorityDecisionKind.ClosedOwnershipTransferred, issuerUserId, OwnershipTransferredReason, attestedNoConflict: false, at);
+    }
+
     /// <summary>Records the final approval. The grants are created and validated by <see cref="PropertyAuthorityGrant.Issue"/>.</summary>
     public void MarkIssued(
         Guid issuerUserId, DateTimeOffset validUntil, Guid? saleGrantId, Guid? rentGrantId, bool attestedNoConflict, DateTimeOffset at)
@@ -648,6 +742,11 @@ public sealed class AuthorityRequest
         if (userId == RequesterUserId)
         {
             throw new InvalidOperationException("The requester cannot decide on their own request.");
+        }
+
+        if (userId == PreviousOwnerUserId)
+        {
+            throw new InvalidOperationException("The previous owner cannot decide on a transfer of their own property.");
         }
 
         if (!attestedNoConflict)

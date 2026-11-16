@@ -70,7 +70,7 @@ internal static class ListingWriteGate
             return ListingWriteGateResult.Closed(WriteErrors.NotEligible);
         }
 
-        if (!property.IsActive || property.HasMarketplaceReservation)
+        if (!property.IsActive || property.HasMarketplaceReservation || property.AwaitingOwnershipTransfer)
         {
             return ListingWriteGateResult.Closed(WriteErrors.PropertyUnavailable);
         }

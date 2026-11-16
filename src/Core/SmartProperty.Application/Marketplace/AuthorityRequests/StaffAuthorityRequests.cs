@@ -54,6 +54,7 @@ public sealed class StaffAuthorityRequests(
     IAuthorityRequestRepository repository,
     IMarketplaceRequestWriteRepository listings,
     AuthorityDocumentEvidenceProvider documentEvidence,
+    SmartProperty.Application.Abstractions.Marketplace.IListingSubmissionAuditRecorder audit,
     IPrivateDocumentStorage storage,
     IDateTimeProvider clock,
     SmartProperty.Application.Abstractions.Ai.IListingSearchIndexer? indexer = null)
@@ -208,9 +209,14 @@ public sealed class StaffAuthorityRequests(
 
         var property = await properties.GetByIdAsync(request.PropertyId, cancellationToken);
 
-        if (property is null || property.Status != PropertyStatus.Active || property.OwnerUserId != request.RequesterUserId)
+        if (property is null || property.Status != PropertyStatus.Active)
         {
             return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.CannotIssue);
+        }
+
+        if (await OwnershipObstacleAsync(request, property, cancellationToken) is { } ownershipError)
+        {
+            return Result<AuthorityRequestView>.Failure(ownershipError);
         }
 
         var independent = await IndependentAsync(staff.UserId, request, authorized: true, cancellationToken);
@@ -374,12 +380,16 @@ public sealed class StaffAuthorityRequests(
 
         if (property is null
             || property.Status != PropertyStatus.Active
-            || property.OwnerUserId != request.RequesterUserId
             || profile is null
             || profile.Id != request.RequesterProfileId
             || profile.Status != OwnerVerificationStatus.Approved)
         {
             return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.CannotIssue);
+        }
+
+        if (await OwnershipObstacleAsync(request, property, cancellationToken) is { } ownershipError)
+        {
+            return Result<AuthorityRequestView>.Failure(ownershipError);
         }
 
         var issuerContext = await IndependentAsync(issuer.UserId, request, authorized: true, cancellationToken);
@@ -437,8 +447,13 @@ public sealed class StaffAuthorityRequests(
         }
 
         var now = clock.UtcNow;
-        var obstacle = await OwnerAuthorityRequests.GrantObstacleAsync(
-            repository, request.RequesterUserId, request.PropertyId, request.RequestsSale, request.RequestsRent, now, cancellationToken);
+
+        // A transfer revokes every grant that rested on the previous ownership, the claimant's own included, so only a
+        // listing request is held back by a grant still on record.
+        var obstacle = request.IsOwnershipTransfer
+            ? null
+            : await OwnerAuthorityRequests.GrantObstacleAsync(
+                repository, request.RequesterUserId, request.PropertyId, request.RequestsSale, request.RequestsRent, now, cancellationToken);
 
         if (obstacle is not null)
         {
@@ -460,6 +475,24 @@ public sealed class StaffAuthorityRequests(
         var active = (await listings.GetOpenCommitmentsAsync(request.PropertyId, cancellationToken))
             .Where(commitment => commitment.IsActiveAt(now))
             .ToArray();
+
+        if (request.IsOwnershipTransfer)
+        {
+            // Nothing in force passes to the new owner yet (the business rules for that are not settled).
+            if (active.Length > 0)
+            {
+                return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.CommitmentInForce);
+            }
+
+            if (await ApplyOwnershipTransferAsync(request, property, issuer.UserId, now, cancellationToken) is { } transferError)
+            {
+                return Result<AuthorityRequestView>.Failure(transferError);
+            }
+        }
+        else if (locked.AwaitingOwnershipTransfer)
+        {
+            return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.SoldAwaitingTransfer);
+        }
 
         if (active.Any(commitment => commitment.Kind == CommitmentKind.Sale))
         {
@@ -694,7 +727,132 @@ public sealed class StaffAuthorityRequests(
 
     private Task<Result<ListingReviewContext>> IndependentAsync(
         Guid staffUserId, AuthorityRequest request, bool authorized, CancellationToken cancellationToken) =>
-        IndependentAsync(staffUserId, request.RequesterUserId, DeclaredOwner(request), authorized, cancellationToken);
+        // The previous owner of a property being transferred never decides on that transfer.
+        staffUserId == request.PreviousOwnerUserId
+            ? Task.FromResult(Result<ListingReviewContext>.Failure(AuthorityRequestErrors.NotIndependent))
+            : IndependentAsync(staffUserId, request.RequesterUserId, DeclaredOwner(request), authorized, cancellationToken);
+
+    /// <summary>
+    /// Whether the property's ownership is still what the request rests on: a listing request needs the requester to
+    /// be the registered owner and the property not to be sold awaiting a transfer; a transfer needs the owner recorded
+    /// when it started to still be the owner.
+    /// </summary>
+    private async Task<Common.Results.Error?> OwnershipObstacleAsync(
+        AuthorityRequest request, Property property, CancellationToken cancellationToken)
+    {
+        if (request.IsOwnershipTransfer)
+        {
+            return property.OwnerUserId == request.PreviousOwnerUserId ? null : AuthorityRequestErrors.OwnershipChanged;
+        }
+
+        if (property.OwnerUserId != request.RequesterUserId)
+        {
+            return AuthorityRequestErrors.CannotIssue;
+        }
+
+        return await repository.IsAwaitingOwnershipTransferAsync(request.PropertyId, cancellationToken)
+            ? AuthorityRequestErrors.SoldAwaitingTransfer
+            : null;
+    }
+
+    /// <summary>
+    /// The ownership change itself, under the property lock and before the new owner's grants and listings are created:
+    /// every other open request on the property is closed, every grant that rested on the previous ownership is
+    /// revoked, the previous owner's published listings are withdrawn and their open versions discarded or rejected,
+    /// open customer requests are closed, and the property is registered to the claimant with a history record. Saved
+    /// in the open transaction, so the new grants never meet a grant in force for the same owner and purpose.
+    /// </summary>
+    private async Task<Common.Results.Error?> ApplyOwnershipTransferAsync(
+        AuthorityRequest request, Property property, Guid issuerUserId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        try
+        {
+            foreach (var other in await repository.GetOpenRequestsForPropertyAsync(request.PropertyId, cancellationToken))
+            {
+                if (other.Id != request.Id)
+                {
+                    other.CloseForOwnershipTransfer(issuerUserId, now);
+                }
+            }
+
+            foreach (var grant in await repository.GetUnrevokedGrantsForPropertyAsync(request.PropertyId, cancellationToken))
+            {
+                var revoker = await IndependentAsync(
+                    issuerUserId, grant.GranteeUserId, grant.Authority.DeclaredOwner, authorized: true, cancellationToken);
+
+                if (revoker.IsFailure)
+                {
+                    return revoker.Error;
+                }
+
+                grant.Revoke(grant.Version, revoker.Value, now);
+            }
+
+            if (!await repository.TrySaveAsync(cancellationToken))
+            {
+                return AuthorityRequestErrors.ConcurrentChange;
+            }
+
+            foreach (var purpose in new[] { ListingPurpose.Sale, ListingPurpose.Rent })
+            {
+                // Lock order: property (held), grant (shared), listing, submissions.
+                await listings.GetGrantForSharedLockAsync(request.RequesterUserId, request.PropertyId, purpose, cancellationToken);
+                var listing = await listings.GetListingAsync(request.PropertyId, purpose, cancellationToken);
+
+                if (listing is null)
+                {
+                    continue;
+                }
+
+                if (listing.PublicationStatus == ListingPublicationStatus.Published
+                    && listing.AvailabilityStatus == ListingAvailabilityStatus.Open)
+                {
+                    listing.Withdraw(now);
+                }
+
+                var latest = await listings.GetLatestSubmissionAsync(listing.Id, cancellationToken);
+
+                if (latest?.Status == ListingSubmissionStatus.Draft)
+                {
+                    await listings.RemoveDraftAsync(latest, cancellationToken);
+                    await audit.RecordAsync(
+                        new Abstractions.Marketplace.ListingDraftDiscardedAuditEvent(
+                            Guid.NewGuid(), now, latest.Authority.ActingUserId, latest.Id, listing.Id, request.PropertyId,
+                            purpose, latest.Version, listingDeleted: false),
+                        cancellationToken);
+                }
+                else if (latest?.Status == ListingSubmissionStatus.PendingReview)
+                {
+                    var reviewer = await IndependentAsync(
+                        issuerUserId, latest.Authority.ActingUserId, latest.Authority.DeclaredOwner, authorized: true, cancellationToken);
+
+                    if (reviewer.IsFailure)
+                    {
+                        return reviewer.Error;
+                    }
+
+                    latest.Reject(Guid.NewGuid(), reviewer.Value, AuthorityRequest.OwnershipTransferredReason, now);
+                }
+            }
+
+            OwnershipTransferClosure.CloseOpenRequests(
+                await listings.GetOpenPurchaseRequestsAsync(request.PropertyId, cancellationToken),
+                await listings.GetOpenRentalRequestsAsync(request.PropertyId, cancellationToken),
+                now);
+
+            property.TransferOwnership(request.RequesterUserId, now);
+            repository.AddOwnershipTransfer(new PropertyOwnershipTransfer(
+                Guid.NewGuid(), request.PropertyId, request.PreviousOwnerUserId, request.RequesterUserId, request.Id,
+                request.SaleCommitmentId, issuerUserId, now));
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+        {
+            // The Domain refused a step; nothing has been committed.
+            return AuthorityRequestErrors.CannotIssue;
+        }
+
+        return await repository.TrySaveAsync(cancellationToken) ? null : AuthorityRequestErrors.ConcurrentChange;
+    }
 
     /// <summary>
     /// The staff member's facts from the trusted provider. A known conflict is "not independent"; anything unknown is

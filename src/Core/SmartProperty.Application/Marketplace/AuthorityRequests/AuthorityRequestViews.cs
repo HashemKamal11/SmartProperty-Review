@@ -122,7 +122,10 @@ public sealed record AuthorityRequestView(
     Guid? LegalReviewedByUserId,
     Guid? IssuedByUserId,
     Guid? CompletionRequestedByUserId,
-    Guid? RejectedByUserId)
+    Guid? RejectedByUserId,
+    string Kind,
+    Guid? SaleCommitmentId,
+    Guid? PreviousOwnerUserId)
 {
     internal static AuthorityRequestView From(AuthorityRequest request, bool forStaff)
     {
@@ -174,7 +177,11 @@ public sealed record AuthorityRequestView(
             forStaff ? request.LegalReviewedByUserId : null,
             forStaff ? request.IssuedByUserId : null,
             forStaff ? request.CompletionRequestedByUserId : null,
-            forStaff ? request.RejectedByUserId : null);
+            forStaff ? request.RejectedByUserId : null,
+            request.Kind.ToString(),
+            request.SaleCommitmentId,
+            // Who owned the property before is staff information; the claimant is not told whose property it was.
+            forStaff ? request.PreviousOwnerUserId : null);
     }
 }
 
@@ -309,3 +316,29 @@ public static class AuthorityDocumentCatalog
             "أي مستند آخر يدعم الطلب. مستند داعم فقط.")
     ];
 }
+
+/// <summary>
+/// A property's history as its current owner sees it: when its ownership changed and every version that was published
+/// to the public. No previous owner's identity, documents, private notes or rejection reasons are included.
+/// </summary>
+public sealed record PropertyHistoryView(
+    Guid PropertyId,
+    IReadOnlyList<OwnershipChangeView> OwnershipChanges,
+    IReadOnlyList<PublishedListingVersionView> PublishedVersions);
+
+/// <summary>One change of owner. <c>ToYou</c> marks the change that made the caller the owner.</summary>
+public sealed record OwnershipChangeView(DateTimeOffset TransferredAt, bool ToYou, bool PlatformSale);
+
+/// <summary>A listing version that was published: what the public saw, and when it was approved.</summary>
+public sealed record PublishedListingVersionView(
+    Guid ListingId,
+    string Purpose,
+    int Version,
+    string Status,
+    DateTimeOffset? ApprovedAt,
+    string Title,
+    string Description,
+    decimal Amount,
+    string Currency,
+    string? RentPeriod,
+    bool PublishedByYou);

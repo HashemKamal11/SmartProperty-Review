@@ -89,6 +89,26 @@ public sealed class AuthorityRequestsController(OwnerAuthorityRequests requests)
     }
 
     /// <summary>
+    /// Starts an ownership-transfer request: the caller bought a property registered to someone else (on the platform
+    /// or outside it) and asks to become its owner here and advertise it. Same body and same next steps as a normal
+    /// request (listing content, documents with a title deed or sale contract, submit); a lawyer and then an
+    /// administrator review it. On approval the property is registered to the caller and keeps its history.
+    /// </summary>
+    [HttpPost("ownership-transfers")]
+    [ProducesResponseType<AuthorityRequestView>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> CreateOwnershipTransfer(CreateAuthorityRequestRequest request, CancellationToken cancellationToken)
+    {
+        var details = new AuthorityRequestDetailsInput(
+            request.Capacity, request.OwnershipDocumentNumber, request.BrokerageLicenseNumber, request.AgencyName, request.PropertyOwnerName);
+        var result = await requests.CreateOwnershipTransferAsync(request.PropertyId ?? Guid.Empty, request.Purposes, details, cancellationToken);
+
+        return result.IsFailure ? Fail(result.Error!) : StatusCode(StatusCodes.Status201Created, result.Value);
+    }
+
+    /// <summary>
     /// Saves the price and terms for one requested purpose (<c>Sale</c> or <c>Rent</c>), validated against the property
     /// now. <c>evidenceIds</c> is ignored: the request's own documents become the listing's evidence on approval.
     /// </summary>
@@ -378,6 +398,18 @@ public sealed class AuthorityRequestsController(OwnerAuthorityRequests requests)
     public async Task<IActionResult> MyGrants([FromQuery] Guid? propertyId, CancellationToken cancellationToken)
     {
         return ToResult(await requests.ListGrantsAsync(propertyId, cancellationToken));
+    }
+
+    /// <summary>
+    /// The history of a property the caller owns now: when its ownership changed, and every version that was published
+    /// (title, description, price), including those of previous owners. Nothing private about a previous owner.
+    /// </summary>
+    [HttpGet("~/api/marketplace/me/properties/{propertyId:guid}/history")]
+    [ProducesResponseType<PropertyHistoryView>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> PropertyHistory(Guid propertyId, CancellationToken cancellationToken)
+    {
+        return ToResult(await requests.GetPropertyHistoryAsync(propertyId, cancellationToken));
     }
 
     internal static IActionResult FileResult(ControllerBase controller, Result<AuthorityDocumentFile> result)

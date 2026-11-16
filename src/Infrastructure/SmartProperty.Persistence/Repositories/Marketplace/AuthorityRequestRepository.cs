@@ -78,7 +78,99 @@ internal sealed class AuthorityRequestRepository(ApplicationDbContext context) :
     public Task<bool> HasOpenRequestAsync(Guid propertyId, CancellationToken cancellationToken = default)
     {
         return context.AuthorityRequests.AsNoTracking()
-            .AnyAsync(request => request.PropertyId == propertyId && Open.Contains(request.Status), cancellationToken);
+            .AnyAsync(request => request.PropertyId == propertyId && request.Kind == AuthorityRequestKind.Listing
+                && Open.Contains(request.Status), cancellationToken);
+    }
+
+    public Task<bool> HasOpenTransferRequestAsync(Guid propertyId, Guid requesterUserId, CancellationToken cancellationToken = default)
+    {
+        return context.AuthorityRequests.AsNoTracking()
+            .AnyAsync(request => request.PropertyId == propertyId && request.RequesterUserId == requesterUserId
+                && request.Kind == AuthorityRequestKind.OwnershipTransfer && Open.Contains(request.Status), cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AuthorityRequest>> GetOpenRequestsForPropertyAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        return await context.AuthorityRequests
+            .Include(request => request.Documents)
+            .Include(request => request.Decisions)
+            .AsSplitQuery()
+            .Where(request => request.PropertyId == propertyId && Open.Contains(request.Status))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PropertyAuthorityGrant>> GetUnrevokedGrantsForPropertyAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        return await context.PropertyAuthorityGrants
+            .Where(grant => grant.PropertyId == propertyId && grant.RevokedAt == null)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<Guid?> FindUntransferredSaleAsync(Guid propertyId, Guid buyerUserId, CancellationToken cancellationToken = default)
+    {
+        var lastTransfer = await LastTransferAtAsync(propertyId, cancellationToken);
+
+        return await context.PropertyCommitments.AsNoTracking()
+            .Where(commitment => commitment.PropertyId == propertyId && commitment.CustomerUserId == buyerUserId
+                && commitment.Kind == CommitmentKind.Sale && commitment.Status == CommitmentStatus.Completed
+                && (lastTransfer == null || commitment.CompletedAt > lastTransfer))
+            .OrderByDescending(commitment => commitment.CompletedAt)
+            .Select(commitment => (Guid?)commitment.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<bool> IsAwaitingOwnershipTransferAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        var lastTransfer = await LastTransferAtAsync(propertyId, cancellationToken);
+
+        return await context.PropertyCommitments.AsNoTracking()
+            .AnyAsync(commitment => commitment.PropertyId == propertyId
+                && commitment.Kind == CommitmentKind.Sale && commitment.Status == CommitmentStatus.Completed
+                && (lastTransfer == null || commitment.CompletedAt > lastTransfer), cancellationToken);
+    }
+
+    public Task<bool> HasCommitmentInForceAsync(Guid propertyId, DateTimeOffset at, CancellationToken cancellationToken = default)
+    {
+        return context.PropertyCommitments.AsNoTracking()
+            .AnyAsync(commitment => commitment.PropertyId == propertyId
+                && (commitment.Status == CommitmentStatus.Signed || commitment.Status == CommitmentStatus.Occupied
+                    || (commitment.Status == CommitmentStatus.PendingSignature && commitment.SigningDeadline > at)), cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PropertyOwnershipTransfer>> ListOwnershipTransfersAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        return await context.PropertyOwnershipTransfers.AsNoTracking()
+            .Where(transfer => transfer.PropertyId == propertyId)
+            .OrderBy(transfer => transfer.TransferredAt)
+            .ThenBy(transfer => transfer.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public void AddOwnershipTransfer(PropertyOwnershipTransfer transfer)
+    {
+        ArgumentNullException.ThrowIfNull(transfer);
+        context.PropertyOwnershipTransfers.Add(transfer);
+    }
+
+    public async Task<IReadOnlyList<ListingSubmission>> ListPublishedVersionsAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        var versions = await context.ListingSubmissions.AsNoTracking()
+            .Include(submission => submission.ReviewDecision)
+            .Where(submission => submission.PropertyId == propertyId
+                && (submission.Status == ListingSubmissionStatus.Approved || submission.Status == ListingSubmissionStatus.Superseded))
+            .ToListAsync(cancellationToken);
+
+        return versions
+            .OrderBy(submission => submission.ReviewDecision?.DecidedAt ?? submission.UpdatedAt)
+            .ThenBy(submission => submission.Version)
+            .ToArray();
+    }
+
+    private async Task<DateTimeOffset?> LastTransferAtAsync(Guid propertyId, CancellationToken cancellationToken)
+    {
+        return await context.PropertyOwnershipTransfers.AsNoTracking()
+            .Where(transfer => transfer.PropertyId == propertyId)
+            .MaxAsync(transfer => (DateTimeOffset?)transfer.TransferredAt, cancellationToken);
     }
 
     public async Task<IReadOnlyList<PropertyAuthorityGrant>> GetUnrevokedGrantsAsync(
@@ -244,6 +336,7 @@ internal sealed class AuthorityRequestRepository(ApplicationDbContext context) :
             SqlState: PostgresErrorCodes.UniqueViolation,
             ConstraintName: AuthorityRequestConfiguration.OpenRequestUniqueIndexName
                 or AuthorityRequestDocumentConfiguration.CurrentVersionUniqueIndexName
+                or AuthorityRequestConfiguration.OpenTransferUniqueIndexName
                 or ActiveGrantIndexName
         })
         {

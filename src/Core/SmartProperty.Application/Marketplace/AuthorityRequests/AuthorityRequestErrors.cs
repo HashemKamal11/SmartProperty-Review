@@ -23,6 +23,31 @@ public static class AuthorityRequestErrors
     public static readonly Error NotPropertyOwner = new(
         "authority_requests.not_property_owner", "Only the user who registered the property can ask to advertise it.", ErrorType.Forbidden);
 
+    public static readonly Error AlreadyPropertyOwner = new(
+        "authority_requests.already_property_owner",
+        "This property is already registered to you; start a normal authority request instead.",
+        ErrorType.Conflict);
+
+    public static readonly Error TransferAlreadyOpen = new(
+        "authority_requests.transfer_already_open",
+        "You already have an open ownership-transfer request for this property.",
+        ErrorType.Conflict);
+
+    public static readonly Error CommitmentInForce = new(
+        "authority_requests.commitment_in_force",
+        "A sale or rental is still in force on this property, so its ownership cannot be transferred yet.",
+        ErrorType.Conflict);
+
+    public static readonly Error SoldAwaitingTransfer = new(
+        "authority_requests.sold_awaiting_transfer",
+        "This property was sold; it can be advertised again only after the buyer's ownership transfer is approved.",
+        ErrorType.Conflict);
+
+    public static readonly Error OwnershipChanged = new(
+        "authority_requests.ownership_changed",
+        "The property's owner changed after this request started, so it can no longer be approved.",
+        ErrorType.Conflict);
+
     public static readonly Error OwnerNotApproved = new(
         "authority_requests.owner_not_approved", "Your owner profile must be approved first.", ErrorType.Conflict);
 

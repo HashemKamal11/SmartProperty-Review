@@ -115,7 +115,8 @@ public sealed class AcceptRequestCommandHandler(
         if (winningListing.PublicationStatus != ListingPublicationStatus.Published
             || winningListing.AvailabilityStatus != ListingAvailabilityStatus.Open
             || !property.IsActive
-            || property.HasMarketplaceReservation)
+            || property.HasMarketplaceReservation
+            || property.AwaitingOwnershipTransfer)
         {
             return Result<AcceptRequestResult>.Failure(RequestErrors.NotOpen);
         }

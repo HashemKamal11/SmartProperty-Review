@@ -497,7 +497,161 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
         Assert.Equal(HttpStatusCode.NotFound, (await admin.DeleteAsync($"/api/admin/staff/legal-reviewers/{candidate}")).StatusCode);
     }
 
+    // ---- ownership transfer
+
+    [Fact]
+    public async Task ABuyerFromOutsideThePlatformTakesOverTheSamePropertyAndItsHistory()
+    {
+        var staff = await StaffAsync();
+        var world = await SeedAsync();
+        var buyer = await ApprovedOwnerAsync();
+        using var owner = Client(world.Owner);
+        using var newOwner = Client(buyer);
+        using var lawyer = Client(staff.Lawyer);
+        using var admin = Client(staff.Admin);
+
+        // The seller advertised it for sale and rent.
+        await PublishAsync(owner, lawyer, admin, world, ["Sale", "Rent"]);
+        var sellerListings = await OwnListingsAsync(owner);
+        var rentListingId = sellerListings.Single(listing => listing.Label == "Rent:Approved").ListingId;
+
+        // The buyer claims it with their own documents and their own price.
+        using var created = await newOwner.PostAsJsonAsync($"{OwnerRoute}/ownership-transfers",
+            new { propertyId = world.PropertyId, purposes = new[] { "Rent" }, capacity = "Owner", ownershipDocumentNumber = "CONTRACT-777" });
+        Assert.True(created.StatusCode == HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var claim = await ReadAsync(created);
+        var id = claim.GetProperty("requestId").GetGuid();
+        Assert.Equal("OwnershipTransfer", claim.GetProperty("kind").GetString());
+        Assert.Equal(JsonValueKind.Null, claim.GetProperty("saleCommitmentId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, claim.GetProperty("previousOwnerUserId").ValueKind);
+
+        (await newOwner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Rent", RentContent())).Dispose();
+        (await UploadAsync(newOwner, id, "SaleContract", "contract.pdf", Pdf)).Dispose();
+        await ScanAsync();
+        Assert.Equal(HttpStatusCode.OK, (await newOwner.PostAsync($"{OwnerRoute}/{id}/submit", null)).StatusCode);
+
+        // Staff see whose property it was; the claim never blocked the seller.
+        Assert.Equal(world.Owner, (await ReadAsync(await lawyer.GetAsync($"{StaffRoute}/{id}"))).GetProperty("previousOwnerUserId").GetGuid());
+        Assert.Equal(HttpStatusCode.OK, (await lawyer.PostAsJsonAsync($"{StaffRoute}/{id}/legal-approve", Attested())).StatusCode);
+        using var issued = await admin.PostAsJsonAsync($"{StaffRoute}/{id}/issue", Attested());
+        Assert.True(issued.StatusCode == HttpStatusCode.OK, await issued.Content.ReadAsStringAsync());
+
+        // The property is the buyer's now; the seller's grants and listings are gone.
+        await using (var context = _fixture.CreateContext())
+        {
+            Assert.Equal(buyer, await context.Properties.Where(p => p.Id == world.PropertyId).Select(p => p.OwnerUserId).SingleAsync());
+        }
+
+        Assert.All((await ReadAsync(await owner.GetAsync($"/api/marketplace/me/authority-grants?propertyId={world.PropertyId}"))).EnumerateArray(),
+            grant => Assert.Equal("Revoked", grant.GetProperty("state").GetString()));
+        // The seller's sale ad (a purpose the buyer did not ask for) is off the marketplace.
+        var saleListingId = sellerListings.Single(listing => listing.Label == "Sale:Approved").ListingId;
+        Assert.Equal(HttpStatusCode.NotFound, (await newOwner.GetAsync($"{PublicRoute}/{saleListingId}")).StatusCode);
+        Assert.Equal("authority_requests.not_property_owner",
+            await CodeAsync(await owner.PostAsJsonAsync(OwnerRoute, new { propertyId = world.PropertyId, purposes = new[] { "Sale" } })));
+
+        // The buyer's rent ad is the next version of the same listing, and the history shows both owners' versions.
+        var buyerRent = (await OwnListingsAsync(newOwner)).Single(listing => listing.Label == "Rent:Approved");
+        Assert.Equal(rentListingId, buyerRent.ListingId);
+
+        var history = await ReadAsync(await newOwner.GetAsync($"/api/marketplace/me/properties/{world.PropertyId}/history"));
+        var change = Assert.Single(history.GetProperty("ownershipChanges").EnumerateArray());
+        Assert.True(change.GetProperty("toYou").GetBoolean());
+        Assert.False(change.GetProperty("platformSale").GetBoolean());
+        var versions = history.GetProperty("publishedVersions").EnumerateArray().ToArray();
+        Assert.Contains(versions, version => !version.GetProperty("publishedByYou").GetBoolean() && version.GetProperty("status").GetString() == "Superseded");
+        Assert.Contains(versions, version => version.GetProperty("publishedByYou").GetBoolean() && version.GetProperty("purpose").GetString() == "Rent");
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/marketplace/me/properties/{world.PropertyId}/history")).StatusCode);
+    }
+
+    [Fact]
+    public async Task AfterAPlatformSaleTheSellerStopsAdvertisingAndOnlyTheBuyersTransferReopensIt()
+    {
+        var staff = await StaffAsync();
+        var world = await SeedAsync();
+        var buyer = await ApprovedOwnerAsync();
+        using var owner = Client(world.Owner);
+        using var newOwner = Client(buyer);
+        using var lawyer = Client(staff.Lawyer);
+        using var admin = Client(staff.Admin);
+
+        await PublishAsync(owner, lawyer, admin, world, ["Sale"]);
+        var saleListingId = (await OwnListingsAsync(owner)).Single().ListingId;
+
+        using var offered = await newOwner.PostAsJsonAsync("/api/marketplace/purchase-requests", new { listingId = saleListingId, offeredAmount = 4_900_000m });
+        Assert.True(offered.StatusCode == HttpStatusCode.Created, await offered.Content.ReadAsStringAsync());
+        var purchaseId = (await ReadAsync(offered)).GetProperty("requestId").GetGuid();
+        using var accepted = await owner.PostAsync($"/api/marketplace/owner/purchase-requests/{purchaseId}/accept", null);
+        Assert.True(accepted.StatusCode == HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
+        var commitmentId = (await ReadAsync(accepted)).GetProperty("commitmentId").GetGuid();
+
+        object Claim() => new { propertyId = world.PropertyId, purposes = new[] { "Rent" }, capacity = "Owner", ownershipDocumentNumber = "DEED-NEW-1" };
+
+        // While the sale is still in force, nobody can claim the property.
+        Assert.Equal("authority_requests.commitment_in_force", await CodeAsync(await newOwner.PostAsJsonAsync($"{OwnerRoute}/ownership-transfers", Claim())));
+
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/marketplace/me/commitments/{commitmentId}/confirm-signed", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/marketplace/me/commitments/{commitmentId}/confirm-handover", null)).StatusCode);
+
+        // Sold: the seller cannot advertise it again, not even before the transfer.
+        Assert.Equal("authority_requests.sold_awaiting_transfer",
+            await CodeAsync(await owner.PostAsJsonAsync(OwnerRoute, new { propertyId = world.PropertyId, purposes = new[] { "Rent" } })));
+        Assert.Equal(HttpStatusCode.Conflict, (await owner.PostAsJsonAsync("/api/marketplace/me/listing-submissions",
+            new { propertyId = world.PropertyId, purpose = "Sale", content = SaleContent() })).StatusCode);
+
+        // The buyer's claim is linked to the sale they completed, and approval reopens the property in their name.
+        using var created = await newOwner.PostAsJsonAsync($"{OwnerRoute}/ownership-transfers", Claim());
+        Assert.True(created.StatusCode == HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var claim = await ReadAsync(created);
+        Assert.Equal(commitmentId, claim.GetProperty("saleCommitmentId").GetGuid());
+        var id = claim.GetProperty("requestId").GetGuid();
+
+        (await newOwner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Rent", RentContent())).Dispose();
+        (await UploadAsync(newOwner, id, "TitleDeed", "deed.pdf", SecondPdf)).Dispose();
+        await ScanAsync();
+        Assert.Equal(HttpStatusCode.OK, (await newOwner.PostAsync($"{OwnerRoute}/{id}/submit", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await lawyer.PostAsJsonAsync($"{StaffRoute}/{id}/legal-approve", Attested())).StatusCode);
+        using var issued = await admin.PostAsJsonAsync($"{StaffRoute}/{id}/issue", Attested());
+        Assert.True(issued.StatusCode == HttpStatusCode.OK, await issued.Content.ReadAsStringAsync());
+
+        Assert.Contains(await OwnListingsAsync(newOwner), listing => listing.Label == "Rent:Approved");
+        var history = await ReadAsync(await newOwner.GetAsync($"/api/marketplace/me/properties/{world.PropertyId}/history"));
+        Assert.True(Assert.Single(history.GetProperty("ownershipChanges").EnumerateArray()).GetProperty("platformSale").GetBoolean());
+    }
+
+    [Fact]
+    public async Task OwnershipClaimsAreRefusedForTheOwnerWithoutAProfileOrTwiceAndNeverBlockTheOwner()
+    {
+        var world = await SeedAsync();
+        var claimant = await ApprovedOwnerAsync();
+        var unverified = await VerifiedUserAsync();
+        using var owner = Client(world.Owner);
+        using var buyer = Client(claimant);
+        using var stranger = Client(unverified);
+        object Claim() => new { propertyId = world.PropertyId, purposes = new[] { "Sale" } };
+
+        Assert.Equal("authority_requests.already_property_owner", await CodeAsync(await owner.PostAsJsonAsync($"{OwnerRoute}/ownership-transfers", Claim())));
+        Assert.Equal("authority_requests.owner_not_approved", await CodeAsync(await stranger.PostAsJsonAsync($"{OwnerRoute}/ownership-transfers", Claim())));
+        Assert.Equal("properties.not_found", await CodeAsync(await buyer.PostAsJsonAsync($"{OwnerRoute}/ownership-transfers",
+            new { propertyId = Guid.NewGuid(), purposes = new[] { "Sale" } })));
+
+        Assert.Equal(HttpStatusCode.Created, (await buyer.PostAsJsonAsync($"{OwnerRoute}/ownership-transfers", Claim())).StatusCode);
+        Assert.Equal("authority_requests.transfer_already_open", await CodeAsync(await buyer.PostAsJsonAsync($"{OwnerRoute}/ownership-transfers", Claim())));
+
+        // An open claim never stops the registered owner from asking to advertise.
+        Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync(OwnerRoute, Claim())).StatusCode);
+    }
+
     // ---- helpers
+
+    /// <summary>A complete owner request, legally approved and issued: the property is advertised for these purposes.</summary>
+    private async Task PublishAsync(HttpClient owner, HttpClient lawyer, HttpClient admin, World world, string[] purposes)
+    {
+        var (id, _) = await SubmittedAsync(owner, world, purposes);
+        Assert.Equal(HttpStatusCode.OK, (await lawyer.PostAsJsonAsync($"{StaffRoute}/{id}/legal-approve", Attested())).StatusCode);
+        using var issued = await admin.PostAsJsonAsync($"{StaffRoute}/{id}/issue", Attested());
+        Assert.True(issued.StatusCode == HttpStatusCode.OK, await issued.Content.ReadAsStringAsync());
+    }
 
     private sealed record World(Guid PropertyId, Guid Owner);
 
@@ -697,6 +851,27 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
 
         context.UserPlatformRoles.Add(new UserPlatformRole(userId, role.Id));
         await context.SaveChangesAsync();
+    }
+
+    /// <summary>A verified user with an approved owner profile and no property: a buyer who can claim one.</summary>
+    private async Task<Guid> ApprovedOwnerAsync()
+    {
+        var user = await VerifiedUserAsync();
+        var profileReviewer = await ActiveUserAsync();
+        var at = DateTimeOffset.UtcNow.AddDays(-30);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var profile = new OwnerProfile(Guid.NewGuid(), user, at);
+        profile.SaveIdentity("SA", $"1{Random.Shared.NextInt64(100_000_000, 999_999_999)}", "Saudi", new DateOnly(1990, 1, 1), today.AddYears(5), true, today, at);
+        profile.SaveAddress("7", "Street", "District", "Cairo", "11728", null, true, at);
+        profile.SetAddressProof("owner-profiles/proof.png", "image/png", "proof.png", at);
+        profile.Submit(at);
+        profile.Approve(profileReviewer, at.AddMinutes(1));
+
+        await using var context = _fixture.CreateContext();
+        context.OwnerProfiles.Add(profile);
+        await context.SaveChangesAsync();
+
+        return user;
     }
 
     /// <summary>An owner with an approved owner profile, and a property registered by them.</summary>

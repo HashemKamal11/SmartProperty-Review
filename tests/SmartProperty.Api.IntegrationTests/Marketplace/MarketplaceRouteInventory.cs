@@ -43,6 +43,7 @@ internal static class MarketplaceRouteInventory
         // owner: asking for advertising authority
         "GET api/marketplace/authority-document-types",
         "POST api/marketplace/me/authority-requests",
+        "POST api/marketplace/me/authority-requests/ownership-transfers",
         "GET api/marketplace/me/authority-requests",
         "GET api/marketplace/me/authority-requests/{requestId:guid}",
         "PUT api/marketplace/me/authority-requests/{requestId:guid}",
@@ -59,6 +60,7 @@ internal static class MarketplaceRouteInventory
         "POST api/marketplace/me/authority-requests/{requestId:guid}/submit",
         "POST api/marketplace/me/authority-requests/{requestId:guid}/withdraw",
         "GET api/marketplace/me/authority-grants",
+        "GET api/marketplace/me/properties/{propertyId:guid}/history",
 
         // advertiser: drafts, submission, withdrawal
         "GET api/marketplace/me/listing-submissions",

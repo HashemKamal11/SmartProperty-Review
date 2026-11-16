@@ -192,7 +192,8 @@ public sealed class ListingRelistPersistenceTests(PostgreSqlFixture fixture) : M
         await ConfirmAsync(world.Owner, sold, CommitmentStep.Handover);
 
         Assert.DoesNotContain(sale.ListingId, await DueAsync());
-        Assert.Equal("listing_submissions.not_relistable", (await RelistAutomaticallyAsync(sale.ListingId)).Error!.Code);
+        // Sold through the platform: the property itself is unavailable to the seller until the buyer's transfer.
+        Assert.Equal("listing_submissions.property_unavailable", (await RelistAutomaticallyAsync(sale.ListingId)).Error!.Code);
     }
 
     [Fact]

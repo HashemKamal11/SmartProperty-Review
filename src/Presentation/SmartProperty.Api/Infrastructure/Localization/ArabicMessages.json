@@ -601,5 +601,11 @@
   "All the rental dates of this listing have passed. Create a new listing with new dates.": "انقضت جميع مواعيد الإيجار في هذا الإعلان. أنشئ إعلانًا جديدًا بمواعيد جديدة.",
   "The relist mode is not supported.": "طريقة إعادة النشر غير مدعومة.",
   "relistMode must be Manual or Automatic.": "يجب أن تكون قيمة relistMode إما Manual أو Automatic.",
-  "mode must be Manual or Automatic.": "يجب أن تكون قيمة mode إما Manual أو Automatic."
+  "mode must be Manual or Automatic.": "يجب أن تكون قيمة mode إما Manual أو Automatic.",
+  "This property is already registered to you; start a normal authority request instead.": "هذا العقار مسجل باسمك بالفعل؛ قدّم طلب إذن عاديًا بدلًا من ذلك.",
+  "You already have an open ownership-transfer request for this property.": "لديك بالفعل طلب نقل ملكية مفتوح لهذا العقار.",
+  "A sale or rental is still in force on this property, so its ownership cannot be transferred yet.": "لا يزال هناك بيع أو إيجار سارٍ على هذا العقار، لذلك لا يمكن نقل ملكيته بعد.",
+  "This property was sold; it can be advertised again only after the buyer's ownership transfer is approved.": "تم بيع هذا العقار؛ لا يمكن الإعلان عنه مرة أخرى إلا بعد اعتماد نقل الملكية للمشتري.",
+  "The property's owner changed after this request started, so it can no longer be approved.": "تغيّر مالك العقار بعد بدء هذا الطلب، لذلك لم يعد من الممكن اعتماده.",
+  "Ownership of the property was transferred to another owner.": "تم نقل ملكية العقار إلى مالك آخر."
 }

@@ -51,6 +51,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<PropertyCommitment> PropertyCommitments => Set<PropertyCommitment>();
     public DbSet<MarketplaceSettings> MarketplaceSettings => Set<MarketplaceSettings>();
     public DbSet<PropertyAuthorityGrant> PropertyAuthorityGrants => Set<PropertyAuthorityGrant>();
+    public DbSet<PropertyOwnershipTransfer> PropertyOwnershipTransfers => Set<PropertyOwnershipTransfer>();
     public DbSet<AuthorityRequest> AuthorityRequests => Set<AuthorityRequest>();
     public DbSet<AuthorityRequestDocument> AuthorityRequestDocuments => Set<AuthorityRequestDocument>();
     public DbSet<AuthorityRequestDecision> AuthorityRequestDecisions => Set<AuthorityRequestDecision>();

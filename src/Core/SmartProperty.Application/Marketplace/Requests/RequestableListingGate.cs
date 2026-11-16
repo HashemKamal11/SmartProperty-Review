@@ -69,7 +69,8 @@ internal static class RequestableListingGate
             || listing.PublicationStatus != ListingPublicationStatus.Published
             || listing.AvailabilityStatus != ListingAvailabilityStatus.Open
             || !property.IsActive
-            || property.HasMarketplaceReservation)
+            || property.HasMarketplaceReservation
+            || property.AwaitingOwnershipTransfer)
         {
             return Result<RequestableListing>.Failure(RequestErrors.ListingUnavailable);
         }

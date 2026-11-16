@@ -72,7 +72,14 @@ internal sealed class ListingSubmissionWriteRepository(ApplicationDbContext cont
                    COALESCE(NULLIF(btrim(p.address_region), ''), NULLIF(btrim(p.address_city), '')) AS region,
                    p.address_city, p.address_district,
                    EXISTS (SELECT 1 FROM marketplace.property_reservations AS r WHERE r.property_id = p.id),
-                   COALESCE(p.time_zone_id, co.time_zone_id)
+                   COALESCE(p.time_zone_id, co.time_zone_id),
+                   -- Sold through the platform and not yet transferred to anyone since.
+                   EXISTS (
+                       SELECT 1 FROM marketplace.property_commitments AS sold
+                       WHERE sold.property_id = p.id AND sold.kind = 'Sale' AND sold.status = 'Completed'
+                         AND sold.completed_at > COALESCE(
+                             (SELECT max(t.transferred_at) FROM marketplace.property_ownership_transfers AS t WHERE t.property_id = p.id),
+                             '-infinity'::timestamptz))
             FROM registry.properties AS p
             LEFT JOIN locations.areas AS a ON a.id = p.area_id
             LEFT JOIN locations.cities AS ci ON ci.id = a.city_id
@@ -97,7 +104,8 @@ internal sealed class ListingSubmissionWriteRepository(ApplicationDbContext cont
             reader.IsDBNull(4) ? null : reader.GetString(4),
             reader.IsDBNull(5) ? null : reader.GetString(5),
             reader.IsDBNull(6) ? null : reader.GetString(6),
-            reader.IsDBNull(8) ? null : reader.GetString(8));
+            reader.IsDBNull(8) ? null : reader.GetString(8),
+            reader.GetBoolean(9));
 
         _lockedPropertyId = propertyId;
 
