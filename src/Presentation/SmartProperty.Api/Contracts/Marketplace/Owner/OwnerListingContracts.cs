@@ -34,12 +34,17 @@ public sealed record RentalTermsRequest(
     IReadOnlyList<RentalWindowRequest>? Windows,
     int? MinimumStayDays = null);
 
-public sealed record CreateListingDraftRequest(Guid? PropertyId, string? Purpose, ListingDraftContentRequest? Content);
+public sealed record CreateListingDraftRequest(
+    Guid? PropertyId,
+    string? Purpose,
+    ListingDraftContentRequest? Content,
+    string? RelistMode = null);
 
 /// <summary>Advertises one property for sale, for rent, or both. Either side may be omitted, not both.</summary>
 public sealed record CreatePropertyListingDraftsRequest(
     ListingDraftContentRequest? Sale,
-    ListingDraftContentRequest? Rent);
+    ListingDraftContentRequest? Rent,
+    string? RelistMode = null);
 
 public sealed record UpdateListingDraftRequest(int? ExpectedRevision, ListingDraftContentRequest? Content);
 
@@ -56,3 +61,11 @@ public sealed record SubmitListingDraftResponse(Guid SubmissionId, string Status
 public sealed record DiscardListingDraftResponse(bool ListingRemoved);
 
 public sealed record WithdrawListingResponse(Guid ListingId, DateTimeOffset WithdrawnAt);
+
+/// <summary>"Manual" (the default: the listing stays closed until the owner relists it) or "Automatic".</summary>
+public sealed record SetRelistModeRequest(string? Mode);
+
+public sealed record RelistModeResponse(Guid ListingId, string Mode);
+
+/// <summary>The copy that relisting created: a new version already submitted for administrator review.</summary>
+public sealed record RelistListingResponse(Guid SubmissionId, Guid ListingId, int Version, string Status, DateTimeOffset SubmittedAt);

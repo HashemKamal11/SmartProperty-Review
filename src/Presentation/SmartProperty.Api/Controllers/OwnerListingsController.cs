@@ -9,6 +9,7 @@ using SmartProperty.Application.Marketplace.ListingSubmissions.Write;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.CreateBoth;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Discard;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Submit;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Update;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw;
@@ -77,8 +78,13 @@ public sealed class OwnerListingsController : ControllerBase
             return Fail(content.Error!);
         }
 
+        if (!TryParseRelistMode(request.RelistMode, out var relist))
+        {
+            return Fail(OwnerListingMapper.Invalid("relistMode must be Manual or Automatic."));
+        }
+
         var result = await handler.Handle(
-            new CreateListingDraftCommand(propertyId, purpose.Value, content.Value), cancellationToken);
+            new CreateListingDraftCommand(propertyId, purpose.Value, content.Value, relist), cancellationToken);
 
         return result.IsFailure
             ? Fail(result.Error!)
@@ -131,7 +137,12 @@ public sealed class OwnerListingsController : ControllerBase
             rent = parsed.Value;
         }
 
-        var result = await handler.Handle(new CreatePropertyListingDraftsCommand(propertyId, sale, rent), cancellationToken);
+        if (!TryParseRelistMode(request.RelistMode, out var relist))
+        {
+            return Fail(OwnerListingMapper.Invalid("relistMode must be Manual or Automatic."));
+        }
+
+        var result = await handler.Handle(new CreatePropertyListingDraftsCommand(propertyId, sale, rent, relist), cancellationToken);
 
         if (result.IsFailure)
         {
@@ -237,6 +248,87 @@ public sealed class OwnerListingsController : ControllerBase
         return result.IsFailure
             ? Fail(result.Error!)
             : Ok(new WithdrawListingResponse(result.Value.ListingId, result.Value.WithdrawnAt));
+    }
+
+    /// <summary>
+    /// Brings the caller's own closed listing back: a copy of its last approved version (same title, description,
+    /// prices, rental terms and documents) is submitted for administrator review. It does not publish.
+    /// </summary>
+    /// <remarks>
+    /// The listing must have been published and be closed now (withdrawn, or closed by an accepted request). The grant
+    /// must be in force and the documents Clean, as for any submission. Rental windows that have ended are left out.
+    /// </remarks>
+    [HttpPost("listings/{listingId:guid}/relist")]
+    [ProducesResponseType<RelistListingResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> Relist(
+        Guid listingId,
+        [FromServices] ICommandHandler<RelistListingCommand, RelistListingResult> handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.Handle(new RelistListingCommand(listingId), cancellationToken);
+
+        return result.IsFailure
+            ? Fail(result.Error!)
+            : StatusCode(
+                StatusCodes.Status201Created,
+                new RelistListingResponse(
+                    result.Value.SubmissionId,
+                    result.Value.ListingId,
+                    result.Value.Version,
+                    result.Value.Status.ToString(),
+                    result.Value.SubmittedAt));
+    }
+
+    /// <summary>
+    /// Sets what happens to the caller's own listing when an accepted request that closed it ends without a deal
+    /// (signature deadline passed, or rental returned): <c>Manual</c> keeps it closed until the owner relists it,
+    /// <c>Automatic</c> submits a copy for review in the nightly pass.
+    /// </summary>
+    [HttpPut("listings/{listingId:guid}/relist-mode")]
+    [ProducesResponseType<RelistModeResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> SetRelistMode(
+        Guid listingId,
+        SetRelistModeRequest request,
+        [FromServices] ICommandHandler<SetRelistModeCommand, RelistModeResult> handler,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseRelistMode(request.Mode, out var mode) || mode is not { } chosen)
+        {
+            return Fail(OwnerListingMapper.Invalid("mode must be Manual or Automatic."));
+        }
+
+        var result = await handler.Handle(new SetRelistModeCommand(listingId, chosen), cancellationToken);
+
+        return result.IsFailure
+            ? Fail(result.Error!)
+            : Ok(new RelistModeResponse(result.Value.ListingId, result.Value.Mode.ToString()));
+    }
+
+    // Absent is allowed (the current choice stays); anything given must be exactly one of the names, never a number.
+    private static bool TryParseRelistMode(string? value, out RelistMode? mode)
+    {
+        mode = null;
+
+        if (value is null)
+        {
+            return true;
+        }
+
+        if (Enum.TryParse<RelistMode>(value.Trim(), ignoreCase: true, out var parsed)
+            && Enum.IsDefined(parsed)
+            && !int.TryParse(value, out _))
+        {
+            mode = parsed;
+            return true;
+        }
+
+        return false;
     }
 
     private IActionResult Fail(Error error)

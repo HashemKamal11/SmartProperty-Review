@@ -3,6 +3,7 @@ using SmartProperty.Application.Abstractions.Marketplace;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Marketplace;
 
@@ -66,6 +67,11 @@ public sealed class CreatePropertyListingDraftsCommandHandler(
             return Failure(ListingSubmissionErrors.ValidationFailed("Advertise the property for sale, for rent, or for both."));
         }
 
+        if (command.Relist is { } mode && !Enum.IsDefined(mode))
+        {
+            return Failure(ListingSubmissionErrors.ValidationFailed("The relist mode is not supported."));
+        }
+
         foreach (var (purpose, content) in requested)
         {
             if (ListingDraftContentValidator.Validate(content, purpose) is { } validationError)
@@ -124,6 +130,12 @@ public sealed class CreatePropertyListingDraftsCommandHandler(
 
         foreach (var (_, draft) in prepared)
         {
+            // The owner's automatic relisting choice applies to each side created; left out, the current choice stays.
+            if (command.Relist is { } relist)
+            {
+                draft.Listing.SetRelistAutomatically(relist == RelistMode.Automatic);
+            }
+
             if (draft.IsNewListing)
             {
                 await repository.AddListingAsync(draft.Listing, cancellationToken);

@@ -1,4 +1,5 @@
 using SmartProperty.Application.Abstractions.Messaging;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist;
 using SmartProperty.Domain.Marketplace;
 
 namespace SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create;
@@ -15,4 +16,5 @@ namespace SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create;
 public sealed record CreateListingDraftCommand(
     Guid PropertyId,
     ListingPurpose Purpose,
-    ListingDraftContentInput Content) : ICommand<ListingDraftResult>;
+    ListingDraftContentInput Content,
+    RelistMode? Relist = null) : ICommand<ListingDraftResult>;

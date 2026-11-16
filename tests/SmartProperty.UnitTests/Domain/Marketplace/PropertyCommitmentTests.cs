@@ -307,6 +307,58 @@ public sealed class PropertyCommitmentTests
         Assert.Throws<ArgumentException>(() => settings.ChangeSigningWindow(10, Guid.Empty, At));
     }
 
+    // ---- relisting
+
+    [Fact]
+    public void AcceptingRemembersTheCommitmentOnEveryListingItClosedAndPublishingOrWithdrawingForgetsIt()
+    {
+        var propertyId = Guid.NewGuid();
+        var rent = MarketplaceFixtures.CreateListing(ListingPurpose.Rent, propertyId);
+        var sale = MarketplaceFixtures.CreateListing(ListingPurpose.Sale, propertyId);
+        var winner = Rental(rent, RentPeriod.Daily, new DateOnly(2027, 6, 1), new DateOnly(2027, 6, 5));
+
+        var commitment = CommitmentAcceptance.AcceptRental(rent, sale, winner, [], [], Owner, At, Deadline);
+
+        Assert.Equal(commitment.Id, rent.ClosedByCommitmentId);
+        Assert.Equal(commitment.Id, sale.ClosedByCommitmentId);
+        Assert.True(rent.CanBeRelisted);
+        Assert.False(rent.RelistAutomatically);
+
+        var open = MarketplaceFixtures.CreateListing(ListingPurpose.Sale);
+        open.Withdraw(At);
+
+        Assert.Null(open.ClosedByCommitmentId);
+        Assert.True(open.CanBeRelisted);
+        Assert.False(MarketplaceFixtures.CreateListing(ListingPurpose.Sale).CanBeRelisted);
+    }
+
+    [Fact]
+    public void ACommitmentAllowsRelistingOnceItsSignatureIsOverdueOrItsRentalIsReturnedButNeverAfterASale()
+    {
+        var pending = AcceptedRental(RentPeriod.Daily);
+        var returned = AcceptedRental(RentPeriod.Daily);
+        returned.ConfirmSigned(At.AddHours(1));
+        returned.ConfirmHandover(At.AddHours(2));
+
+        Assert.False(pending.AllowsRelistAt(Deadline.AddTicks(-1)));
+        Assert.True(pending.AllowsRelistAt(Deadline));
+        Assert.False(returned.AllowsRelistAt(Deadline.AddDays(30)));
+
+        returned.ConfirmReturn(At.AddHours(3));
+        pending.Expire(Deadline);
+
+        Assert.True(returned.AllowsRelistAt(At.AddHours(3)));
+        Assert.True(pending.AllowsRelistAt(Deadline));
+
+        var saleListing = MarketplaceFixtures.CreateListing(ListingPurpose.Sale);
+        var sold = CommitmentAcceptance.AcceptSale(saleListing, null, Purchase(saleListing, 900_000m), [], [], Owner, At, Deadline);
+        sold.ConfirmSigned(At.AddHours(1));
+        sold.ConfirmHandover(At.AddHours(2));
+
+        Assert.Equal(CommitmentStatus.Completed, sold.Status);
+        Assert.False(sold.AllowsRelistAt(At.AddDays(30)));
+    }
+
     // ---- helpers
 
     private static RentalRequest Rental(

@@ -57,6 +57,10 @@ public static class DisplayValues
         ("Found", "Found", "موجود"),
         ("NotFound", "Not found", "غير موجود"),
 
+        // Relisting a closed listing
+        ("Manual", "Manual", "يدوي"),
+        ("Automatic", "Automatic", "تلقائي"),
+
         // Document scanning
         ("Clean", "Clean", "سليم"),
         ("Infected", "Infected", "مصاب ببرمجية ضارة"),

@@ -1333,6 +1333,10 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("availability_status");
 
+                    b.Property<Guid?>("ClosedByCommitmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("closed_by_commitment_id");
+
                     b.Property<bool>("ClosedByReservation")
                         .HasColumnType("boolean")
                         .HasColumnName("closed_by_reservation");
@@ -1366,6 +1370,10 @@ namespace SmartProperty.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("purpose");
 
+                    b.Property<bool>("RelistAutomatically")
+                        .HasColumnType("boolean")
+                        .HasColumnName("relist_automatically");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1388,6 +1396,8 @@ namespace SmartProperty.Persistence.Migrations
 
                     b.ToTable("listings", "marketplace", t =>
                         {
+                            t.HasCheckConstraint("ck_marketplace_listings_commitment_closure", "closed_by_commitment_id IS NULL OR (closed_by_commitment_id <> '00000000-0000-0000-0000-000000000000'::uuid AND publication_status = 'Withdrawn' AND availability_status = 'Closed')");
+
                             t.HasCheckConstraint("ck_marketplace_listings_history", "updated_at >= created_at AND ((publication_status = 'Unpublished' AND published_submission_id IS NULL AND published_at IS NULL AND withdrawn_at IS NULL) OR (publication_status = 'Published' AND published_submission_id IS NOT NULL AND published_at IS NOT NULL AND published_at >= created_at AND published_at <= updated_at AND (withdrawn_at IS NULL OR (withdrawn_at >= created_at AND withdrawn_at <= published_at))) OR (publication_status = 'Withdrawn' AND published_submission_id IS NOT NULL AND published_at IS NOT NULL AND withdrawn_at IS NOT NULL AND published_at >= created_at AND withdrawn_at >= published_at AND withdrawn_at <= updated_at))");
 
                             t.HasCheckConstraint("ck_marketplace_listings_ids", "id <> '00000000-0000-0000-0000-000000000000'::uuid AND property_id <> '00000000-0000-0000-0000-000000000000'::uuid AND (published_submission_id IS NULL OR published_submission_id <> '00000000-0000-0000-0000-000000000000'::uuid)");

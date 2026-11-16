@@ -3,6 +3,7 @@ using SmartProperty.Application.Abstractions.Marketplace;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.Abstractions.Time;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Marketplace;
 
@@ -57,6 +58,11 @@ public sealed class CreateListingDraftCommandHandler(
             return Result<ListingDraftResult>.Failure(validationError);
         }
 
+        if (command.Relist is { } mode && !Enum.IsDefined(mode))
+        {
+            return Result<ListingDraftResult>.Failure(ListingSubmissionErrors.ValidationFailed("The relist mode is not supported."));
+        }
+
         var references = await DraftEvidence.ResolveAsync(
             evidence, acting.UserId, command.PropertyId, command.Purpose, command.Content.EvidenceIds, cancellationToken);
 
@@ -83,6 +89,12 @@ public sealed class CreateListingDraftCommandHandler(
         }
 
         var (listing, isNewListing, submission) = prepared.Value;
+
+        // The owner's automatic relisting choice is kept on the listing; left out, the current choice stays.
+        if (command.Relist is { } relist)
+        {
+            listing.SetRelistAutomatically(relist == RelistMode.Automatic);
+        }
 
         if (isNewListing)
         {

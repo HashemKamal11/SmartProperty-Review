@@ -83,6 +83,14 @@ services:
       AiSearch__BaseUrl: ${AI_SEARCH_BASE_URL:-https://ai-search.neurix.uk}
       AiSearch__ApiKey: ${AI_SEARCH_API_KEY:-}
       AiSearch__TimeoutSeconds: ${AI_SEARCH_TIMEOUT_SECONDS:-30}
+      # The pass that submits closed listings set to relistMode=Automatic for review again.
+      AutomaticRelist__WorkerEnabled: ${AUTOMATIC_RELIST_ENABLED:-true}
+      # Left empty (not removed), EVERY switches to the fixed RUN_AT times.
+      AutomaticRelist__Every: ${AUTOMATIC_RELIST_EVERY-15m}
+      AutomaticRelist__RunAt: ${AUTOMATIC_RELIST_RUN_AT:-01:00}
+      AutomaticRelist__TimeZoneId: ${AUTOMATIC_RELIST_TIME_ZONE:-Africa/Cairo}
+      AutomaticRelist__BatchSize: ${AUTOMATIC_RELIST_BATCH_SIZE:-500}
+      AutomaticRelist__RunOnStartup: ${AUTOMATIC_RELIST_RUN_ON_STARTUP:-true}
       # Where uploaded property photos are stored: a mounted volume, so they outlive the container.
       ImageStorage__RootPath: ${IMAGE_STORAGE_PATH:-/data/images}
       # Legal documents (deeds, authorizations, licenses): a separate, private, persistent volume. Never served statically;

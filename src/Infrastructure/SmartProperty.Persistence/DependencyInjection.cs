@@ -63,6 +63,7 @@ public static class DependencyInjection
         services.AddScoped<ListingSubmissionWriteRepository>();
         services.AddScoped<IListingSubmissionWriteRepository>(provider => provider.GetRequiredService<ListingSubmissionWriteRepository>());
         services.AddScoped<IMarketplaceRequestWriteRepository>(provider => provider.GetRequiredService<ListingSubmissionWriteRepository>());
+        services.AddScoped<IAutomaticRelistQueue, AutomaticRelistQueue>();
         services.AddScoped<IMarketplaceRequestReadRepository, MarketplaceRequestReadRepository>();
         services.AddScoped<IMarketplaceSettingsRepository, MarketplaceSettingsRepository>();
         services.AddScoped<IListingSubmissionAuditRecorder>(provider => provider.GetRequiredService<ListingSubmissionWriteRepository>());

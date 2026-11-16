@@ -138,6 +138,7 @@ public sealed class SchemaTests(PostgreSqlFixture fixture) : DatabaseTest(fixtur
             "ck_marketplace_decisions_snapshots",
             "ck_marketplace_discard_audits_identity",
             "ck_marketplace_discard_audits_values",
+            "ck_marketplace_listings_commitment_closure",
             "ck_marketplace_listings_history",
             "ck_marketplace_listings_ids",
             "ck_marketplace_listings_reservation_closure",

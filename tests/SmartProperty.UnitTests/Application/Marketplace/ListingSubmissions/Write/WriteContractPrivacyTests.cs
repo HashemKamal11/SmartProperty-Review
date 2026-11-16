@@ -8,6 +8,7 @@ using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Create;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.CreateBoth;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Discard;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Submit;
 using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Update;
 using SmartProperty.Domain.Marketplace;
@@ -30,6 +31,8 @@ public sealed class WriteContractPrivacyTests
         typeof(SubmitListingDraftCommand),
         typeof(CreatePropertyListingDraftsCommand),
         typeof(WithdrawListingCommand),
+        typeof(RelistListingCommand),
+        typeof(SetRelistModeCommand),
     ];
 
     // Words that would mean a request is supplying who acts, what is verified, or what was found. Matched
@@ -69,7 +72,9 @@ public sealed class WriteContractPrivacyTests
     [Fact]
     public void EachCommandHasExactlyItsApprovedParameters()
     {
-        Assert.Equal(new[] { "PropertyId", "Purpose", "Content" }, ParametersOf(typeof(CreateListingDraftCommand)));
+        Assert.Equal(new[] { "PropertyId", "Purpose", "Content", "Relist" }, ParametersOf(typeof(CreateListingDraftCommand)));
+        Assert.Equal(new[] { "ListingId" }, ParametersOf(typeof(RelistListingCommand)));
+        Assert.Equal(new[] { "ListingId", "Mode" }, ParametersOf(typeof(SetRelistModeCommand)));
         Assert.Equal(new[] { "SubmissionId", "ExpectedRevision", "Content" }, ParametersOf(typeof(UpdateListingDraftCommand)));
         Assert.Equal(new[] { "SubmissionId", "ExpectedRevision" }, ParametersOf(typeof(DiscardListingDraftCommand)));
         Assert.Equal(new[] { "SubmissionId", "ExpectedRevision" }, ParametersOf(typeof(SubmitListingDraftCommand)));
@@ -161,6 +166,8 @@ public sealed class WriteContractPrivacyTests
             [typeof(SubmitListingDraftCommand)] = (typeof(SubmitListingDraftCommandHandler), typeof(SubmitListingDraftResult)),
             [typeof(CreatePropertyListingDraftsCommand)] = (typeof(CreatePropertyListingDraftsCommandHandler), typeof(PropertyListingDraftsResult)),
             [typeof(WithdrawListingCommand)] = (typeof(WithdrawListingCommandHandler), typeof(WithdrawListingResult)),
+            [typeof(RelistListingCommand)] = (typeof(RelistListingCommandHandler), typeof(RelistListingResult)),
+            [typeof(SetRelistModeCommand)] = (typeof(SetRelistModeCommandHandler), typeof(RelistModeResult)),
         };
         var applicationTypes = typeof(ICommand<>).Assembly.GetTypes().Where(type => !type.IsInterface && !type.IsAbstract).ToArray();
 
@@ -207,6 +214,8 @@ public sealed class WriteContractPrivacyTests
             [typeof(DiscardListingDraftCommandHandler)] = [.. common, "IListingSubmissionAuditRecorder", "IDateTimeProvider"],
             [typeof(CreatePropertyListingDraftsCommandHandler)] = [.. common, "IEvidenceAssessmentProvider", "IDateTimeProvider"],
             [typeof(WithdrawListingCommandHandler)] = [.. common, "IDateTimeProvider", "IListingSearchIndexer"],
+            [typeof(RelistListingCommandHandler)] = ["ICurrentUser", "IUserRepository", "ListingRelister"],
+            [typeof(SetRelistModeCommandHandler)] = common,
         };
 
         foreach (var (handler, dependencies) in expected)

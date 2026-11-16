@@ -98,6 +98,15 @@ public sealed class PropertyCommitment
     public bool IsOverdue(DateTimeOffset at) =>
         Status == CommitmentStatus.PendingSignature && at >= SigningDeadline;
 
+    /// <summary>
+    /// Whether this commitment has ended in a way that lets the listings it closed come back: the signature deadline
+    /// passed, or a rental was returned. A completed sale never does, since the property has changed hands.
+    /// </summary>
+    public bool AllowsRelistAt(DateTimeOffset at) =>
+        Status == CommitmentStatus.Expired
+        || IsOverdue(at)
+        || (Status == CommitmentStatus.Completed && Kind == CommitmentKind.Rental);
+
     /// <summary>Daily and weekly rentals are short stays: an occupancy that blocks selling the property.</summary>
     public bool IsShortStay => Kind == CommitmentKind.Rental && PricingPeriod is RentPeriod.Daily or RentPeriod.Weekly;
 

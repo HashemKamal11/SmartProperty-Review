@@ -43,6 +43,35 @@ public sealed class PropertyListing
     /// <summary>Monotonic local marker; authoritative property-wide availability must also be checked.</summary>
     public bool ClosedByReservation { get; private set; }
 
+    /// <summary>
+    /// The owner's choice: when the accepted request that closed this listing ends without a lasting deal (the
+    /// signature deadline passed, or a rental was returned), a copy of the last approved version is submitted for
+    /// review automatically. Off by default. It never publishes anything by itself.
+    /// </summary>
+    public bool RelistAutomatically { get; private set; }
+
+    /// <summary>
+    /// The commitment whose acceptance closed this listing, or null when it is open, was withdrawn by the owner, or was
+    /// never published. Cleared when the listing is published or withdrawn again.
+    /// </summary>
+    public Guid? ClosedByCommitmentId { get; private set; }
+
+    /// <summary>Records the owner's automatic relisting choice. A preference only: no state or history changes.</summary>
+    public void SetRelistAutomatically(bool enabled)
+    {
+        RelistAutomatically = enabled;
+    }
+
+    /// <summary>
+    /// Whether a copy of the last approved version may bring the listing back: it was published, then withdrawn or
+    /// closed by an acceptance, and no reservation holds it.
+    /// </summary>
+    public bool CanBeRelisted =>
+        PublicationStatus == ListingPublicationStatus.Withdrawn
+        && AvailabilityStatus == ListingAvailabilityStatus.Closed
+        && !ClosedByReservation
+        && PublishedSubmissionId.HasValue;
+
     internal void EnsureCanPublishApproved(ListingSubmission submission, DateTimeOffset at)
     {
         if (ClosedByReservation || AvailabilityStatus == ListingAvailabilityStatus.Reserved
@@ -63,6 +92,7 @@ public sealed class PropertyListing
         PublishedSubmissionId = submission.Id;
         PublishedAt = at;
         UpdatedAt = at;
+        ClosedByCommitmentId = null;
     }
 
     /// <summary>Purpose-local withdrawal; a fresh independent approval is required for republication.</summary>
@@ -79,27 +109,30 @@ public sealed class PropertyListing
         AvailabilityStatus = ListingAvailabilityStatus.Closed;
         WithdrawnAt = withdrawnAt;
         UpdatedAt = withdrawnAt;
+        ClosedByCommitmentId = null;
     }
 
     /// <summary>
     /// Takes a published advertisement off the marketplace because a request for the property was accepted. It is
     /// the same state as a withdrawal, so the owner advertises again only by an explicit new submission that is
     /// reviewed afresh. A listing that is not published is left exactly as it is, and a closure by a legacy
-    /// reservation is never touched.
+    /// reservation is never touched. The commitment is remembered, so the listing can be relisted when it ends.
     /// </summary>
-    internal void CloseForAcceptance(DateTimeOffset closedAt)
+    internal void CloseForAcceptance(DateTimeOffset closedAt, Guid commitmentId)
     {
         if (PublicationStatus != ListingPublicationStatus.Published)
         {
             return;
         }
 
+        ValidateRequiredId(commitmentId, nameof(commitmentId));
         ValidateTransitionTime(closedAt, nameof(closedAt));
 
         PublicationStatus = ListingPublicationStatus.Withdrawn;
         AvailabilityStatus = ListingAvailabilityStatus.Closed;
         WithdrawnAt = closedAt;
         UpdatedAt = closedAt;
+        ClosedByCommitmentId = commitmentId;
     }
 
     internal bool CanAcceptRequests =>

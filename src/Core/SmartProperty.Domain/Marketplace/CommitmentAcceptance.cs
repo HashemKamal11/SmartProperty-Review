@@ -48,8 +48,8 @@ public static class CommitmentAcceptance
         var commitment = PropertyCommitment.ForRental(rentListing, winner, ownerUserId, at, signingDeadline);
 
         winner.Accept(at);
-        rentListing.CloseForAcceptance(at);
-        saleListing?.CloseForAcceptance(at);
+        rentListing.CloseForAcceptance(at, commitment.Id);
+        saleListing?.CloseForAcceptance(at, commitment.Id);
 
         foreach (var request in otherRentalRequests)
         {
@@ -92,8 +92,8 @@ public static class CommitmentAcceptance
         var commitment = PropertyCommitment.ForSale(saleListing, winner, ownerUserId, at, signingDeadline);
 
         winner.Accept(at);
-        saleListing.CloseForAcceptance(at);
-        rentListing?.CloseForAcceptance(at);
+        saleListing.CloseForAcceptance(at, commitment.Id);
+        rentListing?.CloseForAcceptance(at, commitment.Id);
 
         foreach (var request in otherPurchaseRequests)
         {

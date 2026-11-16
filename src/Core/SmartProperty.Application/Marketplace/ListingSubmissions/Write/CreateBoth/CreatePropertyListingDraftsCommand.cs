@@ -1,4 +1,5 @@
 using SmartProperty.Application.Abstractions.Messaging;
+using SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist;
 
 namespace SmartProperty.Application.Marketplace.ListingSubmissions.Write.CreateBoth;
 
@@ -12,7 +13,8 @@ namespace SmartProperty.Application.Marketplace.ListingSubmissions.Write.CreateB
 public sealed record CreatePropertyListingDraftsCommand(
     Guid PropertyId,
     ListingDraftContentInput? Sale,
-    ListingDraftContentInput? Rent) : ICommand<PropertyListingDraftsResult>;
+    ListingDraftContentInput? Rent,
+    RelistMode? Relist = null) : ICommand<PropertyListingDraftsResult>;
 
 /// <summary>The drafts that were created; the side that was not requested is null.</summary>
 public sealed record PropertyListingDraftsResult(ListingDraftResult? Sale, ListingDraftResult? Rent);

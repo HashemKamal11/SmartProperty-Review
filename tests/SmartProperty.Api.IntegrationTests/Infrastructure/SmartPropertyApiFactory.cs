@@ -135,6 +135,7 @@ internal sealed class SmartPropertyApiFactory : WebApplicationFactory<Program>
                 new KeyValuePair<string, string?>("DocumentStorage:RootPath", DocumentRoot),
                 // The staff role catalogue changes the Platform Admin role; tests that need it run it explicitly.
                 new KeyValuePair<string, string?>("StaffRoles:ProvisionOnStartup", "false"),
+                new KeyValuePair<string, string?>("AutomaticRelist:WorkerEnabled", "false"),
                 .. extraConfiguration
             ];
 

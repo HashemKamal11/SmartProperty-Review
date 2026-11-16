@@ -59,6 +59,19 @@ internal static class WriteErrors
         "The listing is not published and open.",
         ErrorType.Conflict);
 
+    // Relisting copies the last approved version of a listing that was published and is now closed (withdrawn, or
+    // closed by an accepted request). A listing that is open, reserved or was never published has nothing to copy.
+    public static readonly Error NotRelistable = new(
+        "listing_submissions.not_relistable",
+        "Only a published listing that is now closed can be relisted.",
+        ErrorType.Conflict);
+
+    // Every availability window of the copied rental has already ended, so the copy would offer no dates at all.
+    public static readonly Error RelistDatesPassed = new(
+        "listing_submissions.relist_dates_passed",
+        "All the rental dates of this listing have passed. Create a new listing with new dates.",
+        ErrorType.Conflict);
+
     public static readonly Error RentalTimeZoneUnavailable = new(
         "listing_submissions.rental_time_zone_unavailable",
         "This property's location has no time zone on record, so a rental cannot be advertised for it yet.",

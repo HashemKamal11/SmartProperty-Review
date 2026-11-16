@@ -80,6 +80,7 @@ builder.Services.AddApplicationHandlers();
 builder.Services.AddPlatformAdminBootstrap(builder.Configuration);
 // After the bootstrap: its hosted service must create the Platform Admin role before the staff role catalogue runs.
 builder.Services.AddAuthorityWorkflow(builder.Configuration);
+builder.Services.AddAutomaticRelisting(builder.Configuration);
 builder.Services.AddDemoMode();
 
 var app = builder.Build();

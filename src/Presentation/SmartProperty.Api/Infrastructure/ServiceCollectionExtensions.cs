@@ -479,6 +479,14 @@ internal static class ServiceCollectionExtensions
         services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw.WithdrawListingCommand,
             SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw.WithdrawListingResult>,
             SmartProperty.Application.Marketplace.ListingSubmissions.Write.Withdraw.WithdrawListingCommandHandler>();
+        // Relisting: the owner's "relist" and the nightly automatic relisting share one ListingRelister.
+        services.AddScoped<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist.ListingRelister>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist.RelistListingCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist.RelistListingResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist.RelistListingCommandHandler>();
+        services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist.SetRelistModeCommand,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist.RelistModeResult>,
+            SmartProperty.Application.Marketplace.ListingSubmissions.Write.Relist.SetRelistModeCommandHandler>();
         services.AddScoped<ICommandHandler<SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ApproveListingSubmissionCommand,
             SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ReviewDecisionResult>,
             SmartProperty.Application.Marketplace.ListingSubmissions.Review.Decide.ApproveListingSubmissionCommandHandler>();

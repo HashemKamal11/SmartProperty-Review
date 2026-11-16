@@ -596,5 +596,10 @@
   "Company name must not exceed {WorkspaceRegistrationRequest.CompanyNameMaxLength} characters.": "يجب ألا يتجاوز اسم الشركة {WorkspaceRegistrationRequest.CompanyNameMaxLength} حرفًا.",
   "Commercial registration number must not contain control characters.": "يجب ألا يحتوي رقم السجل التجاري على أحرف تحكم.",
   "Commercial registration number must not exceed {WorkspaceRegistrationRequest.CommercialRegistrationNumberMaxLength} characters.": "يجب ألا يتجاوز رقم السجل التجاري {WorkspaceRegistrationRequest.CommercialRegistrationNumberMaxLength} حرفًا.",
-  "A rejection reason of 1 to {WorkspaceRegistrationRequest.RejectionReasonMaxLength} characters is required.": "يلزم سبب رفض يتراوح طوله بين 1 و{WorkspaceRegistrationRequest.RejectionReasonMaxLength} حرفًا."
+  "A rejection reason of 1 to {WorkspaceRegistrationRequest.RejectionReasonMaxLength} characters is required.": "يلزم سبب رفض يتراوح طوله بين 1 و{WorkspaceRegistrationRequest.RejectionReasonMaxLength} حرفًا.",
+  "Only a published listing that is now closed can be relisted.": "لا يمكن إعادة نشر إلا إعلان سبق نشره وهو مغلق الآن.",
+  "All the rental dates of this listing have passed. Create a new listing with new dates.": "انقضت جميع مواعيد الإيجار في هذا الإعلان. أنشئ إعلانًا جديدًا بمواعيد جديدة.",
+  "The relist mode is not supported.": "طريقة إعادة النشر غير مدعومة.",
+  "relistMode must be Manual or Automatic.": "يجب أن تكون قيمة relistMode إما Manual أو Automatic.",
+  "mode must be Manual or Automatic.": "يجب أن تكون قيمة mode إما Manual أو Automatic."
 }

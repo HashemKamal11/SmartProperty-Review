@@ -69,6 +69,8 @@ internal static class MarketplaceRouteInventory
         "POST api/marketplace/me/listing-submissions/{submissionId:guid}/submit",
         "POST api/marketplace/me/properties/{propertyId:guid}/listing-drafts",
         "POST api/marketplace/me/listings/{listingId:guid}/withdraw",
+        "POST api/marketplace/me/listings/{listingId:guid}/relist",
+        "PUT api/marketplace/me/listings/{listingId:guid}/relist-mode",
 
         // customer: requests
         "POST api/marketplace/purchase-requests",

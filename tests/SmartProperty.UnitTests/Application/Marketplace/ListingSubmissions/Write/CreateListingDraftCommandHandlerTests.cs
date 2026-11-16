@@ -357,7 +357,7 @@ public sealed class CreateListingDraftCommandHandlerTests
         await Task.CompletedTask;
 
         Assert.Equal(
-            new[] { "PropertyId", "Purpose", "Content" },
+            new[] { "PropertyId", "Purpose", "Content", "Relist" },
             typeof(CreateListingDraftCommand).GetConstructors().Single().GetParameters().Select(parameter => parameter.Name!).ToArray());
     }
 
