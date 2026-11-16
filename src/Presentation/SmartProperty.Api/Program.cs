@@ -65,6 +65,13 @@ builder.Services.AddOpenApi(options =>
         DisplayLanguageOpenApi.AddLanguageParameter(operation);
         return Task.CompletedTask;
     });
+
+    // display* fields are response-only: keep them out of request bodies in Scalar.
+    options.AddSchemaTransformer((schema, context, _) =>
+    {
+        DisplayLanguageOpenApi.MarkDisplayFieldsReadOnly(schema, context.JsonTypeInfo);
+        return Task.CompletedTask;
+    });
 });
 
 builder.Services.AddApiConventions();
