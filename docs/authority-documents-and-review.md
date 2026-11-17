@@ -69,7 +69,7 @@ Legal reviewer and administrator (`/api/admin/marketplace/authority-requests`):
 | `GET /{id}/documents/{documentId}/file`, `.../versions/{versionId}/file` | " | Download (Clean only) |
 | `POST /{id}/legal-approve` `{note?, noConflictOfInterest:true}` | legal reviewer | → `PendingIssuance`. Nothing is published |
 | `POST /{id}/issue` `{validDays?, noConflictOfInterest:true}` | administrator | Final approval (see §5) |
-| `POST /{id}/request-completion` `{reason, noConflictOfInterest:true}` | the stage's reviewer | → `Draft` with `completionRequestReason`; both reviews are done again after resubmission |
+| `POST /{id}/request-completion` `{reason, noConflictOfInterest:true}` | the stage's reviewer | → `Draft` with `completionRequestReason`; after resubmission it returns to the stage that asked: the lawyer's request → `PendingLegalReview`; the admin's → `PendingIssuance` with the legal approval kept |
 | `POST /{id}/reject` `{reason, noConflictOfInterest:true}` | the stage's reviewer | → `Rejected` (final). The owner may start a new request |
 
 Grants: `GET /api/admin/marketplace/authority-grants`, `POST /api/admin/marketplace/authority-grants/{id}/revoke {expectedVersion}`.

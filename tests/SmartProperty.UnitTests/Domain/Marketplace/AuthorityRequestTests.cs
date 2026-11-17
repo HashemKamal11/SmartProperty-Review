@@ -201,7 +201,7 @@ public sealed class AuthorityRequestTests
     }
 
     [Fact]
-    public void ACompletionRequestMakesItADraftAgainAndBothReviewsStartOver()
+    public void AnAdministratorsCompletionRequestKeepsTheLegalApprovalAndComesBackToTheAdministrator()
     {
         var request = Complete();
         request.ApproveLegalReview(Legal, "fine", T0, attestedNoConflict: true, T0.AddHours(1));
@@ -212,16 +212,32 @@ public sealed class AuthorityRequestTests
 
         Assert.Equal(AuthorityRequestStatus.Draft, request.Status);
         Assert.Null(request.SubmittedAt);
-        Assert.Null(request.LegalReviewedByUserId);
-        Assert.Null(request.ReviewedPropertyUpdatedAt);
+        Assert.Equal(Legal, request.LegalReviewedByUserId);
+        Assert.Equal(T0, request.ReviewedPropertyUpdatedAt);
         Assert.Equal("Price looks wrong.", request.CompletionRequestReason);
         Assert.Equal(AuthorityRequestStatus.PendingIssuance, request.CompletionRequestedAtStage);
         Assert.Null(request.RejectionReason);
 
         request.SetListingContent(ListingPurpose.Sale, "{\"title\":\"fixed\"}", T0.AddHours(3));
         request.Submit(T0.AddHours(4));
-        Assert.Equal(AuthorityRequestStatus.PendingLegalReview, request.Status);
+        Assert.Equal(AuthorityRequestStatus.PendingIssuance, request.Status);
         Assert.Equal(AuthorityDecisionKind.AdminCompletionRequested, request.Decisions[2].Kind);
+        Assert.Throws<InvalidOperationException>(() => request.ApproveLegalReview(Legal, null, T0, true, T0.AddHours(5)));
+    }
+
+    [Fact]
+    public void ALegalReviewersCompletionRequestGoesBackToLegalReview()
+    {
+        var request = Complete();
+
+        request.RequestCompletion(Legal, "Upload every page of the deed.", true, T0.AddHours(1));
+
+        Assert.Equal(AuthorityRequestStatus.Draft, request.Status);
+        Assert.Null(request.LegalReviewedByUserId);
+        Assert.Equal(AuthorityRequestStatus.PendingLegalReview, request.CompletionRequestedAtStage);
+
+        request.Submit(T0.AddHours(2));
+        Assert.Equal(AuthorityRequestStatus.PendingLegalReview, request.Status);
     }
 
     [Fact]

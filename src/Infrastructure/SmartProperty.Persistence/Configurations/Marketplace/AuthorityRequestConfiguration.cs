@@ -55,8 +55,8 @@ internal sealed class AuthorityRequestConfiguration : IEntityTypeConfiguration<A
                 + " AND (status IN ('Draft', 'Withdrawn')"
                 + " OR ((NOT requests_sale OR sale_listing_content IS NOT NULL) AND (NOT requests_rent OR rent_listing_content IS NOT NULL)))");
 
-            // Each stage carries exactly its own facts. A request asked to complete is a draft again (no submission, no
-            // legal review); it can be withdrawn from any open stage, so a withdrawn one may carry earlier facts. A
+            // Each stage carries exactly its own facts. A request asked to complete is a draft again (no submission; no
+            // legal review, unless the administrator asked, who gets it back with the legal approval kept); it can be withdrawn from any open stage, so a withdrawn one may carry earlier facts. A
             // rejection is final and keeps the submission it decided on.
             table.HasCheckConstraint(
                 "ck_marketplace_authority_requests_stages",
@@ -68,7 +68,8 @@ internal sealed class AuthorityRequestConfiguration : IEntityTypeConfiguration<A
                 "(legal_reviewed_by_user_id IS NULL) = (legal_reviewed_at IS NULL)"
                 + " AND (legal_reviewed_by_user_id IS NULL) = (reviewed_property_updated_at IS NULL)"
                 + " AND (status NOT IN ('PendingIssuance', 'Approved') OR legal_reviewed_by_user_id IS NOT NULL)"
-                + " AND (status NOT IN ('Draft', 'PendingLegalReview') OR legal_reviewed_by_user_id IS NULL)");
+                + " AND (status <> 'PendingLegalReview' OR legal_reviewed_by_user_id IS NULL)"
+                + " AND (status <> 'Draft' OR legal_reviewed_by_user_id IS NULL OR completion_requested_at_stage = 'PendingIssuance')");
             table.HasCheckConstraint(
                 "ck_marketplace_authority_requests_outcomes",
                 "(status = 'Approved') = (issued_by_user_id IS NOT NULL AND issued_at IS NOT NULL AND grant_valid_until IS NOT NULL)"

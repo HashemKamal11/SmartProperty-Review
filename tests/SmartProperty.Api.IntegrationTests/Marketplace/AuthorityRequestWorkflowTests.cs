@@ -317,7 +317,7 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
     }
 
     [Fact]
-    public async Task TheLawyerCanAskForCompletionAndTheAdminTooAndBothReviewsStartOver()
+    public async Task TheLawyerCanAskForCompletionAndTheAdminTooAndEachGetsTheRequestBack()
     {
         var staff = await StaffAsync();
         var world = await SeedAsync();
@@ -344,9 +344,9 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
         Assert.Equal("authority_requests.document_locked_by_approval", await CodeAsync(await owner.DeleteAsync($"{OwnerRoute}/{id}/documents/{deedId}")));
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Sale", SaleContent(4_000_000m))).StatusCode);
 
-        // Resubmitted: back to the lawyer, never straight to the administrator.
-        Assert.Equal("PendingLegalReview", (await ReadAsync(await owner.PostAsync($"{OwnerRoute}/{id}/submit", null))).GetProperty("status").GetString());
-        Assert.Equal("authority_requests.invalid_state", await CodeAsync(await admin.PostAsJsonAsync($"{StaffRoute}/{id}/issue", new { noConflictOfInterest = true })));
+        // Resubmitted: straight back to the administrator; the lawyer's approval still stands.
+        Assert.Equal("PendingIssuance", (await ReadAsync(await owner.PostAsync($"{OwnerRoute}/{id}/submit", null))).GetProperty("status").GetString());
+        Assert.Equal("authority_requests.invalid_state", await CodeAsync(await lawyer.PostAsJsonAsync($"{StaffRoute}/{id}/legal-approve", Attested())));
 
         var history = await ReadAsync(await admin.GetAsync($"{StaffRoute}/{id}"));
         Assert.Equal(

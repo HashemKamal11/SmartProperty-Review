@@ -544,7 +544,8 @@ public sealed class AuthorityRequest
         EnsureStatus(AuthorityRequestStatus.Draft, "Only a draft request can be submitted.");
         EnsureComplete();
 
-        Status = AuthorityRequestStatus.PendingLegalReview;
+        // A request the administrator sent back keeps its legal approval, so it returns to the administrator.
+        Status = LegalReviewedByUserId is null ? AuthorityRequestStatus.PendingLegalReview : AuthorityRequestStatus.PendingIssuance;
         SubmittedAt = at;
         Touch(at);
         Record(AuthorityDecisionKind.Submitted, RequesterUserId, null, attestedNoConflict: false, at);
@@ -586,8 +587,9 @@ public sealed class AuthorityRequest
     }
 
     /// <summary>
-    /// Sends the request back to the requester as a draft, with what to complete. Both reviews are done again after
-    /// the next submission.
+    /// Sends the request back to the requester as a draft, with what to complete. Asked by the legal reviewer, the
+    /// next submission goes to legal review again; asked by the administrator, the legal approval is kept and the next
+    /// submission goes straight back to the administrator.
     /// </summary>
     public void RequestCompletion(Guid reviewerUserId, string reason, bool attestedNoConflict, DateTimeOffset at)
     {
@@ -601,10 +603,15 @@ public sealed class AuthorityRequest
         CompletionRequestedAtStage = stage;
         Status = AuthorityRequestStatus.Draft;
         SubmittedAt = null;
-        LegalReviewedByUserId = null;
-        LegalReviewedAt = null;
-        LegalReviewNote = null;
-        ReviewedPropertyUpdatedAt = null;
+
+        if (stage == AuthorityRequestStatus.PendingLegalReview)
+        {
+            LegalReviewedByUserId = null;
+            LegalReviewedAt = null;
+            LegalReviewNote = null;
+            ReviewedPropertyUpdatedAt = null;
+        }
+
         Touch(at);
         Record(
             stage == AuthorityRequestStatus.PendingLegalReview

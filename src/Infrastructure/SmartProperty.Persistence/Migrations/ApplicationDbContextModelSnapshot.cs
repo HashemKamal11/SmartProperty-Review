@@ -711,7 +711,7 @@ namespace SmartProperty.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_marketplace_authority_requests_kind", "(kind = 'Listing' AND previous_owner_user_id IS NULL AND sale_commitment_id IS NULL) OR (kind = 'OwnershipTransfer' AND (previous_owner_user_id IS NULL OR previous_owner_user_id <> requester_user_id))");
 
-                            t.HasCheckConstraint("ck_marketplace_authority_requests_legal_review", "(legal_reviewed_by_user_id IS NULL) = (legal_reviewed_at IS NULL) AND (legal_reviewed_by_user_id IS NULL) = (reviewed_property_updated_at IS NULL) AND (status NOT IN ('PendingIssuance', 'Approved') OR legal_reviewed_by_user_id IS NOT NULL) AND (status NOT IN ('Draft', 'PendingLegalReview') OR legal_reviewed_by_user_id IS NULL)");
+                            t.HasCheckConstraint("ck_marketplace_authority_requests_legal_review", "(legal_reviewed_by_user_id IS NULL) = (legal_reviewed_at IS NULL) AND (legal_reviewed_by_user_id IS NULL) = (reviewed_property_updated_at IS NULL) AND (status NOT IN ('PendingIssuance', 'Approved') OR legal_reviewed_by_user_id IS NOT NULL) AND (status <> 'PendingLegalReview' OR legal_reviewed_by_user_id IS NULL) AND (status <> 'Draft' OR legal_reviewed_by_user_id IS NULL OR completion_requested_at_stage = 'PendingIssuance')");
 
                             t.HasCheckConstraint("ck_marketplace_authority_requests_listings", "(requests_sale OR sale_listing_content IS NULL) AND (requests_rent OR rent_listing_content IS NULL) AND (status IN ('Draft', 'Withdrawn') OR ((NOT requests_sale OR sale_listing_content IS NOT NULL) AND (NOT requests_rent OR rent_listing_content IS NOT NULL)))");
 
