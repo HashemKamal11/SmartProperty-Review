@@ -23,7 +23,11 @@ public sealed class PropertyReadOpenApiTests(ApiPostgreSqlFixture fixture)
 
         var list = paths.GetProperty("/api/properties").GetProperty("get");
         Assert.Equal(
-            ["areaId", "countryCode", "district", "lang", "maxBedrooms", "minBedrooms", "minMatchPercentage", "page", "pageSize", "q", "sort", "status", "type"],
+            [
+                "areaId", "cityId", "compoundId", "countryCode", "district", "finishingStatus", "furnished", "lang",
+                "maxAreaSqm", "maxBathrooms", "maxBedrooms", "minAreaSqm", "minBathrooms", "minBedrooms",
+                "minMatchPercentage", "page", "pageSize", "q", "sort", "status", "type"
+            ],
             list.GetProperty("parameters")
                 .EnumerateArray()
                 .Select(parameter => parameter.GetProperty("name").GetString()!)

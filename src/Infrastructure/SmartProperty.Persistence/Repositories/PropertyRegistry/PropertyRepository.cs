@@ -161,21 +161,73 @@ internal sealed class PropertyRepository(ApplicationDbContext dbContext) : IProp
                 || EF.Functions.ILike(property.Address.Region ?? "", pattern, LikeEscape)
                 || EF.Functions.ILike(property.Address.District ?? "", pattern, LikeEscape)
                 || EF.Functions.ILike(property.Address.AddressLine ?? "", pattern, LikeEscape)
+                // The place names in both languages: area, its city and country, and the compound.
                 || (property.Area != null
                     && (EF.Functions.ILike(property.Area.NameEn, pattern, LikeEscape)
-                        || EF.Functions.ILike(property.Area.NameAr, pattern, LikeEscape))));
+                        || EF.Functions.ILike(property.Area.NameAr, pattern, LikeEscape)
+                        || EF.Functions.ILike(property.Area.City.NameEn, pattern, LikeEscape)
+                        || EF.Functions.ILike(property.Area.City.NameAr, pattern, LikeEscape)
+                        || EF.Functions.ILike(property.Area.City.Country.NameEn, pattern, LikeEscape)
+                        || EF.Functions.ILike(property.Area.City.Country.NameAr, pattern, LikeEscape)))
+                || (property.Compound != null
+                    && (EF.Functions.ILike(property.Compound.NameEn, pattern, LikeEscape)
+                        || EF.Functions.ILike(property.Compound.NameAr, pattern, LikeEscape))));
         }
 
         if (filter.District is { } district)
         {
+            // The district of a placed property is its area, so it matches the area's current name in either
+            // language; the copy saved on the address can be stale. A property without an area keeps its own text.
             var lowered = district.ToLowerInvariant();
-            filtered = filtered.Where(property => property.Address.District != null
-                && property.Address.District.ToLower() == lowered);
+            filtered = filtered.Where(property => property.Area != null
+                ? property.Area.NameEn.ToLower() == lowered || property.Area.NameAr.ToLower() == lowered
+                : property.Address.District != null && property.Address.District.ToLower() == lowered);
         }
 
         if (filter.AreaId is { } areaId)
         {
             filtered = filtered.Where(property => property.AreaId == areaId);
+        }
+
+        if (filter.CityId is { } cityId)
+        {
+            filtered = filtered.Where(property => property.Area != null && property.Area.CityId == cityId);
+        }
+
+        if (filter.CompoundId is { } compoundId)
+        {
+            filtered = filtered.Where(property => property.CompoundId == compoundId);
+        }
+
+        if (filter.MinBathrooms is { } minBathrooms)
+        {
+            filtered = filtered.Where(property => property.Bathrooms >= minBathrooms);
+        }
+
+        if (filter.MaxBathrooms is { } maxBathrooms)
+        {
+            filtered = filtered.Where(property => property.Bathrooms <= maxBathrooms);
+        }
+
+        if (filter.Furnished is { } furnished)
+        {
+            filtered = filtered.Where(property => property.Physical.Furnished == furnished);
+        }
+
+        if (filter.FinishingStatuses is { Count: > 0 } finishingStatuses)
+        {
+            var wantedFinishing = finishingStatuses.Select(status => (FinishingStatus?)status).ToArray();
+            filtered = filtered.Where(property => wantedFinishing.Contains(property.FinishingStatus));
+        }
+
+        if (filter.MinAreaSqm is { } minAreaSqm)
+        {
+            filtered = filtered.Where(property => property.Physical.AreaSqm >= minAreaSqm);
+        }
+
+        if (filter.MaxAreaSqm is { } maxAreaSqm)
+        {
+            filtered = filtered.Where(property => property.Physical.AreaSqm <= maxAreaSqm);
         }
 
         if (filter.MinBedrooms is { } minBedrooms)

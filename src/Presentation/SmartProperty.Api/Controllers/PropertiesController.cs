@@ -113,26 +113,30 @@ public sealed class PropertiesController : ControllerBase
     }
 
     /// <summary>
-    /// One page of the registry. Without a <paramref name="status"/> only Active properties are listed; send
-    /// <c>status=Archived</c> to list archived ones. The default order is <c>Relevance</c>.
+    /// One page of the registry. Without a <paramref name="status"/> every status is listed (Active and Archived
+    /// together) and each item carries its <c>status</c>; send <c>status=Active</c> or <c>status=Archived</c> for one.
+    /// The default order is <c>Relevance</c>.
     /// </summary>
     /// <remarks>
     /// This lists physical properties. Prices, the transaction type and availability belong to marketplace
     /// listings, so they are filtered and sorted in <c>GET /api/public/marketplace/listings</c>, not here.
-    /// <c>q</c> is free text (at most 100 characters and 5 words): every word must appear in the city, region,
-    /// district, address line or area name. <c>sort</c> is <c>Relevance</c> (default: the signed-in user's latest
-    /// stored match percentage first, then the better text match, otherwise newest) or <c>Newest</c>.
+    /// <c>q</c> is free text (at most 100 characters and 5 words): every word must appear in the address (city,
+    /// region, district, address line) or in the English or Arabic name of the area, city, country or compound.
+    /// <c>sort</c> is <c>Relevance</c> (default: the signed-in user's latest stored match percentage first, then the
+    /// better text match, otherwise newest) or <c>Newest</c>.
     /// Filters (all optional, all combined with AND):
-    /// <c>type</c> may be repeated (<c>?type=Villa&amp;type=Apartment</c>) and matches any of them;
-    /// <c>district</c> (case-insensitive) and <c>areaId</c> restrict the location;
-    /// <c>minBedrooms</c>/<c>maxBedrooms</c> bound the
-    /// bedroom count (send only <c>minBedrooms=5</c> for "5+"); <c>minMatchPercentage</c> (0–100) keeps properties
-    /// whose latest stored match for the signed-in user is at least that value, and requires a signed-in user.
+    /// <c>type</c> and <c>finishingStatus</c> may be repeated (<c>?type=Villa&amp;type=Apartment</c>) or
+    /// comma-separated (<c>?type=Villa,Apartment</c>), by name (any case) or number, and match any of them;
+    /// <c>district</c> is the area's English or Arabic name (case-insensitive); <c>areaId</c>, <c>cityId</c> and
+    /// <c>compoundId</c> restrict the place; <c>minBedrooms</c>/<c>maxBedrooms</c>,
+    /// <c>minBathrooms</c>/<c>maxBathrooms</c> and <c>minAreaSqm</c>/<c>maxAreaSqm</c> are inclusive bounds (send only
+    /// the minimum for "5+"); <c>furnished</c> is <c>true</c> or <c>false</c>; <c>minMatchPercentage</c> (0–100) keeps
+    /// properties whose latest stored match for the signed-in user is at least that value.
     /// When the caller is signed in, each item also carries <c>matchPercentage</c> (their latest match, omitted when
     /// there is none).
     /// An unparseable enum, number, id or page value is a request-shape failure answered by the standard
-    /// <c>400 request.malformed</c>; an invalid combination (a bad country code, an inverted bedroom range,
-    /// a match filter without a signed-in user) is a <c>422 validation.failed</c> from the use case.
+    /// <c>400 request.malformed</c>; an invalid combination (a bad country code, an inverted range, an empty id)
+    /// is a <c>422 validation.failed</c> from the use case.
     /// </remarks>
     [HttpGet]
     [Authorize]
@@ -145,7 +149,9 @@ public sealed class PropertiesController : ControllerBase
         [FromServices] ICurrentUser currentUser,
         [FromServices] PropertyReadAccess access,
         CancellationToken cancellationToken,
-        [FromQuery(Name = "type")] PropertyType[]? types = null,
+        // Read as text and parsed here: the framework's enum binder turns "Villa,Apartment" into the bitwise OR of
+        // the two numbers, which is a third, unrelated type.
+        [FromQuery(Name = "type")] string[]? types = null,
         [FromQuery] PropertyStatus? status = null,
         [FromQuery] string? countryCode = null,
         [FromQuery] int? page = null,
@@ -156,18 +162,32 @@ public sealed class PropertiesController : ControllerBase
         [FromQuery] int? maxBedrooms = null,
         [FromQuery] decimal? minMatchPercentage = null,
         [FromQuery(Name = "q")] string? search = null,
-        [FromQuery] PropertyListSortOrder? sort = null)
+        [FromQuery] PropertyListSortOrder? sort = null,
+        [FromQuery] Guid? cityId = null,
+        [FromQuery] Guid? compoundId = null,
+        [FromQuery] int? minBathrooms = null,
+        [FromQuery] int? maxBathrooms = null,
+        [FromQuery] bool? furnished = null,
+        [FromQuery(Name = "finishingStatus")] string[]? finishingStatuses = null,
+        [FromQuery] decimal? minAreaSqm = null,
+        [FromQuery] decimal? maxAreaSqm = null)
     {
         if (currentUser.UserId is not { } readerId)
         {
             return Unauthorized(ApiErrorResponseFactory.Unauthorized(HttpContext));
         }
 
+        if (!TryParseEnumList<PropertyType>(types, out var parsedTypes)
+            || !TryParseEnumList<FinishingStatus>(finishingStatuses, out var parsedFinishing))
+        {
+            return BadRequest(ApiErrorResponseFactory.MalformedRequest(HttpContext));
+        }
+
         // An administrator lists every property; anyone else only the ones they registered.
         var ownerScope = await access.OwnerScopeAsync(readerId, cancellationToken);
 
         var query = new GetPropertiesQuery(
-            types,
+            parsedTypes,
             status,
             countryCode,
             page,
@@ -180,7 +200,15 @@ public sealed class PropertiesController : ControllerBase
             currentUser.UserId,
             search,
             sort,
-            ownerScope);
+            ownerScope,
+            cityId,
+            compoundId,
+            minBathrooms,
+            maxBathrooms,
+            furnished,
+            parsedFinishing,
+            minAreaSqm,
+            maxAreaSqm);
 
         var result = await handler.Handle(query, cancellationToken);
 
@@ -374,6 +402,42 @@ public sealed class PropertiesController : ControllerBase
         return (views ?? [])
             .Select(view => new ViewResponse(view.Code, view.NameAr, view.NameEn))
             .ToArray();
+    }
+
+    /// <summary>
+    /// Parses repeated and/or comma-separated enum values, each a defined name (any case) or number. False when any
+    /// value is not one defined member; "Villa,Apartment" is two values, never their bitwise combination.
+    /// </summary>
+    private static bool TryParseEnumList<TEnum>(string[]? values, out IReadOnlyList<TEnum>? parsed)
+        where TEnum : struct, Enum
+    {
+        parsed = null;
+
+        if (values is null || values.Length == 0)
+        {
+            return true;
+        }
+
+        var result = new List<TEnum>();
+
+        foreach (var part in values.SelectMany(value => (value ?? "").Split(',')).Select(part => part.Trim()))
+        {
+            if (part.Length == 0)
+            {
+                continue;
+            }
+
+            if (!Enum.TryParse<TEnum>(part, ignoreCase: true, out var member) || !Enum.IsDefined(member))
+            {
+                return false;
+            }
+
+            result.Add(member);
+        }
+
+        parsed = result.Count == 0 ? null : result;
+
+        return true;
     }
 
     private static PropertyPhysicalResponse ToPhysicalResponse(PropertyPhysicalDetails? physical)

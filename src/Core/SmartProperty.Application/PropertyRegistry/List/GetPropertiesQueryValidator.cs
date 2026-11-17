@@ -88,6 +88,45 @@ internal static class GetPropertiesQueryValidator
             return GetPropertiesErrors.ValidationFailed("The minimum bedrooms must not exceed the maximum bedrooms.");
         }
 
+        if (query.CityId == Guid.Empty)
+        {
+            return GetPropertiesErrors.ValidationFailed("City id must not be empty.");
+        }
+
+        if (query.CompoundId == Guid.Empty)
+        {
+            return GetPropertiesErrors.ValidationFailed("Compound id must not be empty.");
+        }
+
+        if (query.MinBathrooms is < 0 or > Property.MaxRoomCount || query.MaxBathrooms is < 0 or > Property.MaxRoomCount)
+        {
+            return GetPropertiesErrors.ValidationFailed(
+                $"Bathrooms must be between 0 and {Property.MaxRoomCount}.");
+        }
+
+        if (query.MinBathrooms is { } minBathrooms && query.MaxBathrooms is { } maxBathrooms && minBathrooms > maxBathrooms)
+        {
+            return GetPropertiesErrors.ValidationFailed("The minimum bathrooms must not exceed the maximum bathrooms.");
+        }
+
+        var finishingStatuses = query.FinishingStatuses?.Distinct().ToArray() ?? [];
+        if (finishingStatuses.Any(status => !Enum.IsDefined(status)))
+        {
+            return GetPropertiesErrors.ValidationFailed("The finishing status is not supported.");
+        }
+
+        if (query.MinAreaSqm is < 0m or > PropertyPhysicalInfo.MaxAreaSqm
+            || query.MaxAreaSqm is < 0m or > PropertyPhysicalInfo.MaxAreaSqm)
+        {
+            return GetPropertiesErrors.ValidationFailed(
+                $"Area must be between 0 and {PropertyPhysicalInfo.MaxAreaSqm} square metres.");
+        }
+
+        if (query.MinAreaSqm is { } minArea && query.MaxAreaSqm is { } maxArea && minArea > maxArea)
+        {
+            return GetPropertiesErrors.ValidationFailed("The minimum area must not exceed the maximum area.");
+        }
+
         if (query.MinMatchPercentage is { } minMatch)
         {
             if (minMatch is < 0m or > 100m)
@@ -114,7 +153,15 @@ internal static class GetPropertiesQueryValidator
             query.MatchUserId is { } userId && userId != Guid.Empty ? userId : null,
             searchTerms,
             query.Sort ?? PropertyListSortOrder.Relevance,
-            query.OwnerUserId is { } owner && owner != Guid.Empty ? owner : null);
+            query.OwnerUserId is { } owner && owner != Guid.Empty ? owner : null,
+            query.CityId,
+            query.CompoundId,
+            query.MinBathrooms,
+            query.MaxBathrooms,
+            query.Furnished,
+            finishingStatuses,
+            query.MinAreaSqm,
+            query.MaxAreaSqm);
 
         return null;
     }

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Application.PropertyRegistry.List;
 using SmartProperty.Domain.Identity;
+using SmartProperty.Domain.Locations;
 using SmartProperty.Domain.PropertyMatching;
 using SmartProperty.Domain.PropertyRegistry;
 using SmartProperty.Persistence.IntegrationTests.Infrastructure;
@@ -209,19 +210,138 @@ public sealed class PropertySearchFilterRepositoryTests(PostgreSqlFixture fixtur
         Assert.Equal([location.Id, address.Id], page.Items.Select(i => i.Id));
     }
 
+    [Fact]
+    public async Task DistrictMatchesTheAreasCurrentNameInEitherLanguageNotAStaleCopy()
+    {
+        var place = NewPlace();
+        // The address keeps an old district text; the area is the truth.
+        var placed = NewPlacedProperty(place.Area, 1, district: "Old Shorouk");
+        var unplaced = NewProperty(PropertyType.Villa, 2, district: "Hittin");
+        await SeedPlacedAsync(place, placed, unplaced);
+
+        Assert.Equal([placed.Id], (await SearchAsync(new PropertyListFilter(District: "shorouk city"))).Items.Select(i => i.Id));
+        Assert.Equal([placed.Id], (await SearchAsync(new PropertyListFilter(District: "مدينة الشروق"))).Items.Select(i => i.Id));
+        Assert.Empty((await SearchAsync(new PropertyListFilter(District: "Old Shorouk"))).Items);
+        // A property without an area still matches its own district text.
+        Assert.Equal([unplaced.Id], (await SearchAsync(new PropertyListFilter(District: "hittin"))).Items.Select(i => i.Id));
+    }
+
+    [Fact]
+    public async Task TextSearchCoversTheCityCountryAndCompoundNamesInBothLanguages()
+    {
+        var place = NewPlace();
+        var inCompound = NewPlacedProperty(place.Area, 1, compound: place.Compound);
+        var inAreaOnly = NewPlacedProperty(place.Area, 2);
+        var elsewhere = NewProperty(PropertyType.Villa, 3, district: "Hittin");
+        await SeedPlacedAsync(place, inCompound, inAreaOnly, elsewhere);
+
+        foreach (var term in new[] { "القاهرة", "cairo", "مصر", "egypt" })
+        {
+            Assert.Equal(
+                [inAreaOnly.Id, inCompound.Id],
+                (await SearchAsync(new PropertyListFilter(SearchTerms: [term]))).Items.Select(i => i.Id));
+        }
+
+        Assert.Equal([inCompound.Id], (await SearchAsync(new PropertyListFilter(SearchTerms: ["الياسمين"]))).Items.Select(i => i.Id));
+        Assert.Equal([inCompound.Id], (await SearchAsync(new PropertyListFilter(SearchTerms: ["jasmine"]))).Items.Select(i => i.Id));
+    }
+
+    [Fact]
+    public async Task CityAndCompoundRestrictThePlace()
+    {
+        var place = NewPlace();
+        var otherPlace = NewPlace();
+        var inCompound = NewPlacedProperty(place.Area, 1, compound: place.Compound);
+        var inCity = NewPlacedProperty(place.Area, 2);
+        var otherCity = NewPlacedProperty(otherPlace.Area, 3);
+        await SeedPlacedAsync(place, inCompound, inCity);
+        await SeedPlacedAsync(otherPlace, otherCity);
+
+        Assert.Equal(
+            [inCity.Id, inCompound.Id],
+            (await SearchAsync(new PropertyListFilter(CityId: place.City.Id))).Items.Select(i => i.Id));
+        Assert.Equal([inCompound.Id], (await SearchAsync(new PropertyListFilter(CompoundId: place.Compound.Id))).Items.Select(i => i.Id));
+        Assert.Empty((await SearchAsync(new PropertyListFilter(CityId: Guid.NewGuid()))).Items);
+    }
+
+    [Fact]
+    public async Task BathroomsFurnishedFinishingAndAreaFilter()
+    {
+        var bigFurnished = NewProperty(
+            PropertyType.Villa, 1, bathrooms: 3, finishing: FinishingStatus.LuxuryFinished,
+            physical: new PropertyPhysicalInfo(areaSqm: 250m, furnished: true));
+        var smallUnfurnished = NewProperty(
+            PropertyType.Villa, 2, bathrooms: 1, finishing: FinishingStatus.SemiFinished,
+            physical: new PropertyPhysicalInfo(areaSqm: 80m, furnished: false));
+        var unknown = NewProperty(PropertyType.Villa, 3);
+        await SeedAsync(bigFurnished, smallUnfurnished, unknown);
+
+        Assert.Equal([bigFurnished.Id], (await SearchAsync(new PropertyListFilter(MinBathrooms: 2))).Items.Select(i => i.Id));
+        Assert.Equal([smallUnfurnished.Id], (await SearchAsync(new PropertyListFilter(MaxBathrooms: 1))).Items.Select(i => i.Id));
+        Assert.Equal([bigFurnished.Id], (await SearchAsync(new PropertyListFilter(Furnished: true))).Items.Select(i => i.Id));
+        Assert.Equal([smallUnfurnished.Id], (await SearchAsync(new PropertyListFilter(Furnished: false))).Items.Select(i => i.Id));
+        Assert.Equal(
+            [smallUnfurnished.Id, bigFurnished.Id],
+            (await SearchAsync(new PropertyListFilter(
+                FinishingStatuses: [FinishingStatus.LuxuryFinished, FinishingStatus.SemiFinished]))).Items.Select(i => i.Id));
+        Assert.Equal(
+            [bigFurnished.Id],
+            (await SearchAsync(new PropertyListFilter(MinAreaSqm: 100m, MaxAreaSqm: 250m))).Items.Select(i => i.Id));
+        Assert.Equal([smallUnfurnished.Id], (await SearchAsync(new PropertyListFilter(MaxAreaSqm: 80m))).Items.Select(i => i.Id));
+    }
+
+    private sealed record Place(Country Country, City City, Area Area, Compound Compound);
+
+    private static Place NewPlace()
+    {
+        var aiId = Random.Shared.Next(1_000, 1_000_000_000);
+        var country = new Country(Guid.NewGuid(), aiId, "Egypt", "مصر");
+        var city = new City(Guid.NewGuid(), aiId, country, "Cairo", "القاهرة");
+        var area = new Area(Guid.NewGuid(), aiId, city, "Shorouk City", "مدينة الشروق");
+        var compound = new Compound(Guid.NewGuid(), aiId, area, "Jasmine Gardens", "حدائق الياسمين");
+
+        return new Place(country, city, area, compound);
+    }
+
+    private static Property NewPlacedProperty(Area area, int minutesAfterBase, string? district = null, Compound? compound = null)
+    {
+        return new Property(
+            Guid.NewGuid(),
+            PropertyType.Villa,
+            new PropertyAddress("EG", city: area.City.NameEn, district: district ?? area.NameEn),
+            BaseTime.AddMinutes(minutesAfterBase),
+            area: area,
+            compound: compound);
+    }
+
+    /// <summary>Saves the place and the properties in one context, so the place is inserted once.</summary>
+    private async Task SeedPlacedAsync(Place place, params Property[] properties)
+    {
+        await using var context = Host.CreateVerificationContext();
+        context.Compounds.Add(place.Compound);
+        context.Properties.AddRange(properties);
+        await context.SaveChangesAsync();
+    }
+
     private static Property NewProperty(
         PropertyType type,
         int minutesAfterBase,
         string? district = null,
         int? bedrooms = null,
-        string? addressLine = null)
+        string? addressLine = null,
+        int? bathrooms = null,
+        FinishingStatus? finishing = null,
+        PropertyPhysicalInfo? physical = null)
     {
         return new Property(
             Guid.NewGuid(),
             type,
             new PropertyAddress("SA", district: district, addressLine: addressLine),
             BaseTime.AddMinutes(minutesAfterBase),
-            bedrooms: bedrooms);
+            bedrooms: bedrooms,
+            bathrooms: bathrooms,
+            finishingStatus: finishing,
+            physical: physical);
     }
 
     private async Task SeedAsync(params Property[] properties)
