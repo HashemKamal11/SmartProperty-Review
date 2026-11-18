@@ -143,6 +143,59 @@ public sealed class PublicListingFilterPersistenceTests(PostgreSqlFixture fixtur
         await Assert.ThrowsAsync<ArgumentException>(() => repository.SearchAsync(Criteria(sort: PublicListingSortOrder.Match), 0, 10));
     }
 
+    [Fact]
+    public async Task TheDetailPageCarriesThePropertysPublicFactsAndItsOtherListing()
+    {
+        var world = await SeedAsync([ListingPurpose.Sale, ListingPurpose.Rent]);
+        var sale = await PublishAsync(world, ListingPurpose.Sale);
+        var rent = await PublishAsync(world, ListingPurpose.Rent);
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        await ExecuteAsync(
+            "UPDATE registry.properties SET built_date = '2024-03-01', finishing_status = 'LuxuryFinished', floor = 2, " +
+            $"furnished = true, latitude = 24.774265, longitude = 46.738586, address_line = '12 Secret Street' WHERE id = '{world.PropertyId}'");
+        await AddPhotoAsync(world.PropertyId, second, sortOrder: 2);
+        await AddPhotoAsync(world.PropertyId, first, sortOrder: 1);
+        // The amenity and view catalogues are seeded by migrations only, so the test adds the two it uses.
+        var amenity = $"Pool{Guid.NewGuid():N}"[..20];
+        var view = $"Garden{Guid.NewGuid():N}"[..20];
+        await ExecuteAsync(
+            "INSERT INTO registry.amenities (id, code, name_ar, name_en, sort_order, ai_code) " +
+            $"VALUES ('{Guid.NewGuid()}', '{amenity}', 'مسبح خاص', 'Private pool', 1, '{amenity}')");
+        await ExecuteAsync(
+            $"INSERT INTO registry.views (id, code, name_ar, name_en, sort_order) VALUES ('{Guid.NewGuid()}', '{view}', 'حديقة', 'Garden', 1)");
+        await ExecuteAsync(
+            $"INSERT INTO registry.property_amenities (property_id, amenity_id) SELECT '{world.PropertyId}', id FROM registry.amenities WHERE code = '{amenity}'");
+        await ExecuteAsync(
+            $"INSERT INTO registry.property_views (property_id, view_id) SELECT '{world.PropertyId}', id FROM registry.views WHERE code = '{view}'");
+
+        await using var scope = Scope();
+        var handler = new SmartProperty.Application.Marketplace.PublicListings.GetById.GetPublicListingByIdQueryHandler(
+            scope.Get<IPublicListingReadRepository>(), scope.Get<IPropertyRepository>(), scope.Get<IPropertyListingsLookup>());
+
+        var result = await handler.Handle(new SmartProperty.Application.Marketplace.PublicListings.GetById.GetPublicListingByIdQuery(sale.ListingId));
+
+        Assert.True(result.IsSuccess);
+        var facts = result.Value.Property!;
+        Assert.Equal([first, second], facts.ImageIds);
+        Assert.Equal("مسبح خاص", Assert.Single(facts.Amenities).NameAr);
+        Assert.Equal(view, Assert.Single(facts.Views).Code);
+        Assert.Equal(new DateOnly(2024, 3, 1), facts.BuiltDate);
+        Assert.Equal(FinishingStatus.LuxuryFinished, facts.Finishing);
+        Assert.Equal(2, facts.Floor);
+        Assert.True(facts.Furnished);
+        Assert.Equal("Maadi", facts.Place!.Area.NameEn);
+        Assert.Equal("المعادي", facts.Place.Area.NameAr);
+        Assert.Equal("القاهرة", facts.Place.City.NameAr);
+        // Rounded to about 1 km; the exact point and the street line never reach the public model.
+        Assert.Equal(new PublicMapPoint(24.77m, 46.74m), facts.ApproximateLocation);
+        Assert.DoesNotContain("Secret", result.Value.ToString());
+        // The property's Rent listing is offered next to the Sale one, and the page's own listing is not repeated.
+        var other = Assert.Single(result.Value.OtherListings!);
+        Assert.Equal(rent.ListingId, other.ListingId);
+        Assert.Equal(ListingPurpose.Rent, other.Purpose);
+    }
+
     // ---- helpers
 
     private async Task<ListingDraftResult> PublishAsync(World world, ListingPurpose purpose)

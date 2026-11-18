@@ -130,6 +130,10 @@ at once.
   `district` (the snapshot's district, or the area's current English/Arabic name), `minBedrooms`/`maxBedrooms`.
 - Each listing carries `propertyId` (public since 2026-11-17: favourites, sharing and photo URLs use it),
   `coverImageUrl`, `bedrooms`, `bathrooms` and `areaSqm`, read live from the property.
+- The detail adds `pricePerSqm` (Sale with an area), `property` (every photo URL, amenities and views in both languages,
+  build date and year, `finishing`, floor, furnished, the place tree with ids, and `approximateLocation` rounded to 2
+  decimals, about 1 km; never the address line, postal code or exact point) and `otherListings` (the property's other
+  visible listing, for a Sale/Rent switch). All read live from the registry.
 - The sign-in is optional. With a valid token each listing also carries the viewer's latest `matchPercentage` and
   `isFavorite`, and `minMatchPercentage` and `sort=Match` (best match first, then newest) become available; without one they
   are a `422`.

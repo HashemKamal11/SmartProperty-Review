@@ -72,8 +72,48 @@ internal static class PublicListingMapper
             listing.Bathrooms,
             listing.AreaSqm,
             listing.MatchPercentage,
-            listing.IsFavorite);
+            listing.IsFavorite,
+            PricePerSqm(listing),
+            ToFacts(listing.PropertyId, listing.Property),
+            listing.OtherListings?.Select(ToSummaryResponse).ToArray());
     }
+
+    /// <summary>A sale price divided by the area, rounded to whole units; null for a rent or without an area.</summary>
+    private static decimal? PricePerSqm(PublicListingDetail listing) =>
+        listing.Purpose == ListingPurpose.Sale && listing.AreaSqm is > 0m and { } area
+            ? Math.Round(listing.Price.Amount / area, 0, MidpointRounding.AwayFromZero)
+            : null;
+
+    private static PublicPropertyFactsResponse? ToFacts(Guid propertyId, PublicPropertyFacts? facts)
+    {
+        if (facts is null || propertyId == Guid.Empty)
+        {
+            return null;
+        }
+
+        return new PublicPropertyFactsResponse(
+            facts.ImageIds.Select(imageId => SmartProperty.Api.Controllers.PropertyImagesController.UrlOf(propertyId, imageId)).ToArray(),
+            facts.Amenities.Select(item => new PublicNamedItemResponse(item.Code, item.NameAr, item.NameEn)).ToArray(),
+            facts.Views.Select(item => new PublicNamedItemResponse(item.Code, item.NameAr, item.NameEn)).ToArray(),
+            facts.BuiltDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            facts.BuiltDate?.Year,
+            facts.Finishing is { } finishing && Enum.IsDefined(finishing) ? finishing.ToString() : null,
+            facts.Floor,
+            facts.Furnished,
+            facts.Place is { } place
+                ? new PublicPlaceResponse(
+                    ToLevel(place.Country),
+                    ToLevel(place.City),
+                    ToLevel(place.Area),
+                    place.Compound is { } compound ? ToLevel(compound) : null)
+                : null,
+            facts.ApproximateLocation is { } point
+                ? new PublicMapPointResponse(point.Latitude, point.Longitude)
+                : null);
+    }
+
+    private static PublicPlaceLevelResponse ToLevel(PublicPlaceLevel level) =>
+        new(level.Id, RequireText(level.NameEn, "place name"), RequireText(level.NameAr, "place name"));
 
     internal static IReadOnlyList<PublicMoneyResponse>? ToOptions(IReadOnlyList<PublicListingPrice>? options)
     {

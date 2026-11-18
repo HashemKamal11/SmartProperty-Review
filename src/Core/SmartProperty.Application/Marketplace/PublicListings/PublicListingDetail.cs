@@ -25,4 +25,6 @@ public sealed record PublicListingDetail(
     int? Bathrooms = null,
     decimal? AreaSqm = null,
     decimal? MatchPercentage = null,
-    bool? IsFavorite = null);
+    bool? IsFavorite = null,
+    PublicPropertyFacts? Property = null,
+    IReadOnlyList<PublicListingSummary>? OtherListings = null);

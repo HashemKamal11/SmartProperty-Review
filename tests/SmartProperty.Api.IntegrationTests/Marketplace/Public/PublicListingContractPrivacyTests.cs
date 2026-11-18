@@ -24,6 +24,11 @@ public sealed class PublicListingContractPrivacyTests
         typeof(PublicLocationResponse),
         typeof(PublicListingSummaryResponse),
         typeof(PublicListingDetailResponse),
+        typeof(PublicPropertyFactsResponse),
+        typeof(PublicNamedItemResponse),
+        typeof(PublicPlaceLevelResponse),
+        typeof(PublicPlaceResponse),
+        typeof(PublicMapPointResponse),
     ];
 
     // Name fragments that would indicate private, internal or privileged data. Matched case-insensitively against
@@ -58,8 +63,8 @@ public sealed class PublicListingContractPrivacyTests
         "status",
         "addressline",
         "postalcode",
-        "latitude",
-        "longitude",
+        // "latitude" and "longitude" appear only on PublicMapPointResponse, rounded to about 1 km (product decision,
+        // 2026-11-18); TheOnlyMapPointIsTheApproximateLocation pins that.
         "coordinates",
     ];
 
@@ -122,6 +127,11 @@ public sealed class PublicListingContractPrivacyTests
             {
                 Assert.Equal(new[] { "ListingId", "PropertyId" }, guidMembers);
             }
+            else if (type == typeof(PublicPlaceLevelResponse))
+            {
+                // A place id is public reference data: the same ids /api/locations returns.
+                Assert.Equal(new[] { "Id" }, guidMembers);
+            }
             else
             {
                 Assert.Empty(guidMembers);
@@ -151,7 +161,7 @@ public sealed class PublicListingContractPrivacyTests
 
         Assert.True(summary.IsSubsetOf(detail));
         Assert.Equal(
-            new[] { "BlockedRanges", "Description", "RentalTerms" },
+            new[] { "BlockedRanges", "Description", "OtherListings", "PricePerSqm", "Property", "RentalTerms" },
             detail.Except(summary).Select(member => member.Name).Order(StringComparer.Ordinal).ToArray());
     }
 
@@ -320,6 +330,23 @@ public sealed class PublicListingContractPrivacyTests
         Assert.True(root.GetProperty("isFavorite").GetBoolean());
     }
 
+    [Fact]
+    public void TheOnlyMapPointIsTheApproximateLocation()
+    {
+        var located = PublicTypes
+            .SelectMany(type => PropertiesOf(type).Select(property => (type, property.Name)))
+            .Where(member => member.Name.Contains("latitude", StringComparison.OrdinalIgnoreCase)
+                || member.Name.Contains("longitude", StringComparison.OrdinalIgnoreCase))
+            .Select(member => $"{member.type.Name}.{member.Name}")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "PublicMapPointResponse.Latitude", "PublicMapPointResponse.Longitude" }, located);
+        Assert.Equal(
+            typeof(PublicMapPointResponse),
+            typeof(PublicPropertyFactsResponse).GetProperty(nameof(PublicPropertyFactsResponse.ApproximateLocation))!.PropertyType);
+    }
+
     // A Sale listing: its price has no rent period.
     private static PublicListingSummaryResponse SampleSummary()
     {
@@ -363,7 +390,9 @@ public sealed class PublicListingContractPrivacyTests
 
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
         {
-            return PublicTypes.Contains(type.GetGenericArguments()[0]);
+            var element = type.GetGenericArguments()[0];
+
+            return element == typeof(string) || PublicTypes.Contains(element);
         }
 
         return type == typeof(string)

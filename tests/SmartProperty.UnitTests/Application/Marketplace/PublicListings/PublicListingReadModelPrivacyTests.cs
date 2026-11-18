@@ -23,6 +23,11 @@ public sealed class PublicListingReadModelPrivacyTests
         typeof(PublicListingSummary),
         typeof(PublicListingDetail),
         typeof(PublicListingPage),
+        typeof(PublicPropertyFacts),
+        typeof(PublicNamedItem),
+        typeof(PublicPlaceLevel),
+        typeof(PublicPlace),
+        typeof(PublicMapPoint),
     ];
 
     // Name fragments that would indicate private, internal or privileged data. The property id is public since
@@ -56,8 +61,8 @@ public sealed class PublicListingReadModelPrivacyTests
         "status",
         "addressline",
         "postalcode",
-        "latitude",
-        "longitude",
+        // "latitude" and "longitude" appear only on PublicMapPoint, which is rounded to about 1 km (product decision,
+        // 2026-11-18); TheOnlyMapPointIsApproximate pins that.
         "coordinates",
         "storage",
         "concurrency",
@@ -112,6 +117,11 @@ public sealed class PublicListingReadModelPrivacyTests
             {
                 Assert.Equal(new[] { "ListingId", "PropertyId", "CoverImageId" }, guidMembers);
             }
+            else if (type == typeof(PublicPlaceLevel))
+            {
+                // A place id is public reference data: the same ids /api/locations returns.
+                Assert.Equal(new[] { "Id" }, guidMembers);
+            }
             else
             {
                 Assert.Empty(guidMembers);
@@ -127,7 +137,7 @@ public sealed class PublicListingReadModelPrivacyTests
 
         Assert.True(summary.IsSubsetOf(detail));
         Assert.Equal(
-            new[] { "BlockedRanges", "Description", "RentalTerms" },
+            new[] { "BlockedRanges", "Description", "OtherListings", "Property", "RentalTerms" },
             detail.Except(summary).Select(member => member.Name).Order(StringComparer.Ordinal).ToArray());
     }
 
@@ -210,6 +220,25 @@ public sealed class PublicListingReadModelPrivacyTests
         Assert.Equal(new[] { "Newest", "PriceAsc", "PriceDesc", "Match" }, Enum.GetNames<PublicListingSortOrder>());
     }
 
+    [Fact]
+    public void TheOnlyMapPointIsApproximate()
+    {
+        var located = ReadModels
+            .SelectMany(type => PropertiesOf(type).Select(property => (type, property.Name)))
+            .Where(member => member.Name.Contains("latitude", StringComparison.OrdinalIgnoreCase)
+                || member.Name.Contains("longitude", StringComparison.OrdinalIgnoreCase))
+            .Select(member => $"{member.type.Name}.{member.Name}")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(new[] { "PublicMapPoint.Latitude", "PublicMapPoint.Longitude" }, located);
+
+        var point = PublicMapPoint.Approximate(24.774265m, 46.738586m)!;
+        Assert.Equal(24.77m, point.Latitude);
+        Assert.Equal(46.74m, point.Longitude);
+        Assert.Null(PublicMapPoint.Approximate(null, 46.7m));
+    }
+
     private static PropertyInfo[] PropertiesOf(Type type)
     {
         return type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
@@ -224,6 +253,8 @@ public sealed class PublicListingReadModelPrivacyTests
             var element = type.GetGenericArguments()[0];
 
             return element == typeof(PublicListingSummary)
+                || element == typeof(Guid)
+                || element == typeof(PublicNamedItem)
                 || element == typeof(PublicListingPrice)
                 || element == typeof(PublicDateRange);
         }
@@ -239,6 +270,7 @@ public sealed class PublicListingReadModelPrivacyTests
             || type == typeof(bool)
             || type == typeof(ListingPurpose)
             || type == typeof(PropertyType)
+            || type == typeof(FinishingStatus)
             || type == typeof(RentPeriod)
             || ReadModels.Contains(type);
     }

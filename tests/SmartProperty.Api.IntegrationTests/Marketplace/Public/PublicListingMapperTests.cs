@@ -354,6 +354,70 @@ public sealed class PublicListingMapperTests
             PublishedAt);
     }
 
+    [Fact]
+    public void TheDetailPageGetsThePhotosThePlaceThePricePerSquareMetreAndTheOtherListing()
+    {
+        var propertyId = Guid.Parse("5b0c7f0e-3c1d-4a8e-9e2f-6a7b8c9d0e1f");
+        var cover = Guid.Parse("0d9a3b52-6f71-4c3e-8a2b-1f0e9d8c7b6a");
+        var areaId = Guid.NewGuid();
+        var rentListingId = Guid.NewGuid();
+        var detail = SaleDetail() with
+        {
+            Price = new PublicListingPrice(4850000m, "SAR", null),
+            PropertyId = propertyId,
+            CoverImageId = cover,
+            AreaSqm = 420m,
+            Property = new PublicPropertyFacts(
+                [cover, Guid.NewGuid()],
+                [new PublicNamedItem("PrivatePool", "مسبح خاص", "Private pool")],
+                [new PublicNamedItem("Garden", "حديقة", "Garden")],
+                new DateOnly(2024, 1, 15),
+                FinishingStatus.LuxuryFinished,
+                Floor: null,
+                Furnished: false,
+                new PublicPlace(
+                    new PublicPlaceLevel(Guid.NewGuid(), "Saudi Arabia", "السعودية"),
+                    new PublicPlaceLevel(Guid.NewGuid(), "Riyadh", "الرياض"),
+                    new PublicPlaceLevel(areaId, "Hittin", "حطين"),
+                    null),
+                new PublicMapPoint(24.77m, 46.74m)),
+            OtherListings =
+            [
+                new PublicListingSummary(
+                    rentListingId, ListingPurpose.Rent, "Villa for rent", new PublicListingPrice(30000m, "SAR", RentPeriod.Monthly),
+                    PropertyType.Villa, Location(), PublishedAt, PropertyId: propertyId),
+            ],
+        };
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(PublicListingMapper.ToDetailResponse(detail), WebOptions));
+        var root = document.RootElement;
+        var property = root.GetProperty("property");
+
+        Assert.Equal(11548m, root.GetProperty("pricePerSqm").GetDecimal()); // 4,850,000 / 420
+        Assert.Equal(
+            $"/api/properties/{propertyId}/images/{cover}/file",
+            property.GetProperty("imageUrls")[0].GetString());
+        Assert.Equal(2, property.GetProperty("imageUrls").GetArrayLength());
+        Assert.Equal("مسبح خاص", property.GetProperty("amenities")[0].GetProperty("nameAr").GetString());
+        Assert.Equal(2024, property.GetProperty("builtYear").GetInt32());
+        Assert.Equal("LuxuryFinished", property.GetProperty("finishing").GetString());
+        Assert.False(property.TryGetProperty("floor", out _));
+        Assert.Equal(areaId, property.GetProperty("place").GetProperty("area").GetProperty("id").GetGuid());
+        Assert.False(property.GetProperty("place").TryGetProperty("compound", out _));
+        Assert.Equal(24.77m, property.GetProperty("approximateLocation").GetProperty("latitude").GetDecimal());
+        var other = Assert.Single(root.GetProperty("otherListings").EnumerateArray());
+        Assert.Equal(rentListingId, other.GetProperty("listingId").GetGuid());
+        Assert.Equal("Monthly", other.GetProperty("price").GetProperty("rentPeriod").GetString());
+    }
+
+    [Fact]
+    public void ARentHasNoPricePerSquareMetre()
+    {
+        var response = PublicListingMapper.ToDetailResponse(RentDetail(RentPeriod.Monthly) with { AreaSqm = 100m });
+
+        Assert.Null(response.PricePerSqm);
+    }
+
     private static PublicListingDetail SaleDetail()
     {
         return new PublicListingDetail(

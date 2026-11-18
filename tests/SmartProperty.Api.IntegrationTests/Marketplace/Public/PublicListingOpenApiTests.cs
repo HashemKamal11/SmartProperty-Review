@@ -21,7 +21,8 @@ public sealed class PublicListingOpenApiTests
     private static readonly string[] PrivateTerms =
     [
         "submission", "evidence", "owner", "workspace", "reviewer", "review", "addressLine",
-        "postalCode", "latitude", "longitude", "permission",
+        // "latitude"/"longitude" are documented only on PublicMapPointResponse, the approximate (about 1 km) map point.
+        "postalCode", "permission",
     ];
 
     [Fact]
