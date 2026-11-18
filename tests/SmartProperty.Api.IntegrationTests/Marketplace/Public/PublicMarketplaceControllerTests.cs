@@ -55,20 +55,23 @@ public sealed class PublicMarketplaceControllerTests
     }
 
     [Fact]
-    public void TheTwoReadsAreGetRoutesAndNothingElseIsExposed()
+    public void TheThreeReadsAreGetRoutesAndNothingElseIsExposed()
     {
         var methods = typeof(PublicMarketplaceController)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .OrderBy(method => method.Name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "GetById", "List" }, methods.Select(method => method.Name).ToArray());
+        Assert.Equal(new[] { "GetById", "List", "ListByProperty" }, methods.Select(method => method.Name).ToArray());
 
         var getById = methods.Single(method => method.Name == "GetById").GetCustomAttribute<HttpGetAttribute>()!;
         var list = methods.Single(method => method.Name == "List").GetCustomAttribute<HttpGetAttribute>()!;
+        var byProperty = methods.Single(method => method.Name == "ListByProperty").GetCustomAttribute<HttpGetAttribute>()!;
 
         Assert.Equal("{listingId:guid}", getById.Template);
         Assert.Null(list.Template);
+        // The listings page grouped by property: one card per property with its matching listings.
+        Assert.Equal("~/api/public/marketplace/properties", byProperty.Template);
         Assert.All(methods, method => Assert.DoesNotContain(method.GetCustomAttributes().OfType<HttpMethodAttribute>(), attribute => attribute is not HttpGetAttribute));
     }
 

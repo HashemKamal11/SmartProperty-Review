@@ -16,6 +16,8 @@ internal static class MarketplaceRouteInventory
         // public reads
         "GET api/public/marketplace/listings",
         "GET api/public/marketplace/listings/{listingId:guid}",
+        // the listings page grouped by property (one card per property, its matching listings inside)
+        "GET api/public/marketplace/properties",
 
         // administrator: review reads, decisions, settings
         "GET api/admin/marketplace/listing-submissions",

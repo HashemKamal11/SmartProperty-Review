@@ -180,6 +180,56 @@ public sealed class PublicListingEndpointTests
     }
 
     [Fact]
+    public async Task ThePropertyCardsRouteTakesTheSameFiltersAndReturnsOneCardPerProperty()
+    {
+        using var host = new PublicApiTestHost(new StubPublicListingReadRepository());
+        var propertyId = Guid.NewGuid();
+        host.Stub.Cards = new PublicPropertyCardPage(
+            [
+                new PublicPropertyCard(
+                    propertyId,
+                    PropertyType.Villa,
+                    new PublicListingLocation("SA", "Riyadh Province", "Riyadh", "Al Narjis"),
+                    [Summary(ListingPurpose.Sale) with { PropertyId = propertyId }, Summary(ListingPurpose.Rent, RentPeriod.Monthly) with { PropertyId = propertyId }],
+                    Bedrooms: 5),
+            ],
+            1);
+        using var client = host.CreateClient();
+
+        using var response = await client.GetAsync(
+            "/api/public/marketplace/properties?purpose=Sale&currency=SAR&minPrice=1000&propertyType=Villa,Duplex&minBedrooms=5&page=2&pageSize=6");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var call = host.Stub.LastCardSearchCall!;
+        Assert.Equal(ListingPurpose.Sale, call.Criteria.Purpose);
+        Assert.Equal([PropertyType.Villa, PropertyType.Duplex], call.Criteria.PropertyTypes);
+        Assert.Equal(5, call.Criteria.MinBedrooms);
+        Assert.Equal(6, call.Skip);
+        Assert.Equal(0, host.Stub.SearchCallCount);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var card = Assert.Single(document.RootElement.GetProperty("items").EnumerateArray());
+        Assert.Equal(propertyId, card.GetProperty("propertyId").GetGuid());
+        Assert.Equal(5, card.GetProperty("bedrooms").GetInt32());
+        Assert.Equal(["Sale", "Rent"], card.GetProperty("listings").EnumerateArray().Select(l => l.GetProperty("purpose").GetString()));
+    }
+
+    [Theory]
+    [InlineData("?minPrice=1000", HttpStatusCode.UnprocessableEntity)] // a price still needs a purpose and a currency
+    [InlineData("?sort=Match", HttpStatusCode.UnprocessableEntity)]    // still needs a sign-in
+    [InlineData("?propertyType=Villa,Castle", HttpStatusCode.BadRequest)]
+    public async Task ThePropertyCardsRouteKeepsTheListingRules(string query, HttpStatusCode expected)
+    {
+        using var host = new PublicApiTestHost(new StubPublicListingReadRepository());
+        using var client = host.CreateClient();
+
+        using var response = await client.GetAsync("/api/public/marketplace/properties" + query);
+
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Null(host.Stub.LastCardSearchCall);
+    }
+
+    [Fact]
     public async Task AnExpiredBearerTokenDoesNotBlockAnAnonymousRead()
     {
         using var host = new PublicApiTestHost(new StubPublicListingReadRepository());

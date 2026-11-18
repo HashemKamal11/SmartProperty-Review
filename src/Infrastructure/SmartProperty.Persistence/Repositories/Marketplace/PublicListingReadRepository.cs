@@ -242,6 +242,82 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
         return new PublicListingPage(items, count);
     }
 
+    /// <remarks>
+    /// The same filtered rows as <see cref="SearchAsync"/>, grouped by property: the database counts, ranks and pages the
+    /// properties, then the page's matching listings are read in one more query. A property's rank uses only its listings
+    /// that matched, so a price sort orders a card by the price it shows.
+    /// </remarks>
+    public async Task<PublicPropertyCardPage> SearchByPropertyAsync(
+        PublicListingSearchCriteria criteria, int skip, int take, CancellationToken cancellationToken = default)
+    {
+        if (skip < 0 || skip > PageParameters.MaxOffset) throw new ArgumentOutOfRangeException(nameof(skip));
+        if (take < 1 || take > PageParameters.MaxPageSize) throw new ArgumentOutOfRangeException(nameof(take));
+        var filtered = Filter(criteria);
+        var byPeriod = criteria.RentPeriod.HasValue;
+
+        var ranked = byPeriod
+            ? filtered.GroupBy(x => x.PropertyId).Select(g => new
+            {
+                PropertyId = g.Key,
+                Newest = g.Max(x => x.PublishedAt),
+                Lowest = g.Min(x => x.PeriodAmount),
+                Highest = g.Max(x => x.PeriodAmount),
+                Match = g.Max(x => x.MatchPercentage),
+            })
+            : filtered.GroupBy(x => x.PropertyId).Select(g => new
+            {
+                PropertyId = g.Key,
+                Newest = g.Max(x => x.PublishedAt),
+                Lowest = (decimal?)g.Min(x => x.Amount),
+                Highest = (decimal?)g.Max(x => x.Amount),
+                Match = g.Max(x => x.MatchPercentage),
+            });
+
+        var count = await ranked.LongCountAsync(cancellationToken);
+        var ordered = criteria.Sort switch
+        {
+            PublicListingSortOrder.Newest => ranked.OrderByDescending(x => x.Newest).ThenBy(x => x.PropertyId),
+            PublicListingSortOrder.PriceAsc => ranked.OrderBy(x => x.Lowest).ThenBy(x => x.PropertyId),
+            PublicListingSortOrder.PriceDesc => ranked.OrderByDescending(x => x.Highest).ThenBy(x => x.PropertyId),
+            PublicListingSortOrder.Match => ranked
+                .OrderByDescending(x => x.Match ?? -1m)
+                .ThenByDescending(x => x.Newest)
+                .ThenBy(x => x.PropertyId),
+            _ => throw new ArgumentOutOfRangeException(nameof(criteria)),
+        };
+        var pageIds = await ordered.Skip(skip).Take(take).Select(x => x.PropertyId).ToListAsync(cancellationToken);
+
+        if (pageIds.Count == 0)
+        {
+            return new PublicPropertyCardPage([], count);
+        }
+
+        var rows = await filtered.Where(x => pageIds.Contains(x.PropertyId)).ToListAsync(cancellationToken);
+        var byProperty = rows.GroupBy(row => row.PropertyId).ToDictionary(group => group.Key, group => group.ToList());
+        var cards = pageIds
+            .Where(byProperty.ContainsKey)
+            .Select(propertyId =>
+            {
+                var listings = byProperty[propertyId].OrderBy(row => row.Purpose).ThenBy(row => row.ListingId).ToList();
+                var first = listings[0];
+
+                return new PublicPropertyCard(
+                    propertyId,
+                    (PropertyType)first.PropertyType,
+                    new PublicListingLocation(first.Country, first.Region, first.City, first.District),
+                    listings.Select(row => ToSummary(row, criteria.RentPeriod)).ToArray(),
+                    first.CoverImageId,
+                    first.Bedrooms,
+                    first.Bathrooms,
+                    first.AreaSqm,
+                    first.MatchPercentage,
+                    first.IsFavorite);
+            })
+            .ToArray();
+
+        return new PublicPropertyCardPage(cards, count);
+    }
+
     public Task<PublicListingDetail?> GetByIdAsync(Guid listingId, CancellationToken cancellationToken = default) =>
         GetByIdAsync(listingId, viewerUserId: null, cancellationToken);
 

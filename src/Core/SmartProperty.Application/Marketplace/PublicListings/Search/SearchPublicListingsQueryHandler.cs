@@ -14,29 +14,7 @@ public sealed class SearchPublicListingsQueryHandler(IPublicListingReadRepositor
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var criteria = PublicListingSearchFilterValidator.Validate(
-            query.Purpose,
-            query.PropertyType,
-            query.CountryCode,
-            query.Region,
-            query.City,
-            query.District,
-            query.MinPrice,
-            query.MaxPrice,
-            query.Currency,
-            query.RentPeriod,
-            query.Sort,
-            query.AvailableFrom,
-            query.AvailableTo,
-            query.PropertyTypes,
-            query.Search,
-            query.AreaId,
-            query.CityId,
-            query.CompoundId,
-            query.MinBedrooms,
-            query.MaxBedrooms,
-            query.MinMatchPercentage,
-            query.ViewerUserId);
+        var criteria = CriteriaOf(query);
 
         if (criteria.IsFailure)
         {
@@ -72,4 +50,30 @@ public sealed class SearchPublicListingsQueryHandler(IPublicListingReadRepositor
                 pageParameters.PageSize,
                 result.TotalCount));
     }
+
+    /// <summary>The validated, normalised criteria of a search; shared by the listing and the property-card searches.</summary>
+    internal static Result<PublicListingSearchCriteria> CriteriaOf(SearchPublicListingsQuery query) =>
+        PublicListingSearchFilterValidator.Validate(
+            query.Purpose,
+            query.PropertyType,
+            query.CountryCode,
+            query.Region,
+            query.City,
+            query.District,
+            query.MinPrice,
+            query.MaxPrice,
+            query.Currency,
+            query.RentPeriod,
+            query.Sort,
+            query.AvailableFrom,
+            query.AvailableTo,
+            query.PropertyTypes,
+            query.Search,
+            query.AreaId,
+            query.CityId,
+            query.CompoundId,
+            query.MinBedrooms,
+            query.MaxBedrooms,
+            query.MinMatchPercentage,
+            query.ViewerUserId);
 }

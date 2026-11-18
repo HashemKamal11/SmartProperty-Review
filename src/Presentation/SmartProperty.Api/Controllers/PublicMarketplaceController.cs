@@ -140,6 +140,77 @@ public sealed class PublicMarketplaceController : ControllerBase
     }
 
     /// <summary>
+    /// The public listings page grouped by property: one card per property, with the property's listings that match.
+    /// </summary>
+    /// <remarks>
+    /// Takes exactly the filters, sorts, paging and optional sign-in of <c>GET /api/public/marketplace/listings</c>.
+    /// A property is on the page when at least one of its listings matches every filter, and its card carries only the
+    /// listings that matched (Sale first): a property offered for Sale and Rent shows both, unless a filter such as
+    /// <c>purpose</c>, a price range, <c>rentPeriod</c> or the stay dates leaves only one. A price sort orders cards by
+    /// the lowest (ascending) or highest (descending) matching price, <c>Newest</c> by the latest matching publication.
+    /// <c>totalCount</c> counts properties.
+    /// </remarks>
+    [HttpGet("~/api/public/marketplace/properties")]
+    [ProducesResponseType<PagedResponse<PublicPropertyCardResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ListByProperty(
+        [FromServices] IQueryHandler<SearchPublicPropertiesQuery, PagedList<PublicPropertyCard>> handler,
+        [FromServices] ICurrentUser currentUser,
+        CancellationToken cancellationToken,
+        [FromQuery] ListingPurpose? purpose = null,
+        // Read as text and parsed here, so "Villa,Apartment" is two types and never their bitwise combination.
+        [FromQuery(Name = "propertyType")] string[]? propertyTypes = null,
+        [FromQuery] string? countryCode = null,
+        [FromQuery] string? region = null,
+        [FromQuery] string? city = null,
+        [FromQuery] string? district = null,
+        [FromQuery] decimal? minPrice = null,
+        [FromQuery] decimal? maxPrice = null,
+        [FromQuery] string? currency = null,
+        [FromQuery] RentPeriod? rentPeriod = null,
+        [FromQuery] PublicListingSortOrder? sort = null,
+        [FromQuery] int? page = null,
+        [FromQuery] int? pageSize = null,
+        [FromQuery] DateOnly? availableFrom = null,
+        [FromQuery] DateOnly? availableTo = null,
+        [FromQuery(Name = "q")] string? search = null,
+        [FromQuery] Guid? areaId = null,
+        [FromQuery] Guid? cityId = null,
+        [FromQuery] Guid? compoundId = null,
+        [FromQuery] int? minBedrooms = null,
+        [FromQuery] int? maxBedrooms = null,
+        [FromQuery] decimal? minMatchPercentage = null)
+    {
+        if (!QueryEnumList.TryParse<PropertyType>(propertyTypes, out var parsedTypes))
+        {
+            return BadRequest(ApiErrorResponseFactory.MalformedRequest(HttpContext));
+        }
+
+        var listingSearch = new SearchPublicListingsQuery(
+            purpose, null, countryCode, region, city, district, minPrice, maxPrice, currency, rentPeriod, sort, page,
+            pageSize, availableFrom, availableTo, parsedTypes, search, areaId, cityId, compoundId, minBedrooms,
+            maxBedrooms, minMatchPercentage, currentUser.UserId);
+
+        var result = await handler.Handle(new SearchPublicPropertiesQuery(listingSearch), cancellationToken);
+
+        if (result.IsFailure)
+        {
+            var errorResponse = ApiErrorResponseFactory.FromError(result.Error!, HttpContext);
+            return StatusCode(errorResponse.Status, errorResponse);
+        }
+
+        var pagedList = result.Value;
+
+        return Ok(PagedResponse<PublicPropertyCardResponse>.FromPagedList(
+            PagedList<PublicPropertyCardResponse>.Create(
+                pagedList.Items.Select(PublicListingMapper.ToCardResponse).ToArray(),
+                pagedList.PageNumber,
+                pagedList.PageSize,
+                pagedList.TotalCount)));
+    }
+
+    /// <summary>
     /// One public listing by its public identifier.
     /// </summary>
     /// <remarks>

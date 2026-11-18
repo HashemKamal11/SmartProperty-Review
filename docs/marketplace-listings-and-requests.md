@@ -134,6 +134,10 @@ at once.
   build date and year, `finishing`, floor, furnished, the place tree with ids, and `approximateLocation` rounded to 2
   decimals, about 1 km; never the address line, postal code or exact point) and `otherListings` (the property's other
   visible listing, for a Sale/Rent switch). All read live from the registry.
+- `GET /api/public/marketplace/properties` is the same search grouped by property: one card per property (with the
+  card facts) whose `listings` are only its listings that matched every filter, Sale first. A property is on the page when
+  at least one listing matches; price sorts use the card's lowest (asc) or highest (desc) matching price, `Newest` its
+  latest matching publication; `totalCount` counts properties.
 - The sign-in is optional. With a valid token each listing also carries the viewer's latest `matchPercentage` and
   `isFavorite`, and `minMatchPercentage` and `sort=Match` (best match first, then newest) become available; without one they
   are a `422`.

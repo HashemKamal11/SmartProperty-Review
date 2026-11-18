@@ -78,6 +78,28 @@ internal static class PublicListingMapper
             listing.OtherListings?.Select(ToSummaryResponse).ToArray());
     }
 
+    public static PublicPropertyCardResponse ToCardResponse(PublicPropertyCard card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+
+        if (card.PropertyId == Guid.Empty || card.Listings.Count == 0)
+        {
+            throw Invalid("a property card without a property or a listing");
+        }
+
+        return new PublicPropertyCardResponse(
+            card.PropertyId,
+            ToPropertyType(card.PropertyType),
+            ToLocation(card.Location),
+            card.Listings.Select(ToSummaryResponse).ToArray(),
+            CoverUrl(card.PropertyId, card.CoverImageId),
+            card.Bedrooms,
+            card.Bathrooms,
+            card.AreaSqm,
+            card.MatchPercentage,
+            card.IsFavorite);
+    }
+
     /// <summary>A sale price divided by the area, rounded to whole units; null for a rent or without an area.</summary>
     private static decimal? PricePerSqm(PublicListingDetail listing) =>
         listing.Purpose == ListingPurpose.Sale && listing.AreaSqm is > 0m and { } area

@@ -47,5 +47,21 @@ internal sealed class StubPublicListingReadRepository : IPublicListingReadReposi
         return Task.FromResult(Details.GetValueOrDefault(listingId));
     }
 
+    /// <summary>What <see cref="SearchByPropertyAsync"/> answers.</summary>
+    public PublicPropertyCardPage Cards { get; set; } = new([], 0);
+
+    public SearchCall? LastCardSearchCall { get; private set; }
+
+    public Task<PublicPropertyCardPage> SearchByPropertyAsync(
+        PublicListingSearchCriteria criteria,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        LastCardSearchCall = new SearchCall(criteria, skip, take);
+
+        return Task.FromResult(Cards);
+    }
+
     internal sealed record SearchCall(PublicListingSearchCriteria Criteria, int Skip, int Take);
 }

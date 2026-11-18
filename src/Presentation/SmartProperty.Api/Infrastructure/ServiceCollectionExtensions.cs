@@ -430,6 +430,9 @@ internal static class ServiceCollectionExtensions
         services
             .AddScoped<IQueryHandler<GetPublicListingByIdQuery, PublicListingDetail>,
                 GetPublicListingByIdQueryHandler>();
+        services
+            .AddScoped<IQueryHandler<SearchPublicPropertiesQuery, PagedList<PublicPropertyCard>>,
+                SearchPublicPropertiesQueryHandler>();
 
         // The authenticated submitter's own listing-submission reads, and only the reads. The acting user comes from
         // ICurrentUser alone and must be an Active account; ownership is enforced in the database by

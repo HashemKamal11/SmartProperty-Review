@@ -196,7 +196,113 @@ public sealed class PublicListingFilterPersistenceTests(PostgreSqlFixture fixtur
         Assert.Equal(ListingPurpose.Rent, other.Purpose);
     }
 
+    [Fact]
+    public async Task GroupedByPropertyASaleAndRentPropertyIsOneCardWithBothListingsSaleFirst()
+    {
+        var both = await SeedAsync([ListingPurpose.Sale, ListingPurpose.Rent]);
+        var bothRent = await PublishAsync(both, ListingPurpose.Rent);
+        var bothSale = await PublishAsync(both, ListingPurpose.Sale);
+        var saleOnly = await SeedAsync([ListingPurpose.Sale]);
+        var saleOnlySale = await PublishAsync(saleOnly, ListingPurpose.Sale);
+
+        var page = await CardsAsync(Criteria());
+
+        Assert.Equal(2, page.TotalCount); // properties, not listings
+        var card = Assert.Single(page.Items, item => item.PropertyId == both.PropertyId);
+        Assert.Equal([bothSale.ListingId, bothRent.ListingId], card.Listings.Select(listing => listing.ListingId));
+        Assert.Equal([ListingPurpose.Sale, ListingPurpose.Rent], card.Listings.Select(listing => listing.Purpose));
+        Assert.Equal([saleOnlySale.ListingId], page.Items.Single(item => item.PropertyId == saleOnly.PropertyId).Listings.Select(l => l.ListingId));
+    }
+
+    [Fact]
+    public async Task AListingFilterKeepsOnlyTheMatchingListingsOnEachCard()
+    {
+        var both = await SeedAsync([ListingPurpose.Sale, ListingPurpose.Rent]);
+        var bothSale = await PublishAsync(both, ListingPurpose.Sale);
+        var bothRent = await PublishAsync(both, ListingPurpose.Rent);
+        var saleOnly = await SeedAsync([ListingPurpose.Sale]);
+        await PublishAsync(saleOnly, ListingPurpose.Sale);
+
+        // purpose=Rent: the Sale-only property disappears, and the other card shows only its Rent listing.
+        var rent = await CardsAsync(Criteria() with { Purpose = ListingPurpose.Rent });
+        var rentCard = Assert.Single(rent.Items);
+        Assert.Equal(both.PropertyId, rentCard.PropertyId);
+        Assert.Equal([bothRent.ListingId], rentCard.Listings.Select(listing => listing.ListingId));
+        Assert.Equal(1, rent.TotalCount);
+
+        // A rent price range: the card shows the rent in the period that was compared.
+        var monthly = await CardsAsync(Criteria() with
+        {
+            Purpose = ListingPurpose.Rent, RentPeriod = RentPeriod.Monthly, Currency = "EGP", MinPrice = 10_000m, MaxPrice = 25_000m,
+        });
+        var monthlyListing = Assert.Single(Assert.Single(monthly.Items).Listings);
+        Assert.Equal(20_000m, monthlyListing.Price.Amount);
+        Assert.Equal(RentPeriod.Monthly, monthlyListing.Price.RentPeriod);
+
+        // A sale price range: both properties match, each card with its Sale listing only.
+        var sales = await CardsAsync(Criteria() with { Purpose = ListingPurpose.Sale, Currency = "EGP", MinPrice = 4_000_000m });
+        Assert.Equal(2, sales.TotalCount);
+        Assert.All(sales.Items, item => Assert.Equal(ListingPurpose.Sale, Assert.Single(item.Listings).Purpose));
+        Assert.Contains(sales.Items, item => item.Listings[0].ListingId == bothSale.ListingId);
+
+        // No listing of any property fits: no card at all.
+        Assert.Empty((await CardsAsync(Criteria() with { Purpose = ListingPurpose.Sale, Currency = "EGP", MinPrice = 9_000_000m })).Items);
+    }
+
+    [Fact]
+    public async Task CardsSortByTheViewersMatchAndCarryTheCardFacts()
+    {
+        var strong = await SeedAsync([ListingPurpose.Sale, ListingPurpose.Rent]);
+        await PublishAsync(strong, ListingPurpose.Sale);
+        await PublishAsync(strong, ListingPurpose.Rent);
+        var weak = await SeedAsync([ListingPurpose.Sale]);
+        await PublishAsync(weak, ListingPurpose.Sale);
+        var viewer = strong.Stranger;
+        await AddMatchAsync(viewer, strong.PropertyId, 94m, DateTimeOffset.UtcNow);
+        await AddMatchAsync(viewer, weak.PropertyId, 70m, DateTimeOffset.UtcNow);
+        await ExecuteAsync($"UPDATE registry.properties SET bedrooms = 6, area_sqm = 540 WHERE id = '{strong.PropertyId}'");
+
+        var page = await CardsAsync(Criteria(viewer: viewer, sort: PublicListingSortOrder.Match));
+
+        Assert.Equal([strong.PropertyId, weak.PropertyId], page.Items.Select(item => item.PropertyId));
+        var first = page.Items[0];
+        Assert.Equal(94m, first.MatchPercentage);
+        Assert.Equal(6, first.Bedrooms);
+        Assert.Equal(540m, first.AreaSqm);
+        Assert.Equal(2, first.Listings.Count);
+        Assert.False(first.IsFavorite);
+        Assert.Equal([strong.PropertyId], (await CardsAsync(Criteria(viewer: viewer, minMatch: 85m))).Items.Select(item => item.PropertyId));
+    }
+
+    [Fact]
+    public async Task CardsArePagedByProperty()
+    {
+        var first = await SeedAsync([ListingPurpose.Sale, ListingPurpose.Rent]);
+        await PublishAsync(first, ListingPurpose.Sale);
+        await PublishAsync(first, ListingPurpose.Rent);
+        var second = await SeedAsync([ListingPurpose.Sale, ListingPurpose.Rent]);
+        await PublishAsync(second, ListingPurpose.Sale);
+        await PublishAsync(second, ListingPurpose.Rent);
+
+        await using var scope = Scope();
+        var repository = scope.Get<IPublicListingReadRepository>();
+        var pageOne = await repository.SearchByPropertyAsync(Criteria(), 0, 1);
+        var pageTwo = await repository.SearchByPropertyAsync(Criteria(), 1, 1);
+
+        Assert.Equal(2, pageOne.TotalCount);
+        Assert.Equal(2, Assert.Single(pageOne.Items).Listings.Count);
+        Assert.Equal(2, Assert.Single(pageTwo.Items).Listings.Count);
+        Assert.NotEqual(pageOne.Items[0].PropertyId, pageTwo.Items[0].PropertyId);
+    }
+
     // ---- helpers
+
+    private async Task<PublicPropertyCardPage> CardsAsync(PublicListingSearchCriteria criteria)
+    {
+        await using var scope = Scope();
+
+        return await scope.Get<IPublicListingReadRepository>().SearchByPropertyAsync(criteria, 0, 100);
+    }
 
     private async Task<ListingDraftResult> PublishAsync(World world, ListingPurpose purpose)
     {

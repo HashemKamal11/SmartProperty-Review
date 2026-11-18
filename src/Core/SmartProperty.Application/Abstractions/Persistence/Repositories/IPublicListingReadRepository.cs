@@ -43,4 +43,16 @@ public interface IPublicListingReadRepository
         Guid? viewerUserId,
         CancellationToken cancellationToken = default) =>
         GetByIdAsync(listingId, cancellationToken);
+
+    /// <summary>
+    /// One page of properties, each with its visible listings that match every filter of <paramref name="criteria"/>.
+    /// A property is on the page when at least one of its listings matches. Ordered by the sort of the criteria over the
+    /// matching listings (newest publication, lowest or highest compared price, or the viewer's match).
+    /// </summary>
+    Task<PublicPropertyCardPage> SearchByPropertyAsync(
+        PublicListingSearchCriteria criteria,
+        int skip,
+        int take,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("This repository does not group listings by property.");
 }

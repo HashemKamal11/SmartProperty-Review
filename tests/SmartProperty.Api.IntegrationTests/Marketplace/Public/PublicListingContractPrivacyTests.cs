@@ -29,6 +29,7 @@ public sealed class PublicListingContractPrivacyTests
         typeof(PublicPlaceLevelResponse),
         typeof(PublicPlaceResponse),
         typeof(PublicMapPointResponse),
+        typeof(PublicPropertyCardResponse),
     ];
 
     // Name fragments that would indicate private, internal or privileged data. Matched case-insensitively against
@@ -126,6 +127,10 @@ public sealed class PublicListingContractPrivacyTests
             if (type == typeof(PublicListingSummaryResponse) || type == typeof(PublicListingDetailResponse))
             {
                 Assert.Equal(new[] { "ListingId", "PropertyId" }, guidMembers);
+            }
+            else if (type == typeof(PublicPropertyCardResponse))
+            {
+                Assert.Equal(new[] { "PropertyId" }, guidMembers);
             }
             else if (type == typeof(PublicPlaceLevelResponse))
             {

@@ -28,6 +28,8 @@ public sealed class PublicListingReadModelPrivacyTests
         typeof(PublicPlaceLevel),
         typeof(PublicPlace),
         typeof(PublicMapPoint),
+        typeof(PublicPropertyCard),
+        typeof(PublicPropertyCardPage),
     ];
 
     // Name fragments that would indicate private, internal or privileged data. The property id is public since
@@ -117,6 +119,10 @@ public sealed class PublicListingReadModelPrivacyTests
             {
                 Assert.Equal(new[] { "ListingId", "PropertyId", "CoverImageId" }, guidMembers);
             }
+            else if (type == typeof(PublicPropertyCard))
+            {
+                Assert.Equal(new[] { "PropertyId", "CoverImageId" }, guidMembers);
+            }
             else if (type == typeof(PublicPlaceLevel))
             {
                 // A place id is public reference data: the same ids /api/locations returns.
@@ -187,8 +193,8 @@ public sealed class PublicListingReadModelPrivacyTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        // The detail read exists with and without the signed-in viewer.
-        Assert.Equal(new[] { "GetByIdAsync", "GetByIdAsync", "SearchAsync" }, methods);
+        // The detail read exists with and without the signed-in viewer; the search also exists grouped by property.
+        Assert.Equal(new[] { "GetByIdAsync", "GetByIdAsync", "SearchAsync", "SearchByPropertyAsync" }, methods);
     }
 
     [Fact]
@@ -253,6 +259,7 @@ public sealed class PublicListingReadModelPrivacyTests
             var element = type.GetGenericArguments()[0];
 
             return element == typeof(PublicListingSummary)
+                || element == typeof(PublicPropertyCard)
                 || element == typeof(Guid)
                 || element == typeof(PublicNamedItem)
                 || element == typeof(PublicListingPrice)
