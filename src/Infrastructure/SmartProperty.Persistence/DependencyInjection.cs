@@ -15,6 +15,7 @@ using SmartProperty.Persistence.Repositories.Identity;
 using SmartProperty.Persistence.Repositories.PropertyImages;
 using SmartProperty.Persistence.Repositories.Locations;
 using SmartProperty.Persistence.Repositories.Marketplace;
+using SmartProperty.Persistence.Repositories.Notifications;
 using SmartProperty.Persistence.Repositories.Platform;
 using SmartProperty.Persistence.Repositories.PropertyMatching;
 using SmartProperty.Persistence.Repositories.PropertyRegistry;
@@ -67,6 +68,7 @@ public static class DependencyInjection
         services.AddScoped<IMarketplaceRequestReadRepository, MarketplaceRequestReadRepository>();
         services.AddScoped<IMarketplaceSettingsRepository, MarketplaceSettingsRepository>();
         services.AddScoped<IListingSubmissionAuditRecorder>(provider => provider.GetRequiredService<ListingSubmissionWriteRepository>());
+        services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IWorkspaceAccessRequestRepository, WorkspaceAccessRequestRepository>();
         services.AddScoped<IWorkspaceRegistrationRequestRepository, WorkspaceRegistrationRequestRepository>();
         services.AddScoped<IWorkspaceMembershipRepository, WorkspaceMembershipRepository>();
