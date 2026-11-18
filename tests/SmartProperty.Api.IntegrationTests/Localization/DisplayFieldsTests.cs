@@ -137,7 +137,7 @@ public sealed class DisplayFieldsTests
         {
             "PasswordVerificationStatus", "PersistenceConstraint", "PersistenceResource", "ListingWriteConflictKind",
             "ListingEligibilityDenial", "ErrorType", "PublicListingSortOrder", "PropertyListSortOrder", "OneTimeCodePurpose",
-            "MalwareScanVerdict"
+            "MalwareScanVerdict", "NotificationReadOutcome", "NotificationVisibilityKind"
         };
 
         var enums = new[] { typeof(PropertyType).Assembly, typeof(SmartProperty.Application.Locations.LocationDetails).Assembly }
