@@ -58,6 +58,8 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
                                  AND (s.content_snapshot->'Payload'->>'RentPeriod')::integer = {period}::integer
                             THEN s.content_snapshot->'Payload'->>'Currency' END) END AS "PeriodCurrency",
                    (s.content_snapshot->'Payload'->'PricingOptions')::text AS "PricingOptionsJson",
+                   (s.content_snapshot->'Payload'->>'Negotiable')::boolean AS "Negotiable",
+                   (s.content_snapshot->'Payload'->>'AvailableFrom')::date AS "AvailableFrom",
                    (s.content_snapshot->'Payload'->'RentalTerms')::text AS "RentalTermsJson",
                    (SELECT string_agg(c.start_date::text || '|' || c.end_date::text, ',' ORDER BY c.start_date)
                       FROM marketplace.property_commitments AS c
@@ -386,7 +388,8 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
         new(x.ListingId, (ListingPurpose)x.Purpose, x.Title, x.Description, PriceOf(x, searchedPeriod: null), (PropertyType)x.PropertyType,
             new PublicListingLocation(x.Country, x.Region, x.City, x.District), x.PublishedAt,
             OptionsOf(x), TermsOf(x), BlockedOf(x),
-            x.PropertyId, x.CoverImageId, x.Bedrooms, x.Bathrooms, x.AreaSqm, x.MatchPercentage, x.IsFavorite);
+            x.PropertyId, x.CoverImageId, x.Bedrooms, x.Bathrooms, x.AreaSqm, x.MatchPercentage, x.IsFavorite,
+            AvailableFrom: x.AvailableFrom);
 
     private const string LikeEscape = "\\";
 
@@ -394,11 +397,23 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
     private static string LikePattern(string text) =>
         $"%{text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_")}%";
 
-    // The plain listing price, or, when the search asked for a pricing period the listing offers, that option.
-    private static PublicListingPrice PriceOf(PublicListingReadRow x, RentPeriod? searchedPeriod) =>
-        searchedPeriod is { } period && x.PeriodAmount is { } amount && x.PeriodCurrency is { } currency
+    // The plain listing price, or, when the search asked for a pricing period the listing offers, that option. A rent
+    // price carries the deposit of the option it is; a sale price carries whether it is negotiable.
+    private static PublicListingPrice PriceOf(PublicListingReadRow x, RentPeriod? searchedPeriod)
+    {
+        var shown = searchedPeriod is { } period && x.PeriodAmount is { } amount && x.PeriodCurrency is { } currency
             ? new PublicListingPrice(amount, currency, period)
             : new PublicListingPrice(x.Amount, x.Currency, (RentPeriod?)x.RentPeriod);
+
+        if (shown.RentPeriod is null)
+        {
+            return shown with { Negotiable = x.Negotiable };
+        }
+
+        var deposit = OptionsOf(x)?.FirstOrDefault(option => option.RentPeriod == shown.RentPeriod)?.Deposit;
+
+        return shown with { Deposit = deposit };
+    }
 
     private static IReadOnlyList<PublicListingPrice>? OptionsOf(PublicListingReadRow x) => ParsePricingOptions(x.PricingOptionsJson);
 
@@ -420,7 +435,10 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
                 .Select(option => new PublicListingPrice(
                     option.GetProperty("Amount").GetDecimal(),
                     option.GetProperty("Currency").GetString()!,
-                    (RentPeriod)option.GetProperty("Period").GetInt32()))
+                    (RentPeriod)option.GetProperty("Period").GetInt32(),
+                    Deposit: option.TryGetProperty("Deposit", out var deposit) && deposit.ValueKind == JsonValueKind.Number
+                        ? deposit.GetDecimal()
+                        : null))
                 .OrderBy(option => option.RentPeriod switch
                 {
                     RentPeriod.Daily => 1,

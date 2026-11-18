@@ -28,6 +28,8 @@ internal sealed class PublicListingReadRow
 
     /// <summary>The listing's pricing options as JSON, or null for a listing stated with one price.</summary>
     public string? PricingOptionsJson { get; set; }
+    public bool? Negotiable { get; set; }
+    public DateOnly? AvailableFrom { get; set; }
 
     /// <summary>The listing's rental terms as JSON, or null when it has none.</summary>
     public string? RentalTermsJson { get; set; }

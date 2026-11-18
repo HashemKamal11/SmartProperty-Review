@@ -13,6 +13,7 @@ internal sealed class SubmitterListingSubmissionReadRow
     public decimal Amount { get; set; }
     public string Currency { get; set; } = null!;
     public int? RentPeriod { get; set; }
+    public bool? Negotiable { get; set; }
     public int PropertyType { get; set; }
     public string Country { get; set; } = null!;
     public string Region { get; set; } = null!;
@@ -38,6 +39,7 @@ internal sealed class SubmitterListingSubmissionDetailReadRow
     public decimal Amount { get; set; }
     public string Currency { get; set; } = null!;
     public int? RentPeriod { get; set; }
+    public bool? Negotiable { get; set; }
     public int PropertyType { get; set; }
     public string Country { get; set; } = null!;
     public string Region { get; set; } = null!;
@@ -66,6 +68,7 @@ internal sealed class SubmitterListingSubmissionDetailReadRow
         Amount = Amount,
         Currency = Currency,
         RentPeriod = RentPeriod,
+        Negotiable = Negotiable,
         PropertyType = PropertyType,
         Country = Country,
         Region = Region,

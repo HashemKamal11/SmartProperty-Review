@@ -121,7 +121,7 @@ public sealed class SubmitterListingSubmissionReadQueryTests
     internal static readonly string[] SummaryColumns =
     [
         "SubmissionId", "ListingId", "PurposeText", "Version", "StatusText", "Title", "Amount", "Currency",
-        "RentPeriod", "PropertyType", "Country", "Region", "City", "District", "Representation",
+        "RentPeriod", "Negotiable", "PropertyType", "Country", "Region", "City", "District", "Representation",
         "CreatedAt", "SubmittedAt", "UpdatedAt", "IsCurrentlyPublished"
     ];
 

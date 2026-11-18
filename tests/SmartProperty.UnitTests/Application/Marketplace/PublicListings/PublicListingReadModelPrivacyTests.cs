@@ -136,14 +136,14 @@ public sealed class PublicListingReadModelPrivacyTests
     }
 
     [Fact]
-    public void TheDetailIsTheSummaryPlusTheDescriptionTheTermsAndTheBlockedDates()
+    public void TheDetailIsTheSummaryPlusTheDescriptionTheTermsTheBlockedDatesAndTheAvailabilityDate()
     {
         var summary = PropertiesOf(typeof(PublicListingSummary)).Select(property => (property.Name, property.PropertyType)).ToHashSet();
         var detail = PropertiesOf(typeof(PublicListingDetail)).Select(property => (property.Name, property.PropertyType)).ToHashSet();
 
         Assert.True(summary.IsSubsetOf(detail));
         Assert.Equal(
-            new[] { "BlockedRanges", "Description", "OtherListings", "Property", "RentalTerms" },
+            new[] { "AvailableFrom", "BlockedRanges", "Description", "OtherListings", "Property", "RentalTerms" },
             detail.Except(summary).Select(member => member.Name).Order(StringComparer.Ordinal).ToArray());
     }
 

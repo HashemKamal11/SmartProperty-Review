@@ -351,6 +351,11 @@ public sealed class OwnerAuthorityRequests(
             return Result<AuthorityRequestView>.Failure(AuthorityRequestErrors.PropertyNotFound);
         }
 
+        if (ListingDraftContentValidator.PastAvailability(content!, property, clock.UtcNow) is { } past)
+        {
+            return Result<AuthorityRequestView>.Failure(past);
+        }
+
         var built = CanonicalListingContent.Build(property, purpose, content!);
 
         if (built.IsFailure)

@@ -29,6 +29,11 @@ currency (`pricingOptions`), separate from how long anyone stays. A rental also 
 check-out time, the availability windows, an optional minimum stay, all in the property's time zone. The primary option
 (Monthly, then Yearly, Weekly, Daily) is what a single "price" means where one number is needed.
 
+A sale may state `negotiable` (true or false) and `availableFrom` (a date, today or later when saved); a rental may
+state neither, its availability being its windows. Each rent pricing option may state its own `deposit`
+(the security deposit, same currency, zero or more). Both are optional and stored only when given; they come back on
+the owner's and reviewer's views and on the public price (`price.negotiable`, `price.deposit`, `pricingOptions[].deposit`).
+
 ## Advertiser workflow
 
 1. `POST /api/marketplace/me/listing-submissions` creates a draft for one property and purpose, or

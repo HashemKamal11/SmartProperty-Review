@@ -68,15 +68,37 @@ internal static class ListingSubmissionSnapshotConverter
     {
         if (c.PricingOptions.Count == 0 && c.RentalTerms is null)
         {
-            return new { c.Country, c.Region, c.City, c.District, c.Title, c.Description,
-                PropertyType = (int)c.PropertyType, Purpose = (int)c.Purpose, c.Amount, c.Currency, RentPeriod = (int?)c.RentPeriod };
+            // A sale's negotiable flag and availability date are equally additive: written only when the owner stated
+            // them. Insertion order is the member order, so the plain members keep exactly their old position.
+            var payload = new Dictionary<string, object?>
+            {
+                ["Country"] = c.Country, ["Region"] = c.Region, ["City"] = c.City, ["District"] = c.District,
+                ["Title"] = c.Title, ["Description"] = c.Description,
+                ["PropertyType"] = (int)c.PropertyType, ["Purpose"] = (int)c.Purpose,
+                ["Amount"] = c.Amount, ["Currency"] = c.Currency, ["RentPeriod"] = (int?)c.RentPeriod,
+            };
+
+            if (c.Negotiable is { } negotiable)
+            {
+                payload["Negotiable"] = negotiable;
+            }
+
+            if (c.AvailableFrom is { } availableFrom)
+            {
+                payload["AvailableFrom"] = availableFrom.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            return payload;
         }
 
         var terms = c.RentalTerms!;
 
         return new { c.Country, c.Region, c.City, c.District, c.Title, c.Description,
             PropertyType = (int)c.PropertyType, Purpose = (int)c.Purpose, c.Amount, c.Currency, RentPeriod = (int?)c.RentPeriod,
-            PricingOptions = c.PricingOptions.Select(o => new { Period = (int)o.Period, o.Amount, o.Currency }).ToArray(),
+            // An option's deposit is written only when stated, so an option without one keeps its old shape.
+            PricingOptions = c.PricingOptions.Select(o => o.Deposit is { } deposit
+                ? (object)new { Period = (int)o.Period, o.Amount, o.Currency, Deposit = deposit }
+                : new { Period = (int)o.Period, o.Amount, o.Currency }).ToArray(),
             RentalTerms = new
             {
                 terms.TimeZoneId,
@@ -100,7 +122,8 @@ internal static class ListingSubmissionSnapshotConverter
         if (p.TryGetProperty("PricingOptions", out var optionsElement) && optionsElement.ValueKind == JsonValueKind.Array)
         {
             options = optionsElement.EnumerateArray()
-                .Select(o => new RentPricingOption((RentPeriod)o.GetProperty("Period").GetInt32(), o.GetProperty("Amount").GetDecimal(), Text(o, "Currency")))
+                .Select(o => new RentPricingOption((RentPeriod)o.GetProperty("Period").GetInt32(), o.GetProperty("Amount").GetDecimal(), Text(o, "Currency"),
+                    o.TryGetProperty("Deposit", out var deposit) && deposit.ValueKind == JsonValueKind.Number ? deposit.GetDecimal() : null))
                 .ToArray();
         }
 
@@ -123,7 +146,13 @@ internal static class ListingSubmissionSnapshotConverter
             (PropertyType)p.GetProperty("PropertyType").GetInt32(), (ListingPurpose)p.GetProperty("Purpose").GetInt32(),
             p.GetProperty("Amount").GetDecimal(), Text(p, "Currency"),
             p.GetProperty("RentPeriod").ValueKind == JsonValueKind.Null ? null : (RentPeriod)p.GetProperty("RentPeriod").GetInt32(),
-            options, terms);
+            options, terms,
+            p.TryGetProperty("Negotiable", out var negotiable) && negotiable.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? negotiable.GetBoolean()
+                : null,
+            p.TryGetProperty("AvailableFrom", out var availableFrom) && availableFrom.ValueKind == JsonValueKind.String
+                ? DateOnly.ParseExact(availableFrom.GetString()!, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
+                : null);
     }
     private static object OwnerData(ListingOwnerIdentity o) => new { Kind = (int)o.Kind, o.LegalPartyReferenceId, o.LinkedUserId };
     private static object EvidenceData(ListingEvidenceReference e) => new { e.EvidenceId, e.VersionId, e.PropertyId, Purpose = (int)e.Purpose, e.Sha256 };

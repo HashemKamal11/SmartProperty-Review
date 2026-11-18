@@ -262,7 +262,10 @@ internal static class RelistContent
         if (content.PricingOptions.Count == 0 || content.RentalTerms is not { } terms)
         {
             return Result<ListingDraftContentInput>.Success(new ListingDraftContentInput(
-                content.Title, content.Description, content.Amount, content.Currency, content.RentPeriod, evidenceIds));
+                content.Title, content.Description, content.Amount, content.Currency, content.RentPeriod, evidenceIds,
+                Negotiable: content.Negotiable,
+                // A date that has passed means "available now": it is dropped rather than refused.
+                AvailableFrom: content.AvailableFrom is { } from && from >= DateOnly.FromDateTime(now.UtcDateTime) ? from : null));
         }
 
         // A window is dated in the property's own calendar, so "today" is the property's today.
@@ -285,7 +288,7 @@ internal static class RelistContent
             content.Currency,
             RentPeriod: null,
             evidenceIds,
-            content.PricingOptions.Select(option => new RentPricingOptionInput(option.Period, option.Amount, option.Currency)).ToArray(),
+            content.PricingOptions.Select(option => new RentPricingOptionInput(option.Period, option.Amount, option.Currency, option.Deposit)).ToArray(),
             new RentalTermsInput(terms.CheckInTime, terms.CheckOutTime, windows, terms.MinimumStayDays)));
     }
 }

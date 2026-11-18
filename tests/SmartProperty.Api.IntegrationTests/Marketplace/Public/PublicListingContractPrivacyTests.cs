@@ -166,12 +166,12 @@ public sealed class PublicListingContractPrivacyTests
 
         Assert.True(summary.IsSubsetOf(detail));
         Assert.Equal(
-            new[] { "BlockedRanges", "Description", "OtherListings", "PricePerSqm", "Property", "RentalTerms" },
+            new[] { "AvailableFrom", "BlockedRanges", "Description", "OtherListings", "PricePerSqm", "Property", "RentalTerms" },
             detail.Except(summary).Select(member => member.Name).Order(StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
-    public void ThePriceHasExactlyAnAmountACurrencyAndAnOptionalRentPeriod()
+    public void ThePriceHasExactlyAnAmountACurrencyAnOptionalRentPeriodAndTheSaleAndRentTerms()
     {
         var members = PropertiesOf(typeof(PublicMoneyResponse))
             .OrderBy(property => property.Name, StringComparer.Ordinal)
@@ -183,6 +183,8 @@ public sealed class PublicListingContractPrivacyTests
             {
                 (nameof(PublicMoneyResponse.Amount), typeof(decimal)),
                 (nameof(PublicMoneyResponse.Currency), typeof(string)),
+                (nameof(PublicMoneyResponse.Deposit), typeof(decimal?)),
+                (nameof(PublicMoneyResponse.Negotiable), typeof(bool?)),
                 (nameof(PublicMoneyResponse.RentPeriod), typeof(string)),
             },
             members);
@@ -406,6 +408,7 @@ public sealed class PublicListingContractPrivacyTests
             || type == typeof(Guid)
             || type == typeof(decimal)
             || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
             || PublicTypes.Contains(type);
     }
 

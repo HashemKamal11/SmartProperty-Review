@@ -14,8 +14,13 @@ namespace SmartProperty.Api.Contracts.Marketplace.Public;
 /// <see cref="RentPeriod"/> is exactly <c>"Daily"</c>, <c>"Weekly"</c>, <c>"Monthly"</c> or <c>"Yearly"</c> and is present on the price of every Rent
 /// listing. A Sale price has no rent period, and the member is left out of the JSON entirely rather than written as
 /// null. No default is ever supplied and the period is never inferred from the amount.
+///
+/// <c>negotiable</c> appears on a Sale price when the owner stated it. <c>deposit</c> is the security deposit asked with
+/// a rent price, in the same currency, when one was stated. Both are left out otherwise.
 /// </remarks>
 public sealed record PublicMoneyResponse(
     decimal Amount,
     string Currency,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RentPeriod = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RentPeriod = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Negotiable = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Deposit = null);

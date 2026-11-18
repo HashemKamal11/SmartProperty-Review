@@ -102,7 +102,7 @@ public sealed class PublicListingOpenApiTests
 
         var money = schemas.GetProperty("PublicMoneyResponse").GetProperty("properties");
         Assert.Equal(
-            new[] { "amount", "currency", "displayRentPeriod", "rentPeriod" },
+            new[] { "amount", "currency", "deposit", "displayRentPeriod", "negotiable", "rentPeriod" },
             money.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ToArray());
     }
 

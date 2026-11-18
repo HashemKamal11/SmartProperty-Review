@@ -187,7 +187,7 @@ public sealed record AuthorityRequestView(
 
 /// <summary>
 /// The stored listing content, shaped like the listing-draft request body (enum values as names). Only the fields
-/// that apply are present: a sale has <c>amount</c> and <c>currency</c>; a rental has <c>pricingOptions</c> and
+/// that apply are present: a sale has <c>amount</c>, <c>currency</c> and, when stated, <c>negotiable</c> and <c>availableFrom</c>; a rental has <c>pricingOptions</c> (each with its <c>deposit</c> when stated) and
 /// <c>rentalTerms</c> (or, in the older single-price form, <c>amount</c>, <c>currency</c> and <c>rentPeriod</c>).
 /// </summary>
 public sealed record ListingDraftContentInputView(
@@ -198,7 +198,9 @@ public sealed record ListingDraftContentInputView(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RentPeriod,
     IReadOnlyList<Guid> EvidenceIds,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PricingOptionView>? PricingOptions,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RentalTermsView? RentalTerms)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RentalTermsView? RentalTerms,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Negotiable = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateOnly? AvailableFrom = null)
 {
     internal static ListingDraftContentInputView? From(ListingSubmissions.Write.ListingDraftContentInput? input)
     {
@@ -214,18 +216,24 @@ public sealed record ListingDraftContentInputView(
                 priced || string.IsNullOrEmpty(input.Currency) ? null : input.Currency,
                 priced ? null : input.RentPeriod?.ToString(),
                 input.EvidenceIds,
-                input.PricingOptions?.Select(option => new PricingOptionView(option.Period.ToString(), option.Amount, option.Currency)).ToArray(),
+                input.PricingOptions?.Select(option => new PricingOptionView(option.Period.ToString(), option.Amount, option.Currency, option.Deposit)).ToArray(),
                 input.RentalTerms is { } terms
                     ? new RentalTermsView(
                         terms.CheckInTime,
                         terms.CheckOutTime,
                         terms.Windows.Select(window => new RentalWindowView(window.StartDate, window.EndDate)).ToArray(),
                         terms.MinimumStayDays)
-                    : null);
+                    : null,
+                input.Negotiable,
+                input.AvailableFrom);
     }
 }
 
-public sealed record PricingOptionView(string Period, decimal Amount, string Currency);
+public sealed record PricingOptionView(
+    string Period,
+    decimal Amount,
+    string Currency,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Deposit = null);
 
 public sealed record RentalWindowView(DateOnly StartDate, DateOnly EndDate);
 

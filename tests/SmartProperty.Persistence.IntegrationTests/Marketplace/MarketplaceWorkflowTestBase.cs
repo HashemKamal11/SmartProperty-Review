@@ -113,9 +113,11 @@ public abstract class MarketplaceWorkflowTestBase(PostgreSqlFixture fixture) : D
     }
 
     // Creates a draft with one piece of evidence, then submits it. Each call to this helper is the next version.
-    protected async Task<ListingDraftResult> SubmittedAsync(World world, ListingPurpose purpose)
+    protected async Task<ListingDraftResult> SubmittedAsync(World world, ListingPurpose purpose, ListingDraftContentInput? stated = null)
     {
-        var content = purpose == ListingPurpose.Sale ? SaleContent([Guid.NewGuid()]) : RentContent([Guid.NewGuid()]);
+        var content = stated is not null
+            ? stated with { EvidenceIds = [Guid.NewGuid()] }
+            : purpose == ListingPurpose.Sale ? SaleContent([Guid.NewGuid()]) : RentContent([Guid.NewGuid()]);
         Result<ListingDraftResult> created;
 
         await using (var scope = Scope())

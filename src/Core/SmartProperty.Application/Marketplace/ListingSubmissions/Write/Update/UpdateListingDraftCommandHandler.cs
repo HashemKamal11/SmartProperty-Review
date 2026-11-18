@@ -90,6 +90,11 @@ public sealed class UpdateListingDraftCommandHandler(
             return Result<ListingDraftResult>.Failure(staleError);
         }
 
+        if (ListingDraftContentValidator.PastAvailability(command.Content, locked.Value.Gate.Property!, now) is { } past)
+        {
+            return Result<ListingDraftResult>.Failure(past);
+        }
+
         var content = CanonicalListingContent.Build(locked.Value.Gate.Property!, draft.Purpose, command.Content);
 
         if (content.IsFailure)

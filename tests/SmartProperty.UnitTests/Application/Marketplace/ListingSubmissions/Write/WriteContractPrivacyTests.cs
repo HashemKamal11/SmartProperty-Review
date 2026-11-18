@@ -79,7 +79,7 @@ public sealed class WriteContractPrivacyTests
         Assert.Equal(new[] { "SubmissionId", "ExpectedRevision" }, ParametersOf(typeof(DiscardListingDraftCommand)));
         Assert.Equal(new[] { "SubmissionId", "ExpectedRevision" }, ParametersOf(typeof(SubmitListingDraftCommand)));
         Assert.Equal(
-            new[] { "Title", "Description", "Amount", "Currency", "RentPeriod", "EvidenceIds", "PricingOptions", "RentalTerms" },
+            new[] { "Title", "Description", "Amount", "Currency", "RentPeriod", "EvidenceIds", "PricingOptions", "RentalTerms", "Negotiable", "AvailableFrom" },
             ParametersOf(typeof(ListingDraftContentInput)));
     }
 
@@ -102,17 +102,20 @@ public sealed class WriteContractPrivacyTests
     [Fact]
     public void NoRequestParameterIsABooleanSoNoVerdictCanBeSupplied()
     {
-        var types = Commands.Append(typeof(ListingDraftContentInput))
-            .SelectMany(type => type.GetConstructors().Single().GetParameters().Select(parameter => parameter.ParameterType));
+        // The one exception is a sale's Negotiable: the owner's own commercial statement about the price, never a verdict.
+        var booleans = Commands.Append(typeof(ListingDraftContentInput))
+            .SelectMany(type => type.GetConstructors().Single().GetParameters())
+            .Where(parameter => (Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType) == typeof(bool))
+            .Select(parameter => $"{parameter.Member.DeclaringType!.Name}.{parameter.Name}");
 
-        Assert.DoesNotContain(types, type => (Nullable.GetUnderlyingType(type) ?? type) == typeof(bool));
+        Assert.Equal(new[] { "ListingDraftContentInput.Negotiable" }, booleans);
     }
 
 
     [Fact]
     public void TheRentalInputsCarryOnlyWhatAnOwnerStatesAndNeverATimeZoneOrAVerdict()
     {
-        Assert.Equal(new[] { "Period", "Amount", "Currency" }, ParametersOf(typeof(RentPricingOptionInput)));
+        Assert.Equal(new[] { "Period", "Amount", "Currency", "Deposit" }, ParametersOf(typeof(RentPricingOptionInput)));
         Assert.Equal(new[] { "StartDate", "EndDate" }, ParametersOf(typeof(RentalWindowInput)));
         // The time zone is the property's own, taken from its country, so a request has nowhere to put one.
         Assert.Equal(

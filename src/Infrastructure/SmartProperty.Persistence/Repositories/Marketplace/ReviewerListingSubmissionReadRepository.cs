@@ -63,6 +63,7 @@ internal sealed class ReviewerListingSubmissionReadRepository(ApplicationDbConte
                (s.content_snapshot->'Payload'->>'Amount')::numeric AS "Amount",
                s.content_snapshot->'Payload'->>'Currency' AS "Currency",
                (s.content_snapshot->'Payload'->>'RentPeriod')::integer AS "RentPeriod",
+               (s.content_snapshot->'Payload'->>'Negotiable')::boolean AS "Negotiable",
                (s.content_snapshot->'Payload'->>'PropertyType')::integer AS "PropertyType",
                s.content_snapshot->'Payload'->>'Country' AS "Country",
                s.content_snapshot->'Payload'->>'Region' AS "Region",
@@ -236,7 +237,7 @@ internal sealed class ReviewerListingSubmissionReadRepository(ApplicationDbConte
     }
 
     private static PublicListingPrice Price(ReviewerListingSubmissionReadRow row) =>
-        new(row.Amount, row.Currency, (RentPeriod?)row.RentPeriod);
+        new(row.Amount, row.Currency, (RentPeriod?)row.RentPeriod, row.Negotiable);
 
     private static PublicListingLocation Location(ReviewerListingSubmissionReadRow row) =>
         new(row.Country, row.Region, row.City, row.District);

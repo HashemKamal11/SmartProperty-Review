@@ -48,7 +48,9 @@ internal static class CanonicalListingContent
                 purpose,
                 input.Amount,
                 input.Currency,
-                input.RentPeriod));
+                input.RentPeriod,
+                negotiable: input.Negotiable,
+                availableFrom: input.AvailableFrom));
         }
         catch (ArgumentException)
         {
@@ -84,7 +86,7 @@ internal static class CanonicalListingContent
             input.Title,
             input.Description,
             property.PropertyType,
-            input.PricingOptions!.Select(option => new RentPricingOption(option.Period, option.Amount, option.Currency)),
+            input.PricingOptions!.Select(option => new RentPricingOption(option.Period, option.Amount, option.Currency, option.Deposit)),
             rentalTerms));
     }
 

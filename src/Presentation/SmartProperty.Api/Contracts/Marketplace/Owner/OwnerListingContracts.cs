@@ -8,7 +8,9 @@ namespace SmartProperty.Api.Contracts.Marketplace.Owner;
 /// the authenticated principal and the persisted grant, never from a request.
 /// </summary>
 /// <remarks>
-/// For a Sale, <c>amount</c> and <c>currency</c> are the price. For a Rent, the price is given either as a single
+/// For a Sale, <c>amount</c> and <c>currency</c> are the price. <c>negotiable</c> (true or false, optional) says whether
+/// the sale price is open to negotiation; a Rent must not send it. <c>availableFrom</c> (a date, optional, today or later) is
+/// when a sale property is available; a Rent uses its <c>rentalTerms.windows</c> instead. For a Rent, the price is given either as a single
 /// <c>amount</c> with a <c>rentPeriod</c>, or as <c>pricingOptions</c>: any of Daily, Weekly, Monthly and Yearly, each
 /// with its own amount and currency. The options are independent of how long a tenant stays; the length of a stay is a
 /// request's own start and end dates. <c>rentalTerms</c> carries the check-in and check-out times and the availability
@@ -22,9 +24,12 @@ public sealed record ListingDraftContentRequest(
     string? RentPeriod,
     IReadOnlyList<Guid>? EvidenceIds,
     IReadOnlyList<RentPricingOptionRequest>? PricingOptions = null,
-    RentalTermsRequest? RentalTerms = null);
+    RentalTermsRequest? RentalTerms = null,
+    bool? Negotiable = null,
+    DateOnly? AvailableFrom = null);
 
-public sealed record RentPricingOptionRequest(string? Period, decimal? Amount, string? Currency);
+/// <summary>One rent pricing row: the period, its amount and currency, and optionally the security deposit asked with it (same currency, zero or more).</summary>
+public sealed record RentPricingOptionRequest(string? Period, decimal? Amount, string? Currency, decimal? Deposit = null);
 
 public sealed record RentalWindowRequest(DateOnly? StartDate, DateOnly? EndDate);
 

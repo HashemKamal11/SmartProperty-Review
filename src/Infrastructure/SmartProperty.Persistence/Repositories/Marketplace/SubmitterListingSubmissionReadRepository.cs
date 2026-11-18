@@ -27,6 +27,7 @@ internal sealed class SubmitterListingSubmissionReadRepository(ApplicationDbCont
         (s.content_snapshot->'Payload'->>'Amount')::numeric AS "Amount",
         s.content_snapshot->'Payload'->>'Currency' AS "Currency",
         (s.content_snapshot->'Payload'->>'RentPeriod')::integer AS "RentPeriod",
+        (s.content_snapshot->'Payload'->>'Negotiable')::boolean AS "Negotiable",
         (s.content_snapshot->'Payload'->>'PropertyType')::integer AS "PropertyType",
         s.content_snapshot->'Payload'->>'Country' AS "Country",
         s.content_snapshot->'Payload'->>'Region' AS "Region",
@@ -177,7 +178,7 @@ internal sealed class SubmitterListingSubmissionReadRepository(ApplicationDbCont
 
         return new SubmitterSubmissionSummary(
             row.SubmissionId, row.ListingId, purpose, row.Version, status, Text(row.Title),
-            new PublicListingPrice(row.Amount, Text(row.Currency), rentPeriod), propertyType,
+            new PublicListingPrice(row.Amount, Text(row.Currency), rentPeriod, row.Negotiable), propertyType,
             new PublicListingLocation(Text(row.Country), Text(row.Region), Text(row.City), Text(row.District)),
             (ListingRepresentationKind)representation, row.CreatedAt, row.SubmittedAt, row.UpdatedAt,
             row.IsCurrentlyPublished,

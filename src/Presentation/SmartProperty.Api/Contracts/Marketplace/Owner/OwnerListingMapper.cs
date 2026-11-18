@@ -57,7 +57,7 @@ internal static class OwnerListingMapper
                         Invalid("Each pricing option needs a period of Daily, Weekly, Monthly or Yearly."));
                 }
 
-                options.Add(new RentPricingOptionInput(optionPeriod, option.Amount ?? 0m, option.Currency ?? string.Empty));
+                options.Add(new RentPricingOptionInput(optionPeriod, option.Amount ?? 0m, option.Currency ?? string.Empty, option.Deposit));
             }
         }
 
@@ -95,7 +95,9 @@ internal static class OwnerListingMapper
             period,
             request.EvidenceIds ?? [],
             options,
-            terms));
+            terms,
+            request.Negotiable,
+            request.AvailableFrom));
     }
 
     public static ListingDraftResponse ToResponse(ListingDraftResult result)

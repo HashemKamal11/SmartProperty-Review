@@ -80,6 +80,11 @@ public sealed class CreateListingDraftCommandHandler(
             return Result<ListingDraftResult>.Failure(gate.Error!);
         }
 
+        if (ListingDraftContentValidator.PastAvailability(command.Content, gate.Property!, now) is { } past)
+        {
+            return Result<ListingDraftResult>.Failure(past);
+        }
+
         var prepared = await DraftCreation.PrepareAsync(
             repository, gate, command.Purpose, command.Content, references.Value, now, cancellationToken);
 

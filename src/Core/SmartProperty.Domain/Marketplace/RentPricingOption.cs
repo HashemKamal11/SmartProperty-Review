@@ -10,7 +10,7 @@ namespace SmartProperty.Domain.Marketplace;
 /// </remarks>
 public sealed record RentPricingOption
 {
-    public RentPricingOption(RentPeriod period, decimal amount, string currency)
+    public RentPricingOption(RentPeriod period, decimal amount, string currency, decimal? deposit = null)
     {
         if (!Enum.IsDefined(period))
         {
@@ -28,14 +28,23 @@ public sealed record RentPricingOption
             throw new ArgumentException("A currency is exactly three upper-case letters.", nameof(currency));
         }
 
+        if (deposit is < 0m)
+        {
+            throw new ArgumentOutOfRangeException(nameof(deposit), deposit, "A security deposit cannot be negative.");
+        }
+
         Period = period;
         Amount = amount;
         Currency = currency;
+        Deposit = deposit;
     }
 
     public RentPeriod Period { get; }
     public decimal Amount { get; }
     public string Currency { get; }
+
+    /// <summary>The security deposit asked with this option, in its currency; null when none was stated.</summary>
+    public decimal? Deposit { get; }
 
     /// <summary>
     /// The option that stands for the rental where a single price is needed (the plain listing price, a search

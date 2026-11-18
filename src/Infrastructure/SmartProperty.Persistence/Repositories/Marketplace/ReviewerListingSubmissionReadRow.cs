@@ -17,6 +17,7 @@ internal sealed class ReviewerListingSubmissionReadRow
     public decimal Amount { get; set; }
     public string Currency { get; set; } = null!;
     public int? RentPeriod { get; set; }
+    public bool? Negotiable { get; set; }
     public int PropertyType { get; set; }
     public string Country { get; set; } = null!;
     public string Region { get; set; } = null!;

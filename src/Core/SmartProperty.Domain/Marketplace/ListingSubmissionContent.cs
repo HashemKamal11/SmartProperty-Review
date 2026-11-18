@@ -15,7 +15,8 @@ public sealed class ListingSubmissionContent
     public ListingSubmissionContent(string country, string region, string city, string district,
         string title, string description, PropertyType propertyType, ListingPurpose purpose,
         decimal amount, string currency, RentPeriod? rentPeriod,
-        IEnumerable<RentPricingOption>? pricingOptions = null, RentalTerms? rentalTerms = null)
+        IEnumerable<RentPricingOption>? pricingOptions = null, RentalTerms? rentalTerms = null, bool? negotiable = null,
+        DateOnly? availableFrom = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(country);
         ArgumentException.ThrowIfNullOrWhiteSpace(region);
@@ -30,6 +31,11 @@ public sealed class ListingSubmissionContent
             throw new ArgumentException("Rent requires Daily, Weekly, Monthly or Yearly.", nameof(rentPeriod));
         if (purpose == ListingPurpose.Sale && rentPeriod.HasValue)
             throw new ArgumentException("Sale must not specify a rental period.", nameof(rentPeriod));
+
+        if (purpose == ListingPurpose.Rent && negotiable.HasValue)
+            throw new ArgumentException("Only a sale states whether its price is negotiable.", nameof(negotiable));
+        if (purpose == ListingPurpose.Rent && availableFrom.HasValue)
+            throw new ArgumentException("A rental states its availability as windows, not one date.", nameof(availableFrom));
 
         var options = pricingOptions?.ToArray() ?? [];
         if (purpose == ListingPurpose.Sale && (options.Length > 0 || rentalTerms is not null))
@@ -61,6 +67,8 @@ public sealed class ListingSubmissionContent
         RentPeriod = rentPeriod;
         PricingOptions = Array.AsReadOnly(options);
         RentalTerms = rentalTerms;
+        Negotiable = negotiable;
+        AvailableFrom = availableFrom;
     }
 
     /// <summary>Builds a rental from its pricing options, deriving the plain price from the primary option.</summary>
@@ -93,4 +101,10 @@ public sealed class ListingSubmissionContent
 
     /// <summary>When and how the rental can be booked, or null exactly when there are no pricing options.</summary>
     public RentalTerms? RentalTerms { get; }
+
+    /// <summary>Whether a sale's price is open to negotiation; null when not stated, and always null for a rental.</summary>
+    public bool? Negotiable { get; }
+
+    /// <summary>The date a sale property is available from; null when not stated, and always null for a rental.</summary>
+    public DateOnly? AvailableFrom { get; }
 }

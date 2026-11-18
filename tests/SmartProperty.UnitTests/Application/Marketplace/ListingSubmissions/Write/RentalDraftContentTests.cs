@@ -199,4 +199,96 @@ public sealed class RentalDraftContentTests
         Assert.True(result.IsSuccess);
         Assert.Empty(result.Value.PricingOptions);
     }
+
+    // ---- negotiable sale price and rent deposit
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ASaleStatesWhetherItsPriceIsNegotiable(bool negotiable)
+    {
+        var sale = new ListingDraftContentInput("House", "A house", 5_000_000m, "EGP", null, [], Negotiable: negotiable);
+
+        Assert.Null(ListingDraftContentValidator.Validate(sale, ListingPurpose.Sale));
+        Assert.Equal(negotiable, CanonicalListingContent.Build(Property(), ListingPurpose.Sale, sale).Value.Negotiable);
+    }
+
+    [Fact]
+    public void ARentalNeverStatesNegotiable()
+    {
+        var withOptions = Rental() with { Negotiable = true };
+        var singlePrice = new ListingDraftContentInput("Flat", "A flat", 5_000m, "EGP", RentPeriod.Monthly, [], Negotiable: false);
+
+        Assert.Contains("negotiable", ListingDraftContentValidator.Validate(withOptions, ListingPurpose.Rent)!.Description);
+        Assert.NotNull(ListingDraftContentValidator.Validate(withOptions, purpose: null));
+        Assert.NotNull(ListingDraftContentValidator.Validate(singlePrice, ListingPurpose.Rent));
+    }
+
+    [Fact]
+    public void EachRentOptionMayStateItsOwnDeposit()
+    {
+        RentPricingOptionInput[] options =
+        [
+            new(RentPeriod.Monthly, 20_000m, "EGP", Deposit: 40_000m),
+            new(RentPeriod.Yearly, 200_000m, "EGP", Deposit: 0m),
+            new(RentPeriod.Daily, 1_000m, "EGP"),
+        ];
+
+        Assert.Null(ListingDraftContentValidator.Validate(Rental(options), ListingPurpose.Rent));
+        var built = CanonicalListingContent.Build(Property(), ListingPurpose.Rent, Rental(options)).Value.PricingOptions;
+        Assert.Equal(40_000m, built.Single(option => option.Period == RentPeriod.Monthly).Deposit);
+        Assert.Equal(0m, built.Single(option => option.Period == RentPeriod.Yearly).Deposit);
+        Assert.Null(built.Single(option => option.Period == RentPeriod.Daily).Deposit);
+    }
+
+    // ---- sale availability date
+
+    [Fact]
+    public void ASaleMayStateTheDateItIsAvailableFrom()
+    {
+        var sale = new ListingDraftContentInput("House", "A house", 5_000_000m, "EGP", null, [], AvailableFrom: new DateOnly(2027, 1, 1));
+
+        Assert.Null(ListingDraftContentValidator.Validate(sale, ListingPurpose.Sale));
+        Assert.Equal(new DateOnly(2027, 1, 1), CanonicalListingContent.Build(Property(), ListingPurpose.Sale, sale).Value.AvailableFrom);
+    }
+
+    [Fact]
+    public void ARentalNeverStatesOneAvailabilityDate()
+    {
+        var withOptions = Rental() with { AvailableFrom = new DateOnly(2027, 1, 1) };
+        var singlePrice = new ListingDraftContentInput("Flat", "A flat", 5_000m, "EGP", RentPeriod.Monthly, [], AvailableFrom: new DateOnly(2027, 1, 1));
+
+        Assert.Contains("windows", ListingDraftContentValidator.Validate(withOptions, ListingPurpose.Rent)!.Description);
+        Assert.NotNull(ListingDraftContentValidator.Validate(withOptions, purpose: null));
+        Assert.NotNull(ListingDraftContentValidator.Validate(singlePrice, ListingPurpose.Rent));
+    }
+
+    [Fact]
+    public void TodayOrLaterIsAcceptedAndAPastDateIsRefusedInThePropertysOwnCalendar()
+    {
+        // 23:30 UTC on 31 Dec is already 1 Jan in Cairo (UTC+2).
+        var now = new DateTimeOffset(2026, 12, 31, 23, 30, 0, TimeSpan.Zero);
+        ListingDraftContentInput On(int year, int month, int day) =>
+            new("House", "A house", 5_000_000m, "EGP", null, [], AvailableFrom: new DateOnly(year, month, day));
+
+        Assert.Null(ListingDraftContentValidator.PastAvailability(On(2027, 1, 1), Property("Africa/Cairo"), now));
+        Assert.Null(ListingDraftContentValidator.PastAvailability(On(2027, 6, 1), Property("Africa/Cairo"), now));
+        Assert.Contains("today or later", ListingDraftContentValidator.PastAvailability(On(2026, 12, 31), Property("Africa/Cairo"), now)!.Description);
+
+        // Without a time zone the UTC date is today.
+        Assert.Null(ListingDraftContentValidator.PastAvailability(On(2026, 12, 31), Property(timeZoneId: null), now));
+        Assert.NotNull(ListingDraftContentValidator.PastAvailability(On(2026, 12, 30), Property(timeZoneId: null), now));
+
+        // No date stated is always fine.
+        Assert.Null(ListingDraftContentValidator.PastAvailability(On(2027, 1, 1) with { AvailableFrom = null }, Property(), now));
+    }
+
+    [Fact]
+    public void ADepositCannotBeNegative()
+    {
+        var error = ListingDraftContentValidator.Validate(
+            Rental([new RentPricingOptionInput(RentPeriod.Monthly, 20_000m, "EGP", Deposit: -1m)]), ListingPurpose.Rent);
+
+        Assert.Contains("deposit", error!.Description);
+    }
 }

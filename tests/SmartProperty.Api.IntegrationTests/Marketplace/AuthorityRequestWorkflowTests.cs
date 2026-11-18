@@ -91,6 +91,76 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task TheSalePriceSaysWhetherItIsNegotiableAndEachRentRowCarriesItsDeposit()
+    {
+        var world = await SeedAsync();
+        using var owner = Client(world.Owner);
+        var id = await CreateAsync(owner, world, ["Sale", "Rent"]);
+
+        var availableFrom = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30).ToString("yyyy-MM-dd");
+        using var sale = await owner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Sale", new
+        {
+            title = "Villa for sale", description = "A villa", amount = 5_000_000m, currency = "EGP", negotiable = true, availableFrom,
+        });
+        Assert.Equal(HttpStatusCode.OK, sale.StatusCode);
+        var saleListing = (await ReadAsync(sale)).GetProperty("saleListing");
+        Assert.True(saleListing.GetProperty("negotiable").GetBoolean());
+        Assert.Equal(availableFrom, saleListing.GetProperty("availableFrom").GetString());
+
+        // A date before today is refused when saving; the stored content keeps the last good one.
+        using var past = await owner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Sale", new
+        {
+            title = "Villa for sale", description = "A villa", amount = 5_000_000m, currency = "EGP",
+            availableFrom = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-2).ToString("yyyy-MM-dd"),
+        });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, past.StatusCode);
+
+        using var rent = await owner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Rent", new
+        {
+            title = "Villa for rent",
+            description = "A villa",
+            pricingOptions = new object[]
+            {
+                new { period = "Monthly", amount = 20_000m, currency = "EGP", deposit = 40_000m },
+                new { period = "Yearly", amount = 200_000m, currency = "EGP" },
+            },
+            rentalTerms = new
+            {
+                checkInTime = "14:00:00",
+                checkOutTime = "11:00:00",
+                windows = new object[] { new { startDate = "2027-06-01", endDate = "2027-09-01" } },
+            },
+        });
+        Assert.Equal(HttpStatusCode.OK, rent.StatusCode);
+        var rentListing = (await ReadAsync(rent)).GetProperty("rentListing");
+        Assert.False(rentListing.TryGetProperty("negotiable", out _));
+        var options = rentListing.GetProperty("pricingOptions").EnumerateArray().ToArray();
+        Assert.Equal(40_000m, options.Single(o => o.GetProperty("period").GetString() == "Monthly").GetProperty("deposit").GetDecimal());
+        Assert.False(options.Single(o => o.GetProperty("period").GetString() == "Yearly").TryGetProperty("deposit", out _));
+
+        // Negotiation is a sale's only, and a deposit is never negative.
+        using var negotiableRent = await owner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Rent", new
+        {
+            title = "Villa for rent", description = "A villa", amount = 20_000m, currency = "EGP", rentPeriod = "Monthly", negotiable = true,
+        });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, negotiableRent.StatusCode);
+
+        using var negativeDeposit = await owner.PutAsJsonAsync($"{OwnerRoute}/{id}/listings/Rent", new
+        {
+            title = "Villa for rent",
+            description = "A villa",
+            pricingOptions = new object[] { new { period = "Monthly", amount = 20_000m, currency = "EGP", deposit = -1m } },
+            rentalTerms = new
+            {
+                checkInTime = "14:00:00",
+                checkOutTime = "11:00:00",
+                windows = new object[] { new { startDate = "2027-06-01", endDate = "2027-09-01" } },
+            },
+        });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, negativeDeposit.StatusCode);
+    }
+
+    [Fact]
     public async Task OwnerLawyerAdminAndCustomerGoThroughTheWholeFlowAndApprovalPublishes()
     {
         var staff = await StaffAsync();

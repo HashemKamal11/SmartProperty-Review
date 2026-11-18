@@ -295,6 +295,51 @@ public sealed class PublicListingFilterPersistenceTests(PostgreSqlFixture fixtur
         Assert.NotEqual(pageOne.Items[0].PropertyId, pageTwo.Items[0].PropertyId);
     }
 
+    [Fact]
+    public async Task ASalePriceSaysWhetherItIsNegotiableAndEachRentPriceCarriesItsDeposit()
+    {
+        var both = await SeedAsync([ListingPurpose.Sale, ListingPurpose.Rent]);
+        var availableFrom = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30);
+        var sale = await PublishAsync(both, ListingPurpose.Sale, SaleContent() with { Negotiable = true, AvailableFrom = availableFrom });
+        var rent = await PublishAsync(both, ListingPurpose.Rent, RentContent() with
+        {
+            PricingOptions =
+            [
+                new RentPricingOptionInput(RentPeriod.Monthly, 20_000m, "EGP", Deposit: 40_000m),
+                new RentPricingOptionInput(RentPeriod.Daily, 1_000m, "EGP"),
+            ],
+        });
+        var plain = await SeedAsync([ListingPurpose.Sale]);
+        var plainSale = await PublishAsync(plain, ListingPurpose.Sale);
+
+        await using var scope = Scope();
+        var reads = scope.Get<IPublicListingReadRepository>();
+
+        var saleDetail = (await reads.GetByIdAsync(sale.ListingId))!;
+        Assert.True(saleDetail.Price.Negotiable);
+        Assert.Equal(availableFrom, saleDetail.AvailableFrom);
+        Assert.Null(saleDetail.Price.Deposit);
+
+        var rentDetail = (await reads.GetByIdAsync(rent.ListingId))!;
+        Assert.Null(rentDetail.Price.Negotiable);
+        Assert.Null(rentDetail.AvailableFrom);
+        Assert.Equal(RentPeriod.Monthly, rentDetail.Price.RentPeriod);
+        Assert.Equal(40_000m, rentDetail.Price.Deposit); // the plain rent price is the monthly option
+        Assert.Equal(40_000m, rentDetail.PricingOptions!.Single(option => option.RentPeriod == RentPeriod.Monthly).Deposit);
+        Assert.Null(rentDetail.PricingOptions!.Single(option => option.RentPeriod == RentPeriod.Daily).Deposit);
+
+        // Searching by the daily period shows the daily price, which states no deposit.
+        var daily = await reads.SearchAsync(
+            Criteria() with { Purpose = ListingPurpose.Rent, RentPeriod = RentPeriod.Daily },
+            0, 100);
+        var dailyRent = Assert.Single(daily.Items, item => item.ListingId == rent.ListingId);
+        Assert.Equal(1_000m, dailyRent.Price.Amount);
+        Assert.Null(dailyRent.Price.Deposit);
+
+        // A sale that did not state it says nothing either way.
+        Assert.Null((await reads.GetByIdAsync(plainSale.ListingId))!.Price.Negotiable);
+    }
+
     // ---- helpers
 
     private async Task<PublicPropertyCardPage> CardsAsync(PublicListingSearchCriteria criteria)
@@ -304,9 +349,9 @@ public sealed class PublicListingFilterPersistenceTests(PostgreSqlFixture fixtur
         return await scope.Get<IPublicListingReadRepository>().SearchByPropertyAsync(criteria, 0, 100);
     }
 
-    private async Task<ListingDraftResult> PublishAsync(World world, ListingPurpose purpose)
+    private async Task<ListingDraftResult> PublishAsync(World world, ListingPurpose purpose, ListingDraftContentInput? content = null)
     {
-        var draft = await SubmittedAsync(world, purpose);
+        var draft = await SubmittedAsync(world, purpose, content);
         var approved = await ApproveAsync(world, draft.SubmissionId);
         Assert.True(approved.IsSuccess, approved.Error?.Code);
 

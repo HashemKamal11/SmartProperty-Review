@@ -17,6 +17,8 @@ namespace SmartProperty.Application.Marketplace.ListingSubmissions.Write;
 /// <see cref="RentalTerms"/>; its plain price is then derived from the primary option, and
 /// <see cref="Amount"/>, <see cref="Currency"/> and <see cref="RentPeriod"/> are not used. A rental given only a
 /// single <see cref="RentPeriod"/> price, with neither options nor terms, is the form that predates options.
+    /// <see cref="Negotiable"/> is a sale's only: whether its price is open to negotiation, or null when not stated.
+    /// <see cref="AvailableFrom"/> is a sale's only too: the date the property is available from, today or later when saved.
 /// </para>
 /// </remarks>
 public sealed record ListingDraftContentInput(
@@ -27,10 +29,12 @@ public sealed record ListingDraftContentInput(
     RentPeriod? RentPeriod,
     IReadOnlyList<Guid> EvidenceIds,
     IReadOnlyList<RentPricingOptionInput>? PricingOptions = null,
-    RentalTermsInput? RentalTerms = null);
+    RentalTermsInput? RentalTerms = null,
+    bool? Negotiable = null,
+    DateOnly? AvailableFrom = null);
 
-/// <summary>One offered pricing period with its own amount and currency.</summary>
-public sealed record RentPricingOptionInput(RentPeriod Period, decimal Amount, string Currency);
+/// <summary>One offered pricing period with its own amount and currency, and the security deposit asked with it.</summary>
+public sealed record RentPricingOptionInput(RentPeriod Period, decimal Amount, string Currency, decimal? Deposit = null);
 
 /// <summary>A span of available dates, from <paramref name="StartDate"/> up to but not including <paramref name="EndDate"/>.</summary>
 public sealed record RentalWindowInput(DateOnly StartDate, DateOnly EndDate);

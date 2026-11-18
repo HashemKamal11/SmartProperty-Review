@@ -117,6 +117,11 @@ public sealed class CreatePropertyListingDraftsCommandHandler(
 
         foreach (var (purpose, content) in requested)
         {
+            if (ListingDraftContentValidator.PastAvailability(content, gates[purpose].Property!, now) is { } past)
+            {
+                return Failure(past);
+            }
+
             var draft = await DraftCreation.PrepareAsync(
                 repository, gates[purpose], purpose, content, references[purpose], now, cancellationToken);
 

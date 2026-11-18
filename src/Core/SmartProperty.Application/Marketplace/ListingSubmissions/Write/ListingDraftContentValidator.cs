@@ -1,3 +1,4 @@
+using SmartProperty.Application.Abstractions.Persistence.Repositories;
 using SmartProperty.Common.Results;
 using SmartProperty.Domain.Marketplace;
 
@@ -38,6 +39,20 @@ internal static class ListingDraftContentValidator
         }
 
         var hasOptions = content.PricingOptions is { Count: > 0 };
+
+        // Negotiation is stated for a sale price only; a rental carries a deposit per pricing option instead.
+        if (content.Negotiable is not null
+            && (purpose == ListingPurpose.Rent || hasOptions || content.RentalTerms is not null || content.RentPeriod is not null))
+        {
+            return ListingSubmissionErrors.ValidationFailed("Only a sale states whether its price is negotiable.");
+        }
+
+        // A rental's availability is its windows; one availability date is a sale's.
+        if (content.AvailableFrom is not null
+            && (purpose == ListingPurpose.Rent || hasOptions || content.RentalTerms is not null || content.RentPeriod is not null))
+        {
+            return ListingSubmissionErrors.ValidationFailed("Only a sale states one availability date; a rental uses its windows.");
+        }
 
         if (hasOptions || content.RentalTerms is not null)
         {
@@ -103,6 +118,37 @@ internal static class ListingDraftContentValidator
         return null;
     }
 
+    /// <summary>
+    /// Refuses a sale availability date before today. Checked only where the owner saves content, never on approval
+    /// or publication, so a date that passes while the request waits for review never blocks it. Today is the
+    /// property's own date when its time zone is known, otherwise the UTC date.
+    /// </summary>
+    public static Error? PastAvailability(ListingDraftContentInput content, LockedPropertyView property, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(property);
+
+        if (content.AvailableFrom is not { } availableFrom)
+        {
+            return null;
+        }
+
+        return availableFrom < TodayAt(property, now)
+            ? ListingSubmissionErrors.ValidationFailed("The availability date must be today or later.")
+            : null;
+    }
+
+    internal static DateOnly TodayAt(LockedPropertyView property, DateTimeOffset now)
+    {
+        if (!string.IsNullOrWhiteSpace(property.TimeZoneId)
+            && TimeZoneInfo.TryFindSystemTimeZoneById(property.TimeZoneId, out var zone))
+        {
+            return DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        }
+
+        return DateOnly.FromDateTime(now.UtcDateTime);
+    }
+
     // The rules the Domain also enforces, stated as friendly messages before anything is built.
     private static Error? RentalOptionsValidation(ListingDraftContentInput content)
     {
@@ -131,6 +177,11 @@ internal static class ListingDraftContentValidator
         if (options.Any(option => option.Currency is null || option.Currency.Length != 3 || !option.Currency.All(c => c is >= 'A' and <= 'Z')))
         {
             return ListingSubmissionErrors.ValidationFailed("Every pricing option needs a currency of exactly three upper-case letters.");
+        }
+
+        if (options.Any(option => option.Deposit is < 0m))
+        {
+            return ListingSubmissionErrors.ValidationFailed("A security deposit cannot be negative.");
         }
 
         var terms = content.RentalTerms;

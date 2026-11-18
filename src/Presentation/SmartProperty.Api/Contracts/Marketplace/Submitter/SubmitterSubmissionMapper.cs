@@ -282,11 +282,11 @@ internal static class SubmitterSubmissionMapper
         return purpose switch
         {
             ListingPurpose.Sale when price.RentPeriod is null =>
-                new PublicMoneyResponse(price.Amount, currency),
+                new PublicMoneyResponse(price.Amount, currency, Negotiable: price.Negotiable),
             ListingPurpose.Sale =>
                 throw Invalid("a rent period on a sale"),
             ListingPurpose.Rent when price.RentPeriod is { } rentPeriod =>
-                new PublicMoneyResponse(price.Amount, currency, ToRentPeriod(rentPeriod)),
+                new PublicMoneyResponse(price.Amount, currency, ToRentPeriod(rentPeriod), Deposit: price.Deposit),
             ListingPurpose.Rent =>
                 throw Invalid("a rental without a rent period"),
             _ => throw Invalid("an unsupported listing purpose")

@@ -27,4 +27,5 @@ public sealed record PublicListingDetail(
     decimal? MatchPercentage = null,
     bool? IsFavorite = null,
     PublicPropertyFacts? Property = null,
-    IReadOnlyList<PublicListingSummary>? OtherListings = null);
+    IReadOnlyList<PublicListingSummary>? OtherListings = null,
+    DateOnly? AvailableFrom = null);

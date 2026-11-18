@@ -75,7 +75,8 @@ internal static class PublicListingMapper
             listing.IsFavorite,
             PricePerSqm(listing),
             ToFacts(listing.PropertyId, listing.Property),
-            listing.OtherListings?.Select(ToSummaryResponse).ToArray());
+            listing.OtherListings?.Select(ToSummaryResponse).ToArray(),
+            listing.AvailableFrom);
     }
 
     public static PublicPropertyCardResponse ToCardResponse(PublicPropertyCard card)
@@ -148,7 +149,8 @@ internal static class PublicListingMapper
             .Select(option => new PublicMoneyResponse(
                 option.Amount,
                 RequireText(option.Currency, "currency"),
-                ToRentPeriod(option.RentPeriod ?? throw Invalid("a pricing option without a period"))))
+                ToRentPeriod(option.RentPeriod ?? throw Invalid("a pricing option without a period")),
+                Deposit: option.Deposit))
             .ToArray();
     }
 
@@ -220,11 +222,11 @@ internal static class PublicListingMapper
         return purpose switch
         {
             ListingPurpose.Sale when price.RentPeriod is null =>
-                new PublicMoneyResponse(price.Amount, currency),
+                new PublicMoneyResponse(price.Amount, currency, Negotiable: price.Negotiable),
             ListingPurpose.Sale =>
                 throw Invalid("a rent period on a sale listing"),
             ListingPurpose.Rent when price.RentPeriod is { } rentPeriod =>
-                new PublicMoneyResponse(price.Amount, currency, ToRentPeriod(rentPeriod)),
+                new PublicMoneyResponse(price.Amount, currency, ToRentPeriod(rentPeriod), Deposit: price.Deposit),
             ListingPurpose.Rent =>
                 throw Invalid("a rent listing without a rent period"),
             _ => throw Invalid("an unsupported listing purpose")
