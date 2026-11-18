@@ -34,9 +34,10 @@ public sealed class PublicListingEndpointTests
     private static readonly Guid ListingId = Guid.Parse("a41e5c20-7b3d-4e0f-9a52-3d1f8e6b7c10");
     private static readonly DateTimeOffset PublishedAt = new(2026, 10, 20, 8, 0, 0, TimeSpan.Zero);
 
+    // The property id is public since 2026-11-17 (product decision): favourites, sharing and photos are keyed by it.
     private static readonly string[] PrivateTerms =
     [
-        "propertyId", "submission", "evidence", "owner", "workspace", "reviewer", "review", "addressLine",
+        "submission", "evidence", "owner", "workspace", "reviewer", "review", "addressLine",
         "postalCode", "latitude", "longitude", "permission", "status",
     ];
 
@@ -104,6 +105,78 @@ public sealed class PublicListingEndpointTests
         var authenticatedBody = await authenticated.GetStringAsync(ListRoute);
 
         Assert.Equal(anonymousBody, authenticatedBody);
+    }
+
+    [Fact]
+    public async Task AValidBearerTokenMakesTheReaderTheViewerOfTheSearch()
+    {
+        using var host = new PublicApiTestHost(new StubPublicListingReadRepository());
+        using var client = host.CreateClient();
+        var viewer = Guid.NewGuid();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", TestJwt.CreateAccessToken(viewer));
+
+        using var response = await client.GetAsync($"{ListRoute}?sort=Match&minMatchPercentage=85");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var criteria = host.Stub.LastSearchCall!.Criteria;
+        Assert.Equal(viewer, criteria.ViewerUserId);
+        Assert.Equal(85m, criteria.MinMatchPercentage);
+        Assert.Equal(PublicListingSortOrder.Match, criteria.Sort);
+    }
+
+    [Theory]
+    [InlineData("?minMatchPercentage=85")]
+    [InlineData("?sort=Match")]
+    public async Task MatchFilteringOrSortingWithoutSignInIsAValidationFailure(string query)
+    {
+        using var host = new PublicApiTestHost(new StubPublicListingReadRepository());
+        using var client = host.CreateClient();
+
+        using var response = await client.GetAsync(ListRoute + query);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal(0, host.Stub.SearchCallCount);
+    }
+
+    [Fact]
+    public async Task TheListingScreenFiltersReachTheRepository()
+    {
+        using var host = new PublicApiTestHost(new StubPublicListingReadRepository());
+        using var client = host.CreateClient();
+        var areaId = Guid.NewGuid();
+        var cityId = Guid.NewGuid();
+
+        using var response = await client.GetAsync(
+            $"{ListRoute}?propertyType=Land,villa&propertyType=Duplex&q=%20فيلا%20النرجس%20&areaId={areaId}&cityId={cityId}"
+            + "&minBedrooms=5");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var criteria = host.Stub.LastSearchCall!.Criteria;
+        Assert.Equal([PropertyType.Land, PropertyType.Villa, PropertyType.Duplex], criteria.PropertyTypes);
+        Assert.Null(criteria.PropertyType);
+        Assert.Equal(["فيلا", "النرجس"], criteria.SearchTerms);
+        Assert.Equal(areaId, criteria.AreaId);
+        Assert.Equal(cityId, criteria.CityId);
+        Assert.Equal(5, criteria.MinBedrooms);
+        Assert.Null(criteria.ViewerUserId);
+    }
+
+    [Theory]
+    [InlineData("?propertyType=Villa,Castle", HttpStatusCode.BadRequest)]
+    [InlineData("?propertyType=0", HttpStatusCode.BadRequest)]
+    [InlineData("?minBedrooms=5&maxBedrooms=2", HttpStatusCode.UnprocessableEntity)]
+    [InlineData("?areaId=00000000-0000-0000-0000-000000000000", HttpStatusCode.UnprocessableEntity)]
+    [InlineData("?q=a%20b%20c%20d%20e%20f", HttpStatusCode.UnprocessableEntity)]
+    public async Task AnInvalidListingScreenFilterIsRefused(string query, HttpStatusCode expected)
+    {
+        using var host = new PublicApiTestHost(new StubPublicListingReadRepository());
+        using var client = host.CreateClient();
+
+        using var response = await client.GetAsync(ListRoute + query);
+
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal(0, host.Stub.SearchCallCount);
     }
 
     [Fact]

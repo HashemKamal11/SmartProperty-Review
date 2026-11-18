@@ -8,8 +8,10 @@ namespace SmartProperty.Application.Marketplace.PublicListings;
 /// snapshot.
 /// </summary>
 /// <remarks>
-/// <see cref="ListingId"/> is the only identifier. The property id, the submission id and version, every status, and
-/// all owner, evidence, review and Workspace data are intentionally absent.
+/// The identifiers are the listing id, the property id (favourites, sharing and photos are keyed by it, and the
+/// public photo URL already carries it) and the cover photo id. The submission id and version, every status, and all
+/// owner, evidence, review and Workspace data are intentionally absent.
+/// <see cref="MatchPercentage"/> and <see cref="IsFavorite"/> describe the signed-in viewer and are null for a visitor.
 /// </remarks>
 public sealed record PublicListingSummary(
     Guid ListingId,
@@ -19,4 +21,11 @@ public sealed record PublicListingSummary(
     PropertyType PropertyType,
     PublicListingLocation Location,
     DateTimeOffset PublishedAt,
-    IReadOnlyList<PublicListingPrice>? PricingOptions = null);
+    IReadOnlyList<PublicListingPrice>? PricingOptions = null,
+    Guid PropertyId = default,
+    Guid? CoverImageId = null,
+    int? Bedrooms = null,
+    int? Bathrooms = null,
+    decimal? AreaSqm = null,
+    decimal? MatchPercentage = null,
+    bool? IsFavorite = null);

@@ -33,4 +33,14 @@ public interface IPublicListingReadRepository
     Task<PublicListingDetail?> GetByIdAsync(
         Guid listingId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// As <see cref="GetByIdAsync(Guid, CancellationToken)"/>, with the signed-in viewer's match percentage and
+    /// favourite flag when <paramref name="viewerUserId"/> is given.
+    /// </summary>
+    Task<PublicListingDetail?> GetByIdAsync(
+        Guid listingId,
+        Guid? viewerUserId,
+        CancellationToken cancellationToken = default) =>
+        GetByIdAsync(listingId, cancellationToken);
 }

@@ -125,6 +125,14 @@ at once.
   held dates. `rentPeriod` finds a rental by **any** pricing period it offers, and with `minPrice`/`maxPrice`/`currency`/
   price sort the price **of that period** is the one compared and shown.
 - Favorites and comparison items carry `listings`: the advertisements visible for that property.
+- Listing-screen filters: `propertyType` (repeated or comma-separated, any of them), `q` (up to 5 words over the title,
+  description and the area/city/country/compound names in English and Arabic), `areaId`, `cityId`, `compoundId`,
+  `district` (the snapshot's district, or the area's current English/Arabic name), `minBedrooms`/`maxBedrooms`.
+- Each listing carries `propertyId` (public since 2026-11-17: favourites, sharing and photo URLs use it),
+  `coverImageUrl`, `bedrooms`, `bathrooms` and `areaSqm`, read live from the property.
+- The sign-in is optional. With a valid token each listing also carries the viewer's latest `matchPercentage` and
+  `isFavorite`, and `minMatchPercentage` and `sort=Match` (best match first, then newest) become available; without one they
+  are a `422`.
 
 ## The listing's location, and the city fallback
 

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.PropertyRegistry;
+using SmartProperty.Api.Infrastructure;
 using SmartProperty.Api.Infrastructure.Authorization;
 using SmartProperty.Api.Infrastructure.Errors;
 using SmartProperty.Application.Abstractions.Identity;
@@ -177,8 +178,8 @@ public sealed class PropertiesController : ControllerBase
             return Unauthorized(ApiErrorResponseFactory.Unauthorized(HttpContext));
         }
 
-        if (!TryParseEnumList<PropertyType>(types, out var parsedTypes)
-            || !TryParseEnumList<FinishingStatus>(finishingStatuses, out var parsedFinishing))
+        if (!QueryEnumList.TryParse<PropertyType>(types, out var parsedTypes)
+            || !QueryEnumList.TryParse<FinishingStatus>(finishingStatuses, out var parsedFinishing))
         {
             return BadRequest(ApiErrorResponseFactory.MalformedRequest(HttpContext));
         }
@@ -402,42 +403,6 @@ public sealed class PropertiesController : ControllerBase
         return (views ?? [])
             .Select(view => new ViewResponse(view.Code, view.NameAr, view.NameEn))
             .ToArray();
-    }
-
-    /// <summary>
-    /// Parses repeated and/or comma-separated enum values, each a defined name (any case) or number. False when any
-    /// value is not one defined member; "Villa,Apartment" is two values, never their bitwise combination.
-    /// </summary>
-    private static bool TryParseEnumList<TEnum>(string[]? values, out IReadOnlyList<TEnum>? parsed)
-        where TEnum : struct, Enum
-    {
-        parsed = null;
-
-        if (values is null || values.Length == 0)
-        {
-            return true;
-        }
-
-        var result = new List<TEnum>();
-
-        foreach (var part in values.SelectMany(value => (value ?? "").Split(',')).Select(part => part.Trim()))
-        {
-            if (part.Length == 0)
-            {
-                continue;
-            }
-
-            if (!Enum.TryParse<TEnum>(part, ignoreCase: true, out var member) || !Enum.IsDefined(member))
-            {
-                return false;
-            }
-
-            result.Add(member);
-        }
-
-        parsed = result.Count == 0 ? null : result;
-
-        return true;
     }
 
     private static PropertyPhysicalResponse ToPhysicalResponse(PropertyPhysicalDetails? physical)

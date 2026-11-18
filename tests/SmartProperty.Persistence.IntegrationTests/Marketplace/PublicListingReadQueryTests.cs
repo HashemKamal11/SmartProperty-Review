@@ -101,7 +101,9 @@ public sealed class PublicListingReadQueryTests
     public void SqlRowContainsOnlyExplicitPublicFields()
     {
         var type = typeof(ApplicationDbContext).Assembly.GetType("SmartProperty.Persistence.Repositories.Marketplace.PublicListingReadRow", true)!;
-        var expected = new[] { "ListingId", "PropertyId", "Purpose", "Title", "Description", "Amount", "Currency", "RentPeriod", "PropertyType", "Country", "Region", "City", "District", "PublishedAt", "PeriodAmount", "PeriodCurrency", "PricingOptionsJson", "RentalTermsJson", "BlockedRangesText" };
+        var expected = new[] { "ListingId", "PropertyId", "Purpose", "Title", "Description", "Amount", "Currency", "RentPeriod", "PropertyType", "Country", "Region", "City", "District", "PublishedAt", "PeriodAmount", "PeriodCurrency", "PricingOptionsJson", "RentalTermsJson", "BlockedRangesText",
+            "Bedrooms", "Bathrooms", "AreaSqm", "CoverImageId", "AreaId", "CityId", "CompoundId", "AreaNameEn", "AreaNameAr", "CityNameEn", "CityNameAr",
+            "CountryNameEn", "CountryNameAr", "CompoundNameEn", "CompoundNameAr", "MatchPercentage", "IsFavorite" };
         Assert.Equal(expected.Order(), type.GetProperties().Select(x => x.Name).Order());
     }
 }

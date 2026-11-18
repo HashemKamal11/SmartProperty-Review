@@ -18,4 +18,11 @@ public sealed record PublicListingDetail(
     DateTimeOffset PublishedAt,
     IReadOnlyList<PublicListingPrice>? PricingOptions = null,
     PublicRentalTerms? RentalTerms = null,
-    IReadOnlyList<PublicDateRange>? BlockedRanges = null);
+    IReadOnlyList<PublicDateRange>? BlockedRanges = null,
+    Guid PropertyId = default,
+    Guid? CoverImageId = null,
+    int? Bedrooms = null,
+    int? Bathrooms = null,
+    decimal? AreaSqm = null,
+    decimal? MatchPercentage = null,
+    bool? IsFavorite = null);

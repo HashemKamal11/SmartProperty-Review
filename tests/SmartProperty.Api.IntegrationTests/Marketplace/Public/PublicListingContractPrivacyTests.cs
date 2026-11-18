@@ -27,10 +27,10 @@ public sealed class PublicListingContractPrivacyTests
     ];
 
     // Name fragments that would indicate private, internal or privileged data. Matched case-insensitively against
-    // every member name, constructor parameter name and serialized JSON property name.
+    // every member name, constructor parameter name and serialized JSON property name. The property id is public
+    // since 2026-11-17 (product decision): favourites, sharing and the public photo URLs are keyed by it.
     private static readonly string[] ForbiddenFragments =
     [
-        "propertyid",
         "submission",
         "version",
         "draft",
@@ -109,7 +109,7 @@ public sealed class PublicListingContractPrivacyTests
     }
 
     [Fact]
-    public void ListingIdIsTheOnlyIdentifier()
+    public void TheListingAndThePropertyAreTheOnlyIdentifiers()
     {
         foreach (var type in PublicTypes)
         {
@@ -120,7 +120,7 @@ public sealed class PublicListingContractPrivacyTests
 
             if (type == typeof(PublicListingSummaryResponse) || type == typeof(PublicListingDetailResponse))
             {
-                Assert.Equal(new[] { "ListingId" }, guidMembers);
+                Assert.Equal(new[] { "ListingId", "PropertyId" }, guidMembers);
             }
             else
             {
@@ -291,6 +291,35 @@ public sealed class PublicListingContractPrivacyTests
             SortedNames(root.GetProperty("items")[0]));
     }
 
+    [Fact]
+    public void ACardCarriesThePropertyThePhotoTheRoomsAndTheViewersFieldsWhenKnown()
+    {
+        var propertyId = Guid.Parse("5b0c7f0e-3c1d-4a8e-9e2f-6a7b8c9d0e1f");
+        var card = SampleSummary() with
+        {
+            PropertyId = propertyId,
+            CoverImageUrl = $"/api/properties/{propertyId}/images/0d9a3b52-6f71-4c3e-8a2b-1f0e9d8c7b6a/file",
+            Bedrooms = 4,
+            Bathrooms = 3,
+            AreaSqm = 310m,
+            MatchPercentage = 92m,
+            IsFavorite = true,
+        };
+
+        using var document = Serialize(card);
+        var root = document.RootElement;
+
+        Assert.Equal(
+            new[]
+            {
+                "areaSqm", "bathrooms", "bedrooms", "coverImageUrl", "isFavorite", "listingId", "location",
+                "matchPercentage", "price", "propertyId", "propertyType", "publishedAt", "purpose", "title"
+            },
+            SortedNames(root));
+        Assert.Equal(propertyId.ToString(), root.GetProperty("propertyId").GetString());
+        Assert.True(root.GetProperty("isFavorite").GetBoolean());
+    }
+
     // A Sale listing: its price has no rent period.
     private static PublicListingSummaryResponse SampleSummary()
     {
@@ -339,6 +368,7 @@ public sealed class PublicListingContractPrivacyTests
 
         return type == typeof(string)
             || type == typeof(int)
+            || type == typeof(bool)
             || type == typeof(Guid)
             || type == typeof(decimal)
             || type == typeof(DateTimeOffset)

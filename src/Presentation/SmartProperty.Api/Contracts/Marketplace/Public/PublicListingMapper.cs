@@ -34,8 +34,21 @@ internal static class PublicListingMapper
             ToPropertyType(listing.PropertyType),
             ToLocation(listing.Location),
             RequirePublishedAt(listing.PublishedAt),
-            ToOptions(listing.PricingOptions));
+            ToOptions(listing.PricingOptions),
+            listing.PropertyId == Guid.Empty ? null : listing.PropertyId,
+            CoverUrl(listing.PropertyId, listing.CoverImageId),
+            listing.Bedrooms,
+            listing.Bathrooms,
+            listing.AreaSqm,
+            listing.MatchPercentage,
+            listing.IsFavorite);
     }
+
+    /// <summary>The public photo file URL of the cover image, or null without a photo (or without a property).</summary>
+    private static string? CoverUrl(Guid propertyId, Guid? coverImageId) =>
+        propertyId != Guid.Empty && coverImageId is { } imageId && imageId != Guid.Empty
+            ? SmartProperty.Api.Controllers.PropertyImagesController.UrlOf(propertyId, imageId)
+            : null;
 
     public static PublicListingDetailResponse ToDetailResponse(PublicListingDetail listing)
     {
@@ -52,7 +65,14 @@ internal static class PublicListingMapper
             RequirePublishedAt(listing.PublishedAt),
             ToOptions(listing.PricingOptions),
             ToTerms(listing.RentalTerms),
-            ToBlocked(listing.BlockedRanges));
+            ToBlocked(listing.BlockedRanges),
+            listing.PropertyId == Guid.Empty ? null : listing.PropertyId,
+            CoverUrl(listing.PropertyId, listing.CoverImageId),
+            listing.Bedrooms,
+            listing.Bathrooms,
+            listing.AreaSqm,
+            listing.MatchPercentage,
+            listing.IsFavorite);
     }
 
     internal static IReadOnlyList<PublicMoneyResponse>? ToOptions(IReadOnlyList<PublicListingPrice>? options)

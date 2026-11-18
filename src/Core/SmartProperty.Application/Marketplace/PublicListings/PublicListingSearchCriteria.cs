@@ -29,4 +29,13 @@ public sealed record PublicListingSearchCriteria(
     RentPeriod? RentPeriod,
     PublicListingSortOrder Sort,
     DateOnly? AvailableFrom = null,
-    DateOnly? AvailableTo = null);
+    DateOnly? AvailableTo = null,
+    IReadOnlyList<PropertyType>? PropertyTypes = null,
+    IReadOnlyList<string>? SearchTerms = null,
+    Guid? AreaId = null,
+    Guid? CityId = null,
+    Guid? CompoundId = null,
+    int? MinBedrooms = null,
+    int? MaxBedrooms = null,
+    decimal? MinMatchPercentage = null,
+    Guid? ViewerUserId = null);

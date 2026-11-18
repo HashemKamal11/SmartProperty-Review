@@ -19,7 +19,9 @@ public sealed class GetPublicListingByIdQueryHandler(IPublicListingReadRepositor
             return Result<PublicListingDetail>.Failure(PublicListingErrors.NotFound);
         }
 
-        var listing = await publicListings.GetByIdAsync(query.ListingId, cancellationToken);
+        var listing = query.ViewerUserId is { } viewer && viewer != Guid.Empty
+            ? await publicListings.GetByIdAsync(query.ListingId, viewer, cancellationToken)
+            : await publicListings.GetByIdAsync(query.ListingId, cancellationToken);
 
         // One answer for every listing that cannot be shown publicly: the caller cannot tell a missing listing
         // from an unpublished, withdrawn, reserved or unapproved one.

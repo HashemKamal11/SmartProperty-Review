@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SmartProperty.Api.Contracts;
 using SmartProperty.Api.Contracts.Marketplace.Public;
+using SmartProperty.Api.Infrastructure;
 using SmartProperty.Api.Infrastructure.Errors;
+using SmartProperty.Application.Abstractions.Identity;
 using SmartProperty.Application.Abstractions.Messaging;
 using SmartProperty.Application.Marketplace.PublicListings;
 using SmartProperty.Application.Marketplace.PublicListings.GetById;
@@ -35,9 +37,19 @@ namespace SmartProperty.Api.Controllers;
 public sealed class PublicMarketplaceController : ControllerBase
 {
     /// <summary>
-    /// One page of public listings, newest first unless a price sort is requested.
+    /// One page of public listings, newest first unless another sort is requested.
     /// </summary>
     /// <remarks>
+    /// Public, with an optional sign-in: with a valid token each listing also carries the viewer's
+    /// <c>matchPercentage</c> (latest, omitted when none) and <c>isFavorite</c>, and <c>minMatchPercentage</c> and
+    /// <c>sort=Match</c> become available; without one they are refused with 422.
+    /// Filters (all optional, all combined with AND): <c>propertyType</c> repeated or comma-separated, by name or
+    /// number, matches any of them; <c>q</c> is free text (at most 100 characters and 5 words), every word in the
+    /// title, description or a place name in English or Arabic; <c>areaId</c>, <c>cityId</c>, <c>compoundId</c>
+    /// restrict the place; <c>district</c> is the listing's district or the area's English or Arabic name;
+    /// <c>minBedrooms</c>/<c>maxBedrooms</c> (send only the minimum for "5+"); <c>minMatchPercentage</c> (0–100).
+    /// Each listing also carries <c>propertyId</c> (for favourites and sharing), <c>coverImageUrl</c>,
+    /// <c>bedrooms</c>, <c>bathrooms</c> and <c>areaSqm</c> when known.
     /// An unparseable enum, number or page value is a request-shape failure answered by the standard
     /// <c>400 request.malformed</c>. A well-formed but invalid combination (a price filter or price sort without a
     /// purpose and currency, a Rent price comparison without <c>rentPeriod</c>, <c>rentPeriod</c> without the Rent
@@ -49,9 +61,11 @@ public sealed class PublicMarketplaceController : ControllerBase
     [ProducesResponseType<ApiErrorResponse>(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> List(
         [FromServices] IQueryHandler<SearchPublicListingsQuery, PagedList<PublicListingSummary>> handler,
+        [FromServices] ICurrentUser currentUser,
         CancellationToken cancellationToken,
         [FromQuery] ListingPurpose? purpose = null,
-        [FromQuery] PropertyType? propertyType = null,
+        // Read as text and parsed here, so "Villa,Apartment" is two types and never their bitwise combination.
+        [FromQuery(Name = "propertyType")] string[]? propertyTypes = null,
         [FromQuery] string? countryCode = null,
         [FromQuery] string? region = null,
         [FromQuery] string? city = null,
@@ -64,11 +78,23 @@ public sealed class PublicMarketplaceController : ControllerBase
         [FromQuery] int? page = null,
         [FromQuery] int? pageSize = null,
         [FromQuery] DateOnly? availableFrom = null,
-        [FromQuery] DateOnly? availableTo = null)
+        [FromQuery] DateOnly? availableTo = null,
+        [FromQuery(Name = "q")] string? search = null,
+        [FromQuery] Guid? areaId = null,
+        [FromQuery] Guid? cityId = null,
+        [FromQuery] Guid? compoundId = null,
+        [FromQuery] int? minBedrooms = null,
+        [FromQuery] int? maxBedrooms = null,
+        [FromQuery] decimal? minMatchPercentage = null)
     {
+        if (!QueryEnumList.TryParse<PropertyType>(propertyTypes, out var parsedTypes))
+        {
+            return BadRequest(ApiErrorResponseFactory.MalformedRequest(HttpContext));
+        }
+
         var query = new SearchPublicListingsQuery(
             purpose,
-            propertyType,
+            null,
             countryCode,
             region,
             city,
@@ -81,7 +107,16 @@ public sealed class PublicMarketplaceController : ControllerBase
             page,
             pageSize,
             availableFrom,
-            availableTo);
+            availableTo,
+            parsedTypes,
+            search,
+            areaId,
+            cityId,
+            compoundId,
+            minBedrooms,
+            maxBedrooms,
+            minMatchPercentage,
+            currentUser.UserId);
 
         var result = await handler.Handle(query, cancellationToken);
 
@@ -118,9 +153,10 @@ public sealed class PublicMarketplaceController : ControllerBase
     public async Task<IActionResult> GetById(
         Guid listingId,
         [FromServices] IQueryHandler<GetPublicListingByIdQuery, PublicListingDetail> handler,
+        [FromServices] ICurrentUser currentUser,
         CancellationToken cancellationToken)
     {
-        var result = await handler.Handle(new GetPublicListingByIdQuery(listingId), cancellationToken);
+        var result = await handler.Handle(new GetPublicListingByIdQuery(listingId, currentUser.UserId), cancellationToken);
 
         if (result.IsFailure)
         {

@@ -22,7 +22,11 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
     // acceptance of a request) takes it out of this query at once. Dates held by a commitment are reported as blocked,
     // and an unsigned commitment past its signing deadline no longer holds anything, whether or not it was stored as
     // expired yet.
-    private IQueryable<PublicListingReadRow> Visible(int? period, DateOnly? availableFrom, DateOnly? availableTo) =>
+    //
+    // The viewer, when signed in, adds their own latest match percentage and favourite flag; for a visitor both are
+    // NULL. Bedrooms, bathrooms, area and the cover photo are read live from the registry, so the card always shows
+    // the property as it is; the place names are read only to filter and search.
+    private IQueryable<PublicListingReadRow> Visible(int? period, DateOnly? availableFrom, DateOnly? availableTo, Guid? viewer = null) =>
         context.Database.SqlQuery<PublicListingReadRow>(
             $"""
             SELECT l.id AS "ListingId",
@@ -59,12 +63,40 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
                       FROM marketplace.property_commitments AS c
                      WHERE c.property_id = l.property_id AND c.kind = 'Rental'
                        AND c.status IN ('PendingSignature', 'Signed', 'Occupied')
-                       AND NOT (c.status = 'PendingSignature' AND c.signing_deadline <= now())) AS "BlockedRangesText"
+                       AND NOT (c.status = 'PendingSignature' AND c.signing_deadline <= now())) AS "BlockedRangesText",
+                   p.bedrooms AS "Bedrooms",
+                   p.bathrooms AS "Bathrooms",
+                   p.area_sqm AS "AreaSqm",
+                   (SELECT i.id FROM registry.property_images AS i
+                     WHERE i.property_id = l.property_id
+                     ORDER BY i.sort_order, i.created_at, i.id LIMIT 1) AS "CoverImageId",
+                   p.area_id AS "AreaId",
+                   ar.city_id AS "CityId",
+                   p.compound_id AS "CompoundId",
+                   ar.name_en AS "AreaNameEn",
+                   ar.name_ar AS "AreaNameAr",
+                   ci.name_en AS "CityNameEn",
+                   ci.name_ar AS "CityNameAr",
+                   co.name_en AS "CountryNameEn",
+                   co.name_ar AS "CountryNameAr",
+                   cp.name_en AS "CompoundNameEn",
+                   cp.name_ar AS "CompoundNameAr",
+                   CASE WHEN {viewer}::uuid IS NULL THEN NULL ELSE
+                       (SELECT m.match_percentage FROM matching.property_matches AS m
+                         WHERE m.user_id = {viewer}::uuid AND m.property_id = l.property_id
+                         ORDER BY m.created_at DESC, m.id DESC LIMIT 1) END AS "MatchPercentage",
+                   CASE WHEN {viewer}::uuid IS NULL THEN NULL ELSE
+                       EXISTS (SELECT 1 FROM registry.favorite_properties AS f
+                                WHERE f.user_id = {viewer}::uuid AND f.property_id = l.property_id) END AS "IsFavorite"
             FROM marketplace.listings AS l
             JOIN marketplace.submissions AS s
               ON s.id = l.published_submission_id AND s.listing_id = l.id
              AND s.property_id = l.property_id AND s.purpose = l.purpose
             JOIN registry.properties AS p ON p.id = l.property_id
+            LEFT JOIN locations.areas AS ar ON ar.id = p.area_id
+            LEFT JOIN locations.cities AS ci ON ci.id = ar.city_id
+            LEFT JOIN locations.countries AS co ON co.id = ci.country_id
+            LEFT JOIN locations.compounds AS cp ON cp.id = p.compound_id
             WHERE l.publication_status = 'Published' AND l.availability_status = 'Open'
               AND NOT l.closed_by_reservation AND l.published_at IS NOT NULL
               AND p.status = 'Active' AND s.status = 'Approved'
@@ -99,12 +131,51 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
             || (comparesPrices && (!criteria.Purpose.HasValue || string.IsNullOrWhiteSpace(criteria.Currency)))
             || (comparesPrices && criteria.Purpose == ListingPurpose.Rent && !criteria.RentPeriod.HasValue)
             || (criteria.AvailableFrom.HasValue != criteria.AvailableTo.HasValue)
-            || (criteria.AvailableFrom.HasValue && (criteria.AvailableTo <= criteria.AvailableFrom || criteria.Purpose != ListingPurpose.Rent)))
+            || (criteria.AvailableFrom.HasValue && (criteria.AvailableTo <= criteria.AvailableFrom || criteria.Purpose != ListingPurpose.Rent))
+            || (criteria.PropertyTypes?.Any(candidate => !Enum.IsDefined(candidate)) ?? false)
+            || criteria.MinBedrooms > criteria.MaxBedrooms
+            || ((criteria.MinMatchPercentage.HasValue || criteria.Sort == PublicListingSortOrder.Match) && criteria.ViewerUserId is null))
             throw new ArgumentException("Invalid public listing search criteria.", nameof(criteria));
 
-        var query = Visible(criteria.RentPeriod is { } requested ? (int)requested : null, criteria.AvailableFrom, criteria.AvailableTo);
+        var query = Visible(
+            criteria.RentPeriod is { } requested ? (int)requested : null,
+            criteria.AvailableFrom,
+            criteria.AvailableTo,
+            criteria.ViewerUserId);
         if (criteria.Purpose is { } purpose) query = query.Where(x => x.Purpose == (int)purpose);
         if (criteria.PropertyType is { } type) query = query.Where(x => x.PropertyType == (int)type);
+        if (criteria.PropertyTypes is { Count: > 0 } types)
+        {
+            var wanted = types.Select(candidate => (int)candidate).ToArray();
+            query = query.Where(x => wanted.Contains(x.PropertyType));
+        }
+
+        if (criteria.AreaId is { } areaId) query = query.Where(x => x.AreaId == areaId);
+        if (criteria.CityId is { } cityId) query = query.Where(x => x.CityId == cityId);
+        if (criteria.CompoundId is { } compoundId) query = query.Where(x => x.CompoundId == compoundId);
+        if (criteria.MinBedrooms is { } fewest) query = query.Where(x => x.Bedrooms >= fewest);
+        if (criteria.MaxBedrooms is { } most) query = query.Where(x => x.Bedrooms <= most);
+        if (criteria.MinMatchPercentage is { } minMatch) query = query.Where(x => x.MatchPercentage >= minMatch);
+
+        // Every word must appear in the listing's own text or in a place name, in English or Arabic.
+        foreach (var term in criteria.SearchTerms ?? [])
+        {
+            var pattern = LikePattern(term);
+            query = query.Where(x =>
+                EF.Functions.ILike(x.Title, pattern, LikeEscape)
+                || EF.Functions.ILike(x.Description, pattern, LikeEscape)
+                || EF.Functions.ILike(x.City, pattern, LikeEscape)
+                || EF.Functions.ILike(x.Region, pattern, LikeEscape)
+                || EF.Functions.ILike(x.District, pattern, LikeEscape)
+                || EF.Functions.ILike(x.AreaNameEn ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(x.AreaNameAr ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(x.CityNameEn ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(x.CityNameAr ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(x.CountryNameEn ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(x.CountryNameAr ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(x.CompoundNameEn ?? "", pattern, LikeEscape)
+                || EF.Functions.ILike(x.CompoundNameAr ?? "", pattern, LikeEscape));
+        }
 
         // A rental is found by any pricing period it offers, not only its primary one, and its price in that period is
         // the price that is compared, sorted and shown. A search without a period compares the plain listing price.
@@ -127,7 +198,15 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
 
         if (region is not null) query = query.Where(x => EF.Functions.Collate(x.Region, "C") == region);
         if (city is not null) query = query.Where(x => EF.Functions.Collate(x.City, "C") == city);
-        if (district is not null) query = query.Where(x => EF.Functions.Collate(x.District, "C") == district);
+        if (district is not null)
+        {
+            // The listing's own district text exactly, or the property's area by its current English or Arabic name
+            // (any case), so a district picked from the places list finds its listings in either language.
+            var lowered = district.ToLowerInvariant();
+            query = query.Where(x => EF.Functions.Collate(x.District, "C") == district
+                || (x.AreaNameEn != null && x.AreaNameEn.ToLower() == lowered)
+                || (x.AreaNameAr != null && x.AreaNameAr.ToLower() == lowered));
+        }
         if (criteria.MinPrice is { } min) query = byPeriod ? query.Where(x => x.PeriodAmount >= min) : query.Where(x => x.Amount >= min);
         if (criteria.MaxPrice is { } max) query = byPeriod ? query.Where(x => x.PeriodAmount <= max) : query.Where(x => x.Amount <= max);
         return query;
@@ -143,6 +222,10 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
         PublicListingSortOrder.PriceDesc => byPeriod
             ? query.OrderByDescending(x => x.PeriodAmount).ThenBy(x => x.ListingId)
             : query.OrderByDescending(x => x.Amount).ThenBy(x => x.ListingId),
+        PublicListingSortOrder.Match => query
+            .OrderByDescending(x => x.MatchPercentage ?? -1m)
+            .ThenByDescending(x => x.PublishedAt)
+            .ThenBy(x => x.ListingId),
         _ => throw new ArgumentOutOfRangeException(nameof(sort))
     };
 
@@ -159,9 +242,12 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
         return new PublicListingPage(items, count);
     }
 
-    public async Task<PublicListingDetail?> GetByIdAsync(Guid listingId, CancellationToken cancellationToken = default)
+    public Task<PublicListingDetail?> GetByIdAsync(Guid listingId, CancellationToken cancellationToken = default) =>
+        GetByIdAsync(listingId, viewerUserId: null, cancellationToken);
+
+    public async Task<PublicListingDetail?> GetByIdAsync(Guid listingId, Guid? viewerUserId, CancellationToken cancellationToken = default)
     {
-        var row = await Visible(period: null, availableFrom: null, availableTo: null)
+        var row = await Visible(period: null, availableFrom: null, availableTo: null, viewerUserId)
             .Where(x => x.ListingId == listingId)
             .SingleOrDefaultAsync(cancellationToken);
 
@@ -217,12 +303,20 @@ internal sealed class PublicListingReadRepository(ApplicationDbContext context) 
 
     private static PublicListingSummary ToSummary(PublicListingReadRow x, RentPeriod? searchedPeriod) =>
         new(x.ListingId, (ListingPurpose)x.Purpose, x.Title, PriceOf(x, searchedPeriod), (PropertyType)x.PropertyType,
-            new PublicListingLocation(x.Country, x.Region, x.City, x.District), x.PublishedAt, OptionsOf(x));
+            new PublicListingLocation(x.Country, x.Region, x.City, x.District), x.PublishedAt, OptionsOf(x),
+            x.PropertyId, x.CoverImageId, x.Bedrooms, x.Bathrooms, x.AreaSqm, x.MatchPercentage, x.IsFavorite);
 
     private static PublicListingDetail ToDetail(PublicListingReadRow x) =>
         new(x.ListingId, (ListingPurpose)x.Purpose, x.Title, x.Description, PriceOf(x, searchedPeriod: null), (PropertyType)x.PropertyType,
             new PublicListingLocation(x.Country, x.Region, x.City, x.District), x.PublishedAt,
-            OptionsOf(x), TermsOf(x), BlockedOf(x));
+            OptionsOf(x), TermsOf(x), BlockedOf(x),
+            x.PropertyId, x.CoverImageId, x.Bedrooms, x.Bathrooms, x.AreaSqm, x.MatchPercentage, x.IsFavorite);
+
+    private const string LikeEscape = "\\";
+
+    /// <summary>A contains-pattern for PostgreSQL <c>ILIKE</c> with the user's wildcards neutralized.</summary>
+    private static string LikePattern(string text) =>
+        $"%{text.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_")}%";
 
     // The plain listing price, or, when the search asked for a pricing period the listing offers, that option.
     private static PublicListingPrice PriceOf(PublicListingReadRow x, RentPeriod? searchedPeriod) =>

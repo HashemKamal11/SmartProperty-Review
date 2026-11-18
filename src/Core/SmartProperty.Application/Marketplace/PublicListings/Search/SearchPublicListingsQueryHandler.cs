@@ -27,7 +27,16 @@ public sealed class SearchPublicListingsQueryHandler(IPublicListingReadRepositor
             query.RentPeriod,
             query.Sort,
             query.AvailableFrom,
-            query.AvailableTo);
+            query.AvailableTo,
+            query.PropertyTypes,
+            query.Search,
+            query.AreaId,
+            query.CityId,
+            query.CompoundId,
+            query.MinBedrooms,
+            query.MaxBedrooms,
+            query.MinMatchPercentage,
+            query.ViewerUserId);
 
         if (criteria.IsFailure)
         {

@@ -33,16 +33,83 @@ internal static class PublicListingSearchFilterValidator
         RentPeriod? rentPeriod,
         PublicListingSortOrder? sort,
         DateOnly? availableFrom = null,
-        DateOnly? availableTo = null)
+        DateOnly? availableTo = null,
+        IReadOnlyList<PropertyType>? propertyTypes = null,
+        string? search = null,
+        Guid? areaId = null,
+        Guid? cityId = null,
+        Guid? compoundId = null,
+        int? minBedrooms = null,
+        int? maxBedrooms = null,
+        decimal? minMatchPercentage = null,
+        Guid? viewerUserId = null)
     {
+        // The single type and the list are one "any of" set.
+        var types = (propertyTypes ?? []).Concat(propertyType is { } single ? [single] : []).Distinct().ToArray();
+
+        if (types.Any(candidate => !Enum.IsDefined(candidate)))
+        {
+            return Fail("The property type is not supported.");
+        }
+
+        string[] searchTerms = [];
+
+        if (Normalize(search) is { } text)
+        {
+            if (text.Length > MaxSearchLength)
+            {
+                return Fail($"Search text must not exceed {MaxSearchLength} characters.");
+            }
+
+            searchTerms = text
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (searchTerms.Length > MaxSearchTerms)
+            {
+                return Fail($"Search text must not exceed {MaxSearchTerms} words.");
+            }
+        }
+
+        if (areaId == Guid.Empty || cityId == Guid.Empty || compoundId == Guid.Empty)
+        {
+            return Fail("A place id must not be empty.");
+        }
+
+        if (minBedrooms is < 0 or > Property.MaxRoomCount || maxBedrooms is < 0 or > Property.MaxRoomCount)
+        {
+            return Fail($"Bedrooms must be between 0 and {Property.MaxRoomCount}.");
+        }
+
+        if (minBedrooms is { } fewest && maxBedrooms is { } most && fewest > most)
+        {
+            return Fail("The minimum bedrooms must not exceed the maximum bedrooms.");
+        }
+
+        var viewer = viewerUserId is { } signedIn && signedIn != Guid.Empty ? signedIn : (Guid?)null;
+
+        if (minMatchPercentage is { } minMatch)
+        {
+            if (minMatch is < 0m or > 100m)
+            {
+                return Fail("Match percentage must be between 0 and 100.");
+            }
+
+            if (viewer is null)
+            {
+                return Fail("Sign in to filter by match percentage.");
+            }
+        }
+
+        if (sort == PublicListingSortOrder.Match && viewer is null)
+        {
+            return Fail("Sign in to sort by match percentage.");
+        }
+
         if (purpose is { } listingPurpose && !Enum.IsDefined(listingPurpose))
         {
             return Fail("The listing purpose is not supported.");
-        }
-
-        if (propertyType is { } type && !Enum.IsDefined(type))
-        {
-            return Fail("The property type is not supported.");
         }
 
         if (rentPeriod is { } period && !Enum.IsDefined(period))
@@ -133,7 +200,7 @@ internal static class PublicListingSearchFilterValidator
 
         return Result<PublicListingSearchCriteria>.Success(new PublicListingSearchCriteria(
             purpose,
-            propertyType,
+            types.Length == 1 ? types[0] : null,
             normalizedCountry?.ToUpperInvariant(),
             Normalize(region),
             Normalize(city),
@@ -144,8 +211,21 @@ internal static class PublicListingSearchFilterValidator
             rentPeriod,
             sortOrder,
             availableFrom,
-            availableTo));
+            availableTo,
+            // One type travels as the single filter; only a real choice of several becomes the list.
+            types.Length > 1 ? types : null,
+            searchTerms.Length > 0 ? searchTerms : null,
+            areaId,
+            cityId,
+            compoundId,
+            minBedrooms,
+            maxBedrooms,
+            minMatchPercentage,
+            viewer));
     }
+
+    public const int MaxSearchLength = 100;
+    public const int MaxSearchTerms = 5;
 
     private static string? Normalize(string? value)
     {

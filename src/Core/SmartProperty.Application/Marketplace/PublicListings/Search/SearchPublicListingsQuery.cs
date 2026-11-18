@@ -23,4 +23,13 @@ public sealed record SearchPublicListingsQuery(
     int? Page,
     int? PageSize,
     DateOnly? AvailableFrom = null,
-    DateOnly? AvailableTo = null) : IQuery<PagedList<PublicListingSummary>>;
+    DateOnly? AvailableTo = null,
+    IReadOnlyList<PropertyType>? PropertyTypes = null,
+    string? Search = null,
+    Guid? AreaId = null,
+    Guid? CityId = null,
+    Guid? CompoundId = null,
+    int? MinBedrooms = null,
+    int? MaxBedrooms = null,
+    decimal? MinMatchPercentage = null,
+    Guid? ViewerUserId = null) : IQuery<PagedList<PublicListingSummary>>;

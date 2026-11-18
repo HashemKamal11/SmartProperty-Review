@@ -17,9 +17,10 @@ public sealed class PublicListingOpenApiTests
     private const string ListPath = "/api/public/marketplace/listings";
     private const string DetailPath = "/api/public/marketplace/listings/{listingId}";
 
+    // The property id is public since 2026-11-17 (product decision): favourites, sharing and photos are keyed by it.
     private static readonly string[] PrivateTerms =
     [
-        "propertyId", "submission", "evidence", "owner", "workspace", "reviewer", "review", "addressLine",
+        "submission", "evidence", "owner", "workspace", "reviewer", "review", "addressLine",
         "postalCode", "latitude", "longitude", "permission",
     ];
 
@@ -55,8 +56,9 @@ public sealed class PublicListingOpenApiTests
         Assert.Equal(
             new[]
             {
-                "availableFrom", "availableTo", "city", "countryCode", "currency", "district", "lang", "maxPrice", "minPrice", "page", "pageSize",
-                "propertyType", "purpose", "region", "rentPeriod", "sort",
+                "areaId", "availableFrom", "availableTo", "city", "cityId", "compoundId", "countryCode", "currency", "district", "lang",
+                "maxBedrooms", "maxPrice", "minBedrooms", "minMatchPercentage", "minPrice", "page", "pageSize", "propertyType", "purpose", "q",
+                "region", "rentPeriod", "sort",
             },
             list.GetProperty("parameters")
                 .EnumerateArray()

@@ -25,10 +25,10 @@ public sealed class PublicListingReadModelPrivacyTests
         typeof(PublicListingPage),
     ];
 
-    // Name fragments that would indicate private, internal or privileged data.
+    // Name fragments that would indicate private, internal or privileged data. The property id is public since
+    // 2026-11-17 (product decision): favourites, sharing and the public photo URLs are keyed by it.
     private static readonly string[] ForbiddenFragments =
     [
-        "propertyid",
         "submission",
         "version",
         "draft",
@@ -99,7 +99,7 @@ public sealed class PublicListingReadModelPrivacyTests
     }
 
     [Fact]
-    public void ListingIdIsTheOnlyIdentifier()
+    public void TheListingThePropertyAndTheCoverPhotoAreTheOnlyIdentifiers()
     {
         foreach (var type in ReadModels)
         {
@@ -110,7 +110,7 @@ public sealed class PublicListingReadModelPrivacyTests
 
             if (type == typeof(PublicListingSummary) || type == typeof(PublicListingDetail))
             {
-                Assert.Equal(new[] { "ListingId" }, guidMembers);
+                Assert.Equal(new[] { "ListingId", "PropertyId", "CoverImageId" }, guidMembers);
             }
             else
             {
@@ -177,7 +177,8 @@ public sealed class PublicListingReadModelPrivacyTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(new[] { "GetByIdAsync", "SearchAsync" }, methods);
+        // The detail read exists with and without the signed-in viewer.
+        Assert.Equal(new[] { "GetByIdAsync", "GetByIdAsync", "SearchAsync" }, methods);
     }
 
     [Fact]
@@ -204,9 +205,9 @@ public sealed class PublicListingReadModelPrivacyTests
     }
 
     [Fact]
-    public void TheSortOrderVocabularyIsExactlyNewestAndThePriceOrders()
+    public void TheSortOrderVocabularyIsExactlyNewestThePriceOrdersAndMatch()
     {
-        Assert.Equal(new[] { "Newest", "PriceAsc", "PriceDesc" }, Enum.GetNames<PublicListingSortOrder>());
+        Assert.Equal(new[] { "Newest", "PriceAsc", "PriceDesc", "Match" }, Enum.GetNames<PublicListingSortOrder>());
     }
 
     private static PropertyInfo[] PropertiesOf(Type type)
@@ -235,6 +236,7 @@ public sealed class PublicListingReadModelPrivacyTests
             || type == typeof(DateOnly)
             || type == typeof(TimeOnly)
             || type == typeof(int)
+            || type == typeof(bool)
             || type == typeof(ListingPurpose)
             || type == typeof(PropertyType)
             || type == typeof(RentPeriod)

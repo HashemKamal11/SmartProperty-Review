@@ -13,5 +13,8 @@ public enum PublicListingSortOrder
     PriceAsc = 2,
 
     /// <summary>Highest price first. Requires a currency, because amounts in different currencies do not compare.</summary>
-    PriceDesc = 3
+    PriceDesc = 3,
+
+    /// <summary>The signed-in viewer's latest match percentage first (listings without one last), then newest.</summary>
+    Match = 4
 }
