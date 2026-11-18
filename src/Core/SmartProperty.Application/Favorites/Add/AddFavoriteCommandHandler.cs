@@ -56,7 +56,11 @@ public sealed class AddFavoriteCommandHandler(
             return Failure(FavoriteErrors.PropertyArchived);
         }
 
-        var favorite = new FavoriteProperty(command.UserId, command.PropertyId, dateTimeProvider.UtcNow);
+        // PostgreSQL keeps microseconds, so the instant is truncated to them here: the first response and every later
+        // read of the same favourite then report exactly the same time.
+        var now = dateTimeProvider.UtcNow;
+        var createdAt = new DateTimeOffset(now.Ticks - (now.Ticks % TimeSpan.TicksPerMicrosecond), now.Offset);
+        var favorite = new FavoriteProperty(command .UserId, command.PropertyId, createdAt);
 
         await favoriteRepository.AddAsync(favorite, cancellationToken);
 

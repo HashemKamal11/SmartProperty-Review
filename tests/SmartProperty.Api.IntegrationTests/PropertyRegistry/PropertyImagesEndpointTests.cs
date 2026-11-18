@@ -178,9 +178,25 @@ public sealed class PropertyImagesEndpointTests : IDisposable
         var property = await SeedPropertyAsync();
         using var client = AuthorizedClient();
 
-        using var response = await client.PostAsync(ImagesUrl(property.Id), new MultipartFormDataContent());
+        // A well-formed form that carries no file: a rule is broken, so 422.
+        using var form = new MultipartFormDataContent { { new StringContent("none"), "note" } };
+        using var response = await client.PostAsync(ImagesUrl(property.Id), form);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Empty(StoredFiles());
+    }
+
+    [Fact]
+    public async Task AMultipartBodyWithNoPartsAtAllIsMalformed()
+    {
+        var property = await SeedPropertyAsync();
+        using var client = AuthorizedClient();
+
+        // Not a readable form at all, so it is refused before any rule is checked.
+        using var response = await client.PostAsync(ImagesUrl(property.Id), new MultipartFormDataContent());
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(StoredFiles());
     }
 
     [Fact]

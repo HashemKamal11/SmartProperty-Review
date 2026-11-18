@@ -25,6 +25,9 @@ public sealed class SubmitterSubmissionReadModelPrivacyTests
         typeof(SubmitterSubmissionPage),
         typeof(PublicListingPrice),
         typeof(PublicListingLocation),
+        // A rental carries its pricing options and its terms (check-in and check-out, the windows), all public facts.
+        typeof(PublicRentalTerms),
+        typeof(PublicDateRange),
     ];
 
     // Name fragments that would indicate private, internal or privileged data.
@@ -201,7 +204,11 @@ public sealed class SubmitterSubmissionReadModelPrivacyTests
 
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
         {
-            return type.GetGenericArguments()[0] == typeof(SubmitterSubmissionSummary);
+            var element = type.GetGenericArguments()[0];
+
+            return element == typeof(SubmitterSubmissionSummary)
+                || element == typeof(PublicListingPrice)
+                || element == typeof(PublicDateRange);
         }
 
         return type == typeof(string)
@@ -211,6 +218,8 @@ public sealed class SubmitterSubmissionReadModelPrivacyTests
             || type == typeof(long)
             || type == typeof(bool)
             || type == typeof(DateTimeOffset)
+            || type == typeof(DateOnly)
+            || type == typeof(TimeOnly)
             || type == typeof(ListingPurpose)
             || type == typeof(ListingSubmissionStatus)
             || type == typeof(ListingRepresentationKind)

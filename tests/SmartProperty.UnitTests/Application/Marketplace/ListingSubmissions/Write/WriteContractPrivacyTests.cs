@@ -233,7 +233,7 @@ public sealed class WriteContractPrivacyTests
     }
 
     [Fact]
-    public void NoImplementationOfAWriteSeamExistsInTheApplication()
+    public void NoImplementationOfAWriteSeamExistsInTheApplicationButTheAuthorityDocumentEvidenceSource()
     {
         var applicationTypes = typeof(ICommand<>).Assembly.GetTypes().Where(type => !type.IsInterface && !type.IsAbstract).ToArray();
         var seams = new[]
@@ -245,7 +245,18 @@ public sealed class WriteContractPrivacyTests
 
         foreach (var seam in seams)
         {
-            Assert.DoesNotContain(applicationTypes, type => seam.IsAssignableFrom(type));
+            var implementations = applicationTypes.Where(type => seam.IsAssignableFrom(type)).ToArray();
+
+            // The one approved exception: the production evidence source is the authority request's own scanned
+            // documents, which the Application owns. No other implementation of any seam may live here.
+            if (seam == typeof(IEvidenceAssessmentProvider))
+            {
+                Assert.Equal([typeof(SmartProperty.Application.Marketplace.AuthorityRequests.AuthorityDocumentEvidenceProvider)], implementations);
+            }
+            else
+            {
+                Assert.Empty(implementations);
+            }
         }
     }
 

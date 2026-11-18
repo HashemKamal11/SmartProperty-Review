@@ -122,7 +122,7 @@ public sealed class SubmitterListingSubmissionReadQueryTests
     [
         "SubmissionId", "ListingId", "PurposeText", "Version", "StatusText", "Title", "Amount", "Currency",
         "RentPeriod", "Negotiable", "PropertyType", "Country", "Region", "City", "District", "Representation",
-        "CreatedAt", "SubmittedAt", "UpdatedAt", "IsCurrentlyPublished"
+        "CreatedAt", "SubmittedAt", "UpdatedAt", "IsCurrentlyPublished", "PricingOptionsJson", "RentalTermsJson"
     ];
 
     internal static readonly string[] DetailColumns =

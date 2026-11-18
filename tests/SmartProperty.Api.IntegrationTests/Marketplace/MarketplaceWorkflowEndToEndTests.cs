@@ -108,7 +108,7 @@ public sealed class MarketplaceWorkflowEndToEndTests : IDisposable
     // ---- fail closed in the production composition
 
     [Fact]
-    public async Task InProductionADraftWithoutEvidenceIsSavedButEvidenceAndSubmissionAreRefusedClearly()
+    public async Task InProductionADraftWithoutEvidenceIsSavedButUnknownEvidenceAndSubmissionAreRefusedClearly()
     {
         var world = await SeedAsync(grants: [ListingPurpose.Sale]);
         using var client = Authenticated(_production, world.Owner);
@@ -121,8 +121,10 @@ public sealed class MarketplaceWorkflowEndToEndTests : IDisposable
             new { expectedRevision = body.GetProperty("revision").GetInt32() });
 
         Assert.Equal(HttpStatusCode.Created, draft.StatusCode);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, withEvidence.StatusCode);
-        Assert.Equal("listing_submissions.evidence_verification_unavailable", (await ReadAsync(withEvidence)).GetProperty("code").GetString());
+        // Production evidence is the owner's own scanned authority-request documents; an id that is not one of them is
+        // simply not available, so nothing is attached and nothing is claimed.
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, withEvidence.StatusCode);
+        Assert.Equal("validation.failed", (await ReadAsync(withEvidence)).GetProperty("code").GetString());
         // A draft with no evidence cannot be submitted: nothing was verified, and nothing is claimed clean.
         Assert.Equal(HttpStatusCode.Conflict, submit.StatusCode);
         Assert.Equal("listing_submissions.prerequisites_unverified", (await ReadAsync(submit)).GetProperty("code").GetString());

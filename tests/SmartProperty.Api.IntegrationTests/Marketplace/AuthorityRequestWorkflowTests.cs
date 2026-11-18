@@ -351,11 +351,15 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
         Assert.Equal("PendingScan", await ScanStatusAsync(owner, id, documentId));
         Scanner.Configured = true;
 
-        // The scanner answers with errors: retried once, then ScanFailed (MaxAttempts = 2).
-        Assert.Equal(1, (await ScanAsync()).Retried);
-        Assert.Equal(0, (await ScanAsync()).Processed); // the retry is not due yet
+        // The scanner answers with errors: retried once, then ScanFailed (MaxAttempts = 2). The queue is shared by the
+        // whole test collection, so other tests' documents may be scanned in the same pass: what is asserted is this
+        // document's own state, and the counts only as at least this one.
+        Assert.True((await ScanAsync()).Retried >= 1);
+        Assert.Equal("PendingScan", await ScanStatusAsync(owner, id, documentId));
+        await ScanAsync();
+        Assert.Equal("PendingScan", await ScanStatusAsync(owner, id, documentId)); // the retry is not due yet
         await Task.Delay(TimeSpan.FromSeconds(2.2));
-        Assert.Equal(1, (await ScanAsync()).Failed);
+        Assert.True((await ScanAsync()).Failed >= 1);
         Assert.Equal("ScanFailed", await ScanStatusAsync(owner, id, documentId));
         Assert.Equal("authority_requests.incomplete", await CodeAsync(await owner.PostAsync($"{OwnerRoute}/{id}/submit", null)));
 
@@ -364,7 +368,8 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
         using var rescan = await owner.PostAsync($"{OwnerRoute}/{id}/documents/{documentId}/rescan", null);
         Assert.Equal("PendingScan", (await ReadAsync(rescan)).GetProperty("scanStatus").GetString());
         Assert.Equal("authority_requests.document_not_rescannable", await CodeAsync(await owner.PostAsync($"{OwnerRoute}/{id}/documents/{documentId}/rescan", null)));
-        Assert.Equal(1, (await ScanAsync()).Clean);
+        Assert.True((await ScanAsync()).Clean >= 1);
+        Assert.Equal("Clean", await ScanStatusAsync(owner, id, documentId));
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"{OwnerRoute}/{id}/submit", null)).StatusCode);
     }
 
@@ -475,10 +480,13 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
         using var lawyer = Client(staff.Lawyer);
         var (id, _) = await SubmittedAsync(owner, world, ["Sale"]);
 
+        // Registration no longer makes anyone a workspace member, so the shared workspace is recorded here: the owner
+        // and the lawyer are both members of it.
+        var workspace = await _scenario.CreateWorkspaceAsync();
+
         await using (var context = _fixture.CreateContext())
         {
-            var workspace = await context.WorkspaceMemberships.Where(membership => membership.UserId == world.Owner)
-                .Select(membership => membership.WorkspaceId).FirstAsync();
+            context.WorkspaceMemberships.Add(new WorkspaceMembership(Guid.NewGuid(), world.Owner, workspace, DateTimeOffset.UtcNow));
             context.WorkspaceMemberships.Add(new WorkspaceMembership(Guid.NewGuid(), staff.Lawyer, workspace, DateTimeOffset.UtcNow));
             await context.SaveChangesAsync();
         }
@@ -550,7 +558,7 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
     {
         var staff = await StaffAsync();
         var candidate = await VerifiedUserAsync();
-        var unverified = await ActiveUserAsync();
+        var unverified = await ActiveUnverifiedUserAsync();
         using var admin = Client(staff.Admin);
         using var lawyer = Client(staff.Lawyer);
         var adminEmail = await EmailAsync(staff.Admin);
@@ -860,14 +868,31 @@ public sealed class AuthorityRequestWorkflowTests : IDisposable
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
 
-    private static async Task<string?> CodeAsync(HttpResponseMessage response) =>
-        (await ReadAsync(response)).GetProperty("code").GetString();
+    private static async Task<string?> CodeAsync(HttpResponseMessage response)
+    {
+        var body = await ReadAsync(response);
+
+        // A response without an error code fails with what it was, not with a bare missing-key exception.
+        Assert.True(body.TryGetProperty("code", out var code), $"{(int)response.StatusCode}: {body.GetRawText()}");
+
+        return code.GetString();
+    }
 
     private async Task<Guid> ActiveUserAsync()
     {
         using var client = _root.CreateClient();
 
         return (await _scenario.RegisterActiveUserAsync(client)).UserId;
+    }
+
+    // The registration helper verifies the contacts by default; this account is Active with its email never verified.
+    private async Task<Guid> ActiveUnverifiedUserAsync()
+    {
+        using var client = _root.CreateClient();
+        var user = await _scenario.RegisterAsync(client, await _scenario.CreateWorkspaceAsync(), verifyPhone: false);
+        await _scenario.UpdateUserAsync(user.UserId, (candidate, now) => candidate.Activate(now));
+
+        return user.UserId;
     }
 
     private async Task<Guid> VerifiedUserAsync()
