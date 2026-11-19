@@ -11,6 +11,7 @@ namespace SmartProperty.Persistence.IntegrationTests.Persistence;
 public sealed class FavoritePropertiesMigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
     private const string Previous = "20261102180000_AddLocations";
+    private const string FavoritesMigration = "20261103090000_AddFavoriteProperties";
 
     [Fact]
     public async Task TheMigrationCreatesTheTableWithItsKeyForeignKeysAndIndexes()
@@ -55,7 +56,8 @@ public sealed class FavoritePropertiesMigrationTests(PostgreSqlFixture fixture) 
     [Fact]
     public async Task RollingBackDropsTheTableAndTheMigrationCanBeAppliedAgain()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(FavoritesMigration);
 
         await MigrateToAsync(Previous);
         Assert.Equal(false, await ScalarAsync("SELECT to_regclass('registry.favorite_properties') IS NOT NULL;"));
@@ -83,16 +85,6 @@ public sealed class FavoritePropertiesMigrationTests(PostgreSqlFixture fixture) 
     {
         await using var context = Host.CreateVerificationContext();
         await context.Database.MigrateAsync();
-    }
-
-    private async Task MigrateToLatestFromScratchAsync()
-    {
-        await using (var deleting = Host.CreateVerificationContext())
-        {
-            await deleting.Database.EnsureDeletedAsync();
-        }
-
-        await MigrateToLatestAsync();
     }
 
     private async Task<bool> DatabaseHasMigrationHistoryAsync()

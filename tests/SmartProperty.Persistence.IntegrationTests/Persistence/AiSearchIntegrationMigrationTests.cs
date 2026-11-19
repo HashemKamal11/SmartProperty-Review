@@ -15,6 +15,7 @@ namespace SmartProperty.Persistence.IntegrationTests.Persistence;
 public sealed class AiSearchIntegrationMigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
     private const string Previous = "20261101121548_AddPropertyAmenities";
+    private const string AiSearchMigration = "20261102120000_AddAiSearchIntegration";
 
     private static readonly DateTimeOffset At = new(2026, 11, 1, 8, 0, 0, TimeSpan.Zero);
 
@@ -245,7 +246,8 @@ public sealed class AiSearchIntegrationMigrationTests(PostgreSqlFixture fixture)
     [Fact]
     public async Task RollingBackRestoresTheOldVocabularyAndDropsTheNewTables()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(AiSearchMigration);
         var apartment = await InsertNewPropertyAsync(type: "Apartment", finishing: "LuxuryFinished", furnished: true);
         var villa = await InsertNewPropertyAsync(type: "Villa", finishing: "Finished");
         var office = await InsertNewPropertyAsync(type: "Office", finishing: "CoreAndShell");
@@ -267,7 +269,8 @@ public sealed class AiSearchIntegrationMigrationTests(PostgreSqlFixture fixture)
     [Fact]
     public async Task RollingBackKeepsTheOriginalAmenitiesAndRemovesTheAddedOnes()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(AiSearchMigration);
         var id = await InsertNewPropertyAsync(type: "Apartment");
         await ExecuteAsync(
             $"""
@@ -286,7 +289,8 @@ public sealed class AiSearchIntegrationMigrationTests(PostgreSqlFixture fixture)
     [Fact]
     public async Task AfterRollingBackTheOldConstraintsApplyAgain()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(AiSearchMigration);
         await MigrateToAsync(Previous);
 
         var exception = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(
@@ -301,7 +305,8 @@ public sealed class AiSearchIntegrationMigrationTests(PostgreSqlFixture fixture)
     [Fact]
     public async Task TheMigrationCanBeAppliedAgainAfterARollback()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(AiSearchMigration);
         await MigrateToAsync(Previous);
         var id = await InsertOldPropertyAsync("Unit", "Furnished");
 

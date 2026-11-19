@@ -14,6 +14,7 @@ namespace SmartProperty.Persistence.IntegrationTests.Persistence;
 public sealed class NationalIdCountriesMigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
     private const string Previous = "20261110115157_AddRequestDetailsAndCommitments";
+    private const string NationalIdCountriesMigration = "20261111092923_SupportEgyptAndUaeNationalIds";
 
     [Fact]
     public async Task IdsStoredBeforeTheMigrationBecomeSaudiAndProfilesWithoutOneStayEmpty()
@@ -34,7 +35,8 @@ public sealed class NationalIdCountriesMigrationTests(PostgreSqlFixture fixture)
     {
         await MigrateToAsync(Previous);
         await InsertLegacyProfileAsync("'1234567890'");
-        await MigrateToLatestAsync();
+        // Up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(NationalIdCountriesMigration);
 
         await MigrateToAsync(Previous);
         Assert.Equal(
@@ -42,7 +44,8 @@ public sealed class NationalIdCountriesMigrationTests(PostgreSqlFixture fixture)
             await ScalarAsync(
                 "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'identity' AND table_name = 'owner_profiles' AND column_name = 'id_country_code';"));
 
-        await MigrateToLatestAsync();
+        // Up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(NationalIdCountriesMigration);
         var user = await InsertUserAsync();
         await ExecuteAsync(
             "INSERT INTO identity.owner_profiles (id, user_id, status, created_at, updated_at, id_country_code, national_id) "

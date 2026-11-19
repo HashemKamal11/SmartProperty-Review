@@ -31,6 +31,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     private const string ListingAutomaticRelistMigration = "20261115151313_ListingAutomaticRelist";
     private const string PropertyOwnershipTransferMigration = "20261116093444_PropertyOwnershipTransfer";
     private const string AdminCompletionReturnsToAdminMigration = "20261117083602_AdminCompletionReturnsToAdmin";
+    private const string NotificationsMigration = "20261118142628_AddNotifications";
     private const string AddressNumbersMigration = "20261111122028_RelaxOwnerAddressNumbers";
     private const string NationalIdCountriesMigration = "20261111092923_SupportEgyptAndUaeNationalIds";
     private const string RequestsAndCommitmentsMigration = "20261110115157_AddRequestDetailsAndCommitments";
@@ -64,7 +65,7 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
     }
 
     [Fact]
-    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheAdminCompletionReturnsToAdminMigration()
+    public async Task BlankDatabase_AppliesEveryMigrationEndingWithTheNotificationsMigration()
     {
         await using (var deleting = Host.CreateVerificationContext())
         {
@@ -77,7 +78,8 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
         var applied = (await context.Database.GetAppliedMigrationsAsync()).ToList();
 
         Assert.Equal(context.Database.GetMigrations(), applied);
-        Assert.Equal(AdminCompletionReturnsToAdminMigration, applied[^1]);
+        Assert.Equal(NotificationsMigration, applied[^1]);
+        Assert.Contains(AdminCompletionReturnsToAdminMigration, applied);
         Assert.Contains(PropertyOwnershipTransferMigration, applied);
         Assert.Contains(ListingAutomaticRelistMigration, applied);
         Assert.Contains(WorkspaceRegistrationRequestsMigration, applied);
@@ -145,9 +147,10 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
 
         Assert.False(await PropertiesTableExistsAsync());
 
+        // Up to the migration under test only: AddNotifications refuses every automatic rollback.
         await using (var current = Host.CreateVerificationContext())
         {
-            await current.Database.MigrateAsync();
+            await current.GetService<IMigrator>().MigrateAsync(PropertyRegistryMigration);
         }
 
         Assert.True(await PropertiesTableExistsAsync());
@@ -179,9 +182,10 @@ public sealed class MigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fix
 
         Assert.False(await WorkspaceRoleIndexExistsAsync());
 
+        // Up to the migration under test only: AddNotifications refuses every automatic rollback.
         await using (var current = Host.CreateVerificationContext())
         {
-            await current.Database.MigrateAsync();
+            await current.GetService<IMigrator>().MigrateAsync(WorkspaceRoleNameMigration);
         }
 
         Assert.True(await WorkspaceRoleIndexExistsAsync());

@@ -12,6 +12,7 @@ namespace SmartProperty.Persistence.IntegrationTests.Persistence;
 public sealed class CountryCodeMigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
     private const string Previous = "20261105132710_AddPropertyComparison";
+    private const string CountryCodeMigration = "20261105160000_AddCountryCode";
 
     [Fact]
     public async Task CountriesAlreadyStoredGetTheirCodeFromTheEnglishNameAndUnknownOnesStayWithoutOne()
@@ -76,7 +77,8 @@ public sealed class CountryCodeMigrationTests(PostgreSqlFixture fixture) : Datab
     [Fact]
     public async Task RollingBackDropsTheColumnAndTheMigrationCanBeAppliedAgain()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(CountryCodeMigration);
 
         await MigrateToAsync(Previous);
 

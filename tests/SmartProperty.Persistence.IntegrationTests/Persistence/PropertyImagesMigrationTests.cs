@@ -11,6 +11,7 @@ namespace SmartProperty.Persistence.IntegrationTests.Persistence;
 public sealed class PropertyImagesMigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
     private const string Previous = "20261103090000_AddFavoriteProperties";
+    private const string PropertyImagesMigration = "20261104090000_AddPropertyImages";
     private const string Exists = "SELECT to_regclass('registry.property_images') IS NOT NULL;";
 
     [Fact]
@@ -62,7 +63,8 @@ public sealed class PropertyImagesMigrationTests(PostgreSqlFixture fixture) : Da
     [Fact]
     public async Task RollingBackDropsTheTableAndTheMigrationCanBeAppliedAgain()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(PropertyImagesMigration);
 
         await MigrateToAsync(Previous);
         Assert.Equal(false, await ScalarAsync(Exists));
@@ -90,16 +92,6 @@ public sealed class PropertyImagesMigrationTests(PostgreSqlFixture fixture) : Da
     {
         await using var context = Host.CreateVerificationContext();
         await context.Database.MigrateAsync();
-    }
-
-    private async Task MigrateToLatestFromScratchAsync()
-    {
-        await using (var deleting = Host.CreateVerificationContext())
-        {
-            await deleting.Database.EnsureDeletedAsync();
-        }
-
-        await MigrateToLatestAsync();
     }
 
     private async Task<bool> DatabaseHasMigrationHistoryAsync()

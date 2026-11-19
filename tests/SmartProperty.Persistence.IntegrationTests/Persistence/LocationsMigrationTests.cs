@@ -14,6 +14,7 @@ namespace SmartProperty.Persistence.IntegrationTests.Persistence;
 public sealed class LocationsMigrationTests(PostgreSqlFixture fixture) : DatabaseTest(fixture)
 {
     private const string Previous = "20261102120000_AddAiSearchIntegration";
+    private const string LocationsMigration = "20261102180000_AddLocations";
 
     private static readonly DateTimeOffset At = new(2026, 11, 2, 8, 0, 0, TimeSpan.Zero);
 
@@ -111,7 +112,8 @@ public sealed class LocationsMigrationTests(PostgreSqlFixture fixture) : Databas
     [Fact]
     public async Task RollingBackDropsThePlaceTablesAndRestoresTheBareAiIds()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(LocationsMigration);
 
         await MigrateToAsync(Previous);
 
@@ -129,7 +131,8 @@ public sealed class LocationsMigrationTests(PostgreSqlFixture fixture) : Databas
     [Fact]
     public async Task TheMigrationCanBeAppliedAgainAfterARollback()
     {
-        await MigrateToLatestFromScratchAsync();
+        // From scratch up to the migration under test only: AddNotifications refuses every automatic rollback.
+        await MigrateToAsync(LocationsMigration);
         await MigrateToAsync(Previous);
 
         await MigrateToLatestAsync();

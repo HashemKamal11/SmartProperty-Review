@@ -1761,6 +1761,82 @@ namespace SmartProperty.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SmartProperty.Domain.Notifications.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("OccurrenceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("occurrence_id");
+
+                    b.Property<string>("Parameters")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("parameters");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_user_id");
+
+                    b.Property<Guid?>("SubjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subject_id");
+
+                    b.Property<string>("SubjectType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("subject_type");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("type");
+
+                    b.Property<short>("VisibilityKind")
+                        .HasColumnType("smallint")
+                        .HasColumnName("visibility_kind");
+
+                    b.HasKey("Id")
+                        .HasName("PK_notifications");
+
+                    b.HasIndex(new[] { "RecipientUserId", "CreatedAt", "Id" }, "ix_notifications_recipient_created")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("ix_notifications_recipient_created");
+
+                    b.HasIndex(new[] { "RecipientUserId", "CreatedAt", "Id" }, "ix_notifications_recipient_unread")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("ix_notifications_recipient_unread")
+                        .HasFilter("read_at IS NULL");
+
+                    b.HasIndex(new[] { "RecipientUserId", "Type", "OccurrenceId" }, "ux_notifications_recipient_type_occurrence")
+                        .IsUnique()
+                        .HasDatabaseName("ux_notifications_recipient_type_occurrence");
+
+                    b.ToTable("notifications", "notifications", t =>
+                        {
+                            t.HasCheckConstraint("ck_notifications_parameters", "parameters = '{}'::jsonb");
+
+                            t.HasCheckConstraint("ck_notifications_read_after_created", "read_at IS NULL OR read_at >= created_at");
+
+                            t.HasCheckConstraint("ck_notifications_subject", "COALESCE((type = 'workspace.member_added' AND subject_type IS NOT DISTINCT FROM 'workspace' AND subject_id IS NOT NULL) OR (type = 'security.password_changed' AND subject_type IS NULL AND subject_id IS NULL), false)");
+
+                            t.HasCheckConstraint("ck_notifications_type", "type IN ('workspace.member_added', 'security.password_changed')");
+
+                            t.HasCheckConstraint("ck_notifications_visibility_kind", "visibility_kind = 1");
+                        });
+                });
+
             modelBuilder.Entity("SmartProperty.Domain.OwnerVerification.OwnerProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3037,6 +3113,16 @@ namespace SmartProperty.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_marketplace_rental_requests_listing");
+                });
+
+            modelBuilder.Entity("SmartProperty.Domain.Notifications.Notification", b =>
+                {
+                    b.HasOne("SmartProperty.Domain.Identity.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_notifications_users_recipient_user_id");
                 });
 
             modelBuilder.Entity("SmartProperty.Domain.OwnerVerification.OwnerProfile", b =>
